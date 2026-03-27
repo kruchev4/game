@@ -1,0 +1,10 @@
+[
+  {
+    "x":48, "y":40, "name":"Ashford",
+    "type":"Market Town",
+    "desc":"A weathered trading post where merchants hawk their wares...",
+    "services":["Inn","Shop","Temple","Tavern","Vendor","Craft"],
+    "rumours":[ "...", "..." ]
+  },
+  ...
+]
