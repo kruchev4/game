@@ -3,10 +3,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config/supabaseConfig.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const supabase = createClient(
-  "https://YOUR_PROJECT.supabase.co",
-  "PUBLIC_ANON_KEY"
-);
+
 
 export class SupabaseWorldProvider {
   async load(id) {
