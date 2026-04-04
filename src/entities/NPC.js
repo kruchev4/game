@@ -8,7 +8,8 @@ export class NPC {
 
     this.roamCenter = roamCenter;
     this.roamRadius = roamRadius;
-
+    this.chaseSteps = 0;
+    this.maxChaseSteps = 3; // micro‑chase distance
     // ✅ perception
     this.perceptionRadius = 5;
     this.state = "roaming"; // "roaming" | "alert"
