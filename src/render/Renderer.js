@@ -108,7 +108,7 @@ if (player && player.movePath && player.movePath.length) {
 }
 
     // ---- draw click target marker ----
-    player = entities.find(e => e.type === "player");
+    const player = entities.find(e => e.type === "player");
     if (player && player.moveTarget) {
       const { sx, sy } = camera.worldToScreen(
         player.moveTarget.x,
