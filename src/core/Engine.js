@@ -36,9 +36,14 @@ export class Engine {
   }
 
   loop() {
-    if (!this.running) return;
+  if (!this.running) return;
 
-    this.renderer.render(this.world, this.entities);
-    requestAnimationFrame(() => this.loop());
+  // Camera follow (center on player each frame)
+  if (this.player) {
+    this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
   }
+
+  this.renderer.render(this.world, this.entities);
+  requestAnimationFrame(() => this.loop());
+}
 }
