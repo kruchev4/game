@@ -26,21 +26,9 @@ export class NPCPerceptionSystem {
       if (npc.state !== "roaming") {
         npc.state = "roaming";
         npc.chaseSteps = 0; // reset micro‑chase when calming
-      }
-    }
-  }
-}
+      
 
-      // Manhattan distance (cheap + grid-consistent)
-      const dist = Math.abs(dx) + Math.abs(dy);
-
-      if (dist <= npc.perceptionRadius) {
-        if (npc.state !== "alert") {
-          npc.state = "alert";
-        }
-      } else {
-        if (npc.state !== "roaming") {
-          npc.state = "roaming";
+    
         }
       }
     }
