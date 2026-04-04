@@ -1,11 +1,14 @@
 import { Player } from "./Player.js";
 import { MovementSystem } from "../systems/MovementSystem.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
+import { ClickToMoveSystem } from "../systems/ClickToMoveSystem.js";
 
 
 
 export class Engine {
   constructor({ worldProvider, renderer }) {
+    this.clickToMoveSystem = null;
+
     this.movementSystem = null;
     this.worldProvider = worldProvider;
     this.renderer = renderer;
@@ -33,6 +36,12 @@ export class Engine {
     world: this.world,
     player: this.player
   });
+  this.clickToMoveSystem = new ClickToMoveSystem({
+    canvas: this.renderer.canvas,
+    camera: this.renderer.camera,
+    world: this.world,
+    movementSystem: this.movementSystem
+});
 
   // initial camera snap (follow will maintain this)
   this.renderer.camera.centerOn(x, y, this.world);
