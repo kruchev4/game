@@ -11,12 +11,19 @@ export class Engine {
   }
 
   start() {
-    if (!this.world) {
-      throw new Error("Engine started without a world");
-    }
-    this.running = true;
-    this.loop();
+  if (!this.world) {
+    throw new Error("Engine started without a world");
   }
+
+  // TEMP: center camera on world midpoint
+  const cx = Math.max(0, Math.floor(this.world.width / 2) - 10);
+  const cy = Math.max(0, Math.floor(this.world.height / 2) - 8);
+
+  this.renderer.camera.setPosition(cx, cy);
+
+  this.running = true;
+  this.loop();
+}
 
   loop() {
     if (!this.running) return;
