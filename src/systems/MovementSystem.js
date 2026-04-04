@@ -20,6 +20,9 @@ export class MovementSystem {
   }
 
   update() {
+    const now = performance.now();
+    if (now - this.lastMoveTime < this.moveDelay) return;
+
     if (!this.player) return;
 
     let dx = 0;
@@ -55,5 +58,6 @@ export class MovementSystem {
     // TODO: collision checks later
     this.player.x = nx;
     this.player.y = ny;
+    this.lastMoveTime = now;
   }
 }
