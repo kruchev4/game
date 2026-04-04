@@ -31,7 +31,12 @@ export class Renderer {
 
     ctx.strokeStyle = "#000";
     ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
-  }
+    if (entity.type === "npc") {
+      ctx.fillStyle = "#cc3333"; // red-ish
+      } else {
+     ctx.fillStyle = "#ffd700"; // player gold
+      }
+    }
 
   render(world, entities = []) {
     const { ctx, tileSize, camera } = this;
