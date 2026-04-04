@@ -20,20 +20,28 @@ export class Renderer {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    for (let y = 0; y < world.height; y++) {
-      for (let x = 0; x < world.width; x++) {
-        const tile = world.getTile(x, y);
+    
+const size = tileSize;
+for (let y = 0; y < world.height; y++) {
+  for (let x = 0; x < world.width; x++) {
+    const tile = world.getTile(x, y);
 
-        // simple debug coloring
-        ctx.fillStyle = tile === 0 ? "#1e1e1e" : "#3a5";
+    // checkerboard debug pattern
+    const isEven = (x + y) % 2 === 0;
 
-        ctx.fillRect(
-          x * tileSize,
-          y * tileSize,
-          tileSize,
-          tileSize
-        );
-      }
+    if (tile === 0) {
+      ctx.fillStyle = isEven ? "#1a1a1a" : "#222";
+    } else {
+      ctx.fillStyle = isEven ? "#3a5" : "#4b6";
     }
+
+    ctx.fillRect(x * size, y * size, size, size);
+
+    // optional thin grid line
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.strokeRect(x * size, y * size, size, size);
+  }
+}
+
   }
 }
