@@ -9,6 +9,7 @@ export class NPCPerceptionSystem {
   }
 
   update(dt = 1) {
+    console.log("PERCEPTION TICK");
     if (!this.player) return;
 
     this._cooldown -= dt;
