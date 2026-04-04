@@ -8,7 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export class SupabaseWorldProvider {
   async load(id) {
     const { data, error } = await supabase
-      .from("maps")
+      .from("worlds")
       .select("json")
       .eq("id", id)
       .single();
