@@ -60,7 +60,8 @@ this.entities = [this.player, ...this.npcs];
 
 this.npcMovementSystem = new NPCMovementSystem({
   world: this.world,
-  npcs: this.npcs
+  npcs: this.npcs,
+  player: this.player // ✅ pass it
 });
 
   this.movementSystem = new MovementSystem({
