@@ -1,7 +1,9 @@
 import { isWalkable } from "../world/isWalkable.js";
+import { aStar } from "../pathfinding/aStar.js";
 
 export class MovementSystem {
   constructor({ world, player }) {
+    this.path = null; // array of {x,y}
     this.world = world;
     this.player = player;
 
@@ -19,15 +21,31 @@ export class MovementSystem {
     window.addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
   }
 
-  setTarget(x, y) {
-    this.target = { x, y };
-    if (this.player) this.player.moveTarget = this.target; // for optional rendering
+  
+setTarget(x, y) {
+  this.target = { x, y };
+  if (this.player) this.player.moveTarget = this.target;
+
+  const p = aStar(this.world, { x: this.player.x, y: this.player.y }, { x, y });
+  if (!p || p.length === 0) {
+    // unreachable or already there
+    this.clearTarget();
+    return;
   }
 
+  this.path = p;
+  if (this.player) this.player.movePath = p; // optional for rendering/debug
+}
+
+
   clearTarget() {
-    this.target = null;
-    if (this.player) this.player.moveTarget = null;
+  this.target = null;
+  this.path = null;
+  if (this.player) {
+    this.player.moveTarget = null;
+    this.player.movePath = null;
   }
+}
 
   update() {
     if (!this.player || !this.world) return;
@@ -44,9 +62,22 @@ export class MovementSystem {
     }
 
     // 2) Otherwise, if we have a click target, step toward it
-    if (this.target) {
-      if (this._stepTowardTarget()) this.lastMoveTime = now;
-    }
+    // follow A* path if present
+if (this.path && this.path.length > 0) {
+  const next = this.path.shift(); // {x,y}
+
+  // Safety: if something became blocked later, cancel (future-proof)
+  // (For now your world is static, so this is mostly defensive.)
+  this.player.x = next.x;
+  this.player.y = next.y;
+
+  if (this.path.length === 0) {
+    this.clearTarget();
+  }
+
+  this.lastMoveTime = now;
+  return;
+}
   }
 
   _getKeyboardStep() {
@@ -61,38 +92,7 @@ export class MovementSystem {
     return { dx, dy };
   }
 
-  _stepTowardTarget() {
-    const tx = this.target.x;
-    const ty = this.target.y;
-
-    // arrived?
-    if (this.player.x === tx && this.player.y === ty) {
-      this.clearTarget();
-      return false;
-    }
-
-    const dxFull = tx - this.player.x;
-    const dyFull = ty - this.player.y;
-
-    const sx = Math.sign(dxFull);
-    const sy = Math.sign(dyFull);
-
-    // prefer moving on the axis with the larger remaining distance
-    const first = Math.abs(dxFull) >= Math.abs(dyFull) ? { dx: sx, dy: 0 } : { dx: 0, dy: sy };
-    const second = first.dx !== 0 ? { dx: 0, dy: sy } : { dx: sx, dy: 0 };
-
-    // Try primary axis; if blocked, try secondary; if both blocked, give up.
-    if (first.dx !== 0 || first.dy !== 0) {
-      if (this._tryStep(first.dx, first.dy)) return true;
-    }
-    if (second.dx !== 0 || second.dy !== 0) {
-      if (this._tryStep(second.dx, second.dy)) return true;
-    }
-
-    // stuck (no pathing yet)
-    this.clearTarget();
-    return false;
-  }
+  
 
   _tryStep(dx, dy) {
     if (dx === 0 && dy === 0) return false;
