@@ -32,7 +32,12 @@ export class Renderer {
     ctx.strokeStyle = "#000";
     ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
     if (entity.type === "npc") {
-      ctx.fillStyle = "#cc3333"; // red-ish
+      
+      ctx.fillStyle =
+      entity.state === "alert"
+        ? "#ff5555"   // red = aware
+        : "#cc3333";  // darker red = roaming
+
       } else {
      ctx.fillStyle = "#ffd700"; // player gold
       }
@@ -67,6 +72,27 @@ export class Renderer {
         ctx.strokeRect(sx, sy, tileSize, tileSize);
       }
     }
+for (const entity of entities) {
+  if (entity.type !== "npc") continue;
+
+  const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
+  const r = entity.perceptionRadius * tileSize;
+
+  ctx.strokeStyle =
+    entity.state === "alert"
+      ? "rgba(255, 80, 80, 0.4)"
+      : "rgba(255, 255, 255, 0.15)";
+
+  ctx.beginPath();
+  ctx.arc(
+    sx + tileSize / 2,
+    sy + tileSize / 2,
+    r,
+    0,
+    Math.PI * 2
+  );
+  ctx.stroke();
+}
     // ---- draw A* path polyline (optional) ----
 // ---- draw A* path polyline (optional) ----
 const player = entities.find(e => e.type === "player");
