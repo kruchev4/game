@@ -88,6 +88,7 @@ this.npcMovementSystem = new NPCMovementSystem({
   }
 
   loop() {
+    window.__frameCount++;
   if (!this.running) return;
   this.npcMovementSystem?.update();
 
