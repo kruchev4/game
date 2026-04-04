@@ -2,6 +2,8 @@ import { Player } from "./Player.js";
 import { MovementSystem } from "../systems/MovementSystem.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 import { ClickToMoveSystem } from "../systems/ClickToMoveSystem.js";
+import { NPC } from "../entities/NPC.js";
+import { NPCMovementSystem } from "../systems/NPCMovementSystem.js";
 
 
 
@@ -33,8 +35,7 @@ export class Engine {
 
   this.player = new Player({ x, y });
   this.entities = [this.player];
-    import { NPC } from "../entities/NPC.js";
-import { NPCMovementSystem } from "../systems/NPCMovementSystem.js";
+    
 
 // TEMP test NPC
 const npc = new NPC({
