@@ -46,35 +46,38 @@ export class Renderer {
   );
 }
 
-  render(world) {
-    const { ctx, tileSize, camera } = this;
+  render(world, entities = []) {
+  const { ctx, tileSize, camera } = this;
 
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    const tilesWide = Math.ceil(ctx.canvas.width / tileSize);
-    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
+  const tilesWide = Math.ceil(ctx.canvas.width / tileSize);
+  const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
-    for (let y = 0; y < tilesHigh; y++) {
-      for (let x = 0; x < tilesWide; x++) {
-        const wx = x + camera.x;
-        const wy = y + camera.y;
+  // draw tiles
+  for (let y = 0; y < tilesHigh; y++) {
+    for (let x = 0; x < tilesWide; x++) {
+      const wx = x + camera.x;
+      const wy = y + camera.y;
 
-        const tile = world.getTile(wx, wy);
-        if (tile == null) continue;
+      const tile = world.getTile(wx, wy);
+      if (tile == null) continue;
 
-        const isEven = (wx + wy) % 2 === 0;
-        ctx.fillStyle =
-          tile === 0
-            ? (isEven ? "#1a1a1a" : "#222")
-            : (isEven ? "#3a5" : "#4b6");
+      const isEven = (wx + wy) % 2 === 0;
+      ctx.fillStyle =
+        tile === 0
+          ? (isEven ? "#1a1a1a" : "#222")
+          : (isEven ? "#3a5" : "#4b6");
 
-        const { sx, sy } = camera.worldToScreen(wx, wy);
-        ctx.fillRect(sx, sy, tileSize, tileSize);
-
-        ctx.strokeStyle = "rgba(0,0,0,0.25)";
-        ctx.strokeRect(sx, sy, tileSize, tileSize);
-      }
+      const { sx, sy } = camera.worldToScreen(wx, wy);
+      ctx.fillRect(sx, sy, tileSize, tileSize);
     }
   }
+
+  // draw entities ON TOP of tiles
+  for (const entity of entities) {
+    this.drawEntity(entity);
+  }
+}
 }
