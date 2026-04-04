@@ -1,5 +1,7 @@
 export class NPC {
   constructor({ id, x, y, roamCenter, roamRadius = 6 }) {
+    this.chaseSteps = 0;
+    this.maxChaseSteps = 3; // micro‑chase distance
     this.id = id;
     this.type = "npc";
 
