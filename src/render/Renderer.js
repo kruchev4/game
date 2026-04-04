@@ -23,6 +23,28 @@ export class Renderer {
       this.canvas.height
     );
   }
+  drawEntity(entity) {
+  const { ctx, tileSize, camera } = this;
+
+  const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
+
+  ctx.fillStyle = "#ffd700"; // gold
+  ctx.fillRect(
+    sx + 2,
+    sy + 2,
+    tileSize - 4,
+    tileSize - 4
+  );
+
+  // outline
+  ctx.strokeStyle = "#000";
+  ctx.strokeRect(
+    sx + 2,
+    sy + 2,
+    tileSize - 4,
+    tileSize - 4
+  );
+}
 
   render(world) {
     const { ctx, tileSize, camera } = this;
