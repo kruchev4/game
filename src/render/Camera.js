@@ -1,4 +1,10 @@
 export class Camera {
+  screenToWorld(px, py) {
+  // px,py are canvas pixel coordinates (NOT CSS pixels)
+  const wx = this.x + Math.floor(px / this.tileSize);
+  const wy = this.y + Math.floor(py / this.tileSize);
+  return { x: wx, y: wy };
+}
   constructor({
     x = 0,
     y = 0,
