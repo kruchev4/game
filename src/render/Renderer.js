@@ -102,11 +102,12 @@ export class Renderer {
     this.drawEntity(entity);
   }
 }
-}
+
 
   // draw entities ON TOP of tiles
   for (const entity of entities) {
     this.drawEntity(entity);
   }
+}
 }
 
