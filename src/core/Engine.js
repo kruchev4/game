@@ -88,24 +88,15 @@ this.npcMovementSystem = new NPCMovementSystem({
   }
 
   loop() {
-    window.__frameCount++;
   if (!this.running) return;
+
+  // update systems (exactly once)
   this.npcMovementSystem?.update();
+  this.npcPerceptionSystem?.update();
 
-  // update systems
-  if (this.movementSystem) {
-    this.movementSystem.update();
-  }
-    
-  this.movementSystem.update();
-  this.npcMovementSystem.update();
-  this.npcPerceptionSystem.update(); // ✅ new
+  this.movementSystem?.update();
 
-  this.renderer.render(this.world, this.entities);
-  requestAnimationFrame(() => this.loop());
-
-
-  // camera follow stays here
+  // camera follow
   if (this.player) {
     this.renderer.camera.centerOn(
       this.player.x,
@@ -114,7 +105,11 @@ this.npcMovementSystem = new NPCMovementSystem({
     );
   }
 
+  // render ONCE
   this.renderer.render(this.world, this.entities);
+
+  // schedule next frame ONCE
   requestAnimationFrame(() => this.loop());
+
 }
 }
