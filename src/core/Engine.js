@@ -1,10 +1,11 @@
 import { Player } from "./Player.js";
 import { MovementSystem } from "../systems/MovementSystem.js";
 
-this.movementSystem = null;
+
 
 export class Engine {
   constructor({ worldProvider, renderer }) {
+    this.movementSystem = null;
     this.worldProvider = worldProvider;
     this.renderer = renderer;
     this.world = null;
