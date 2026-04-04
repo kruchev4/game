@@ -6,17 +6,17 @@ export class NPC {
     this.x = x;
     this.y = y;
 
-    // roaming constraints
-    this.roamCenter = roamCenter; // {x,y}
+    this.roamCenter = roamCenter;
     this.roamRadius = roamRadius;
 
-    // movement state
+    // ✅ perception
+    this.perceptionRadius = 5;
+    this.state = "roaming"; // "roaming" | "alert"
+
+    // movement timing
     this._cooldown = 0;
-    this._target = null;
 
     // future hooks
-    this.faction = "hostile"; // placeholder
-    this.state = "roaming";
+    this.faction = "hostile";
   }
 }
-``
