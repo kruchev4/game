@@ -25,6 +25,16 @@ export class Renderer {
       this.canvas.height
     );
   }
+  // draw click target marker (optional)
+  const p = entities.find(e => e.type === "player");
+    if (p?.moveTarget) {
+    const { sx, sy } = camera.worldToScreen(p.moveTarget.x, p.moveTarget.y);
+    ctx.fillStyle = "#ff3b3b";
+    ctx.beginPath();
+    ctx.arc(sx + tileSize / 2, sy + tileSize / 2, Math.max(3, tileSize * 0.18), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   drawEntity(entity) {
   const { ctx, tileSize, camera } = this;
 
