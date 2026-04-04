@@ -9,7 +9,7 @@ export class SupabaseOverworldProvider {
   async load(id) {
     const { data, error } = await supabase
       .from("worlds")
-      .select("map_json")
+      .select("json")
       .eq("id", id)
       .single();
 
