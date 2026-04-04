@@ -109,4 +109,4 @@ export class Renderer {
     this.drawEntity(entity);
   }
 }
-}
+
