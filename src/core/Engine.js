@@ -8,6 +8,8 @@ import { ClickToMoveSystem } from "../systems/ClickToMoveSystem.js";
 export class Engine {
   constructor({ worldProvider, renderer }) {
     this.clickToMoveSystem = null;
+    this.npcs = [];
+    this.npcMovementSystem = null;
 
     this.movementSystem = null;
     this.worldProvider = worldProvider;
@@ -31,6 +33,27 @@ export class Engine {
 
   this.player = new Player({ x, y });
   this.entities = [this.player];
+    import { NPC } from "../entities/NPC.js";
+import { NPCMovementSystem } from "../systems/NPCMovementSystem.js";
+
+// TEMP test NPC
+const npc = new NPC({
+  id: "npc_goblin_1",
+  x: x + 5,
+  y: y + 2,
+  roamCenter: { x: x + 5, y: y + 2 },
+  roamRadius: 5
+});
+
+this.npcs.push(npc);
+
+// entities = player + npcs
+this.entities = [this.player, ...this.npcs];
+
+this.npcMovementSystem = new NPCMovementSystem({
+  world: this.world,
+  npcs: this.npcs
+});
 
   this.movementSystem = new MovementSystem({
     world: this.world,
@@ -58,6 +81,7 @@ export class Engine {
 
   loop() {
   if (!this.running) return;
+  this.npcMovementSystem?.update();
 
   // update systems
   if (this.movementSystem) {
