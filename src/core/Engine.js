@@ -91,7 +91,7 @@ this.npcMovementSystem = new NPCMovementSystem({
   if (!this.running) return;
 
   // update systems (exactly once)
-  this.npcMovementSystem?.update();
+  //this.npcMovementSystem?.update();
   this.npcPerceptionSystem?.update();
 
   this.movementSystem?.update();
