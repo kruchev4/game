@@ -72,7 +72,7 @@ export class Renderer {
         ctx.strokeRect(sx, sy, tileSize, tileSize);
       }
     }
-for (const entity of entities) {
+/*for (const entity of entities) {
   if (entity.type !== "npc") continue;
 
   const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -92,7 +92,7 @@ for (const entity of entities) {
     Math.PI * 2
   );
   ctx.stroke();
-}
+}*/
     // ---- draw A* path polyline (optional) ----
 // ---- draw A* path polyline (optional) ----
 const player = entities.find(e => e.type === "player");
