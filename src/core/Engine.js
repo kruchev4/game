@@ -1,4 +1,7 @@
 import { Player } from "./Player.js";
+import { MovementSystem } from "../systems/MovementSystem.js";
+
+this.movementSystem = null;
 
 export class Engine {
   constructor({ worldProvider, renderer }) {
@@ -21,6 +24,10 @@ export class Engine {
 
     this.player = new Player({ x: px, y: py });
     this.entities = [this.player];
+    this.movementSystem = new MovementSystem({
+    world: this.world,
+    player: this.player
+});
 
     // Center camera initially on player
     this.renderer.camera.setPosition(px - 10, py - 8);
@@ -38,9 +45,18 @@ export class Engine {
   loop() {
   if (!this.running) return;
 
-  // Camera follow (center on player each frame)
+  // update systems
+  if (this.movementSystem) {
+    this.movementSystem.update();
+  }
+
+  // camera follow stays here
   if (this.player) {
-    this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
+    this.renderer.camera.centerOn(
+      this.player.x,
+      this.player.y,
+      this.world
+    );
   }
 
   this.renderer.render(this.world, this.entities);
