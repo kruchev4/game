@@ -95,6 +95,14 @@ this.npcMovementSystem = new NPCMovementSystem({
   if (this.movementSystem) {
     this.movementSystem.update();
   }
+    
+  this.movementSystem.update();
+  this.npcMovementSystem.update();
+  this.npcPerceptionSystem.update(); // ✅ new
+
+  this.renderer.render(this.world, this.entities);
+  requestAnimationFrame(() => this.loop());
+
 
   // camera follow stays here
   if (this.player) {
