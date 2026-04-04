@@ -1,10 +1,10 @@
 import { Engine } from "./core/Engine.js";
-import { SupabaseWorldProvider } from "./adapters/SupabaseWorldProvider.js";
 import { Renderer } from "./render/Renderer.js";
+import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 
 export async function start(canvas) {
-  const worldProvider = new SupabaseWorldProvider();
   const renderer = new Renderer(canvas);
+  const worldProvider = new SupabaseOverworldProvider();
 
   const engine = new Engine({
     worldProvider,
