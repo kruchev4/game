@@ -21,6 +21,12 @@ export class NPCPerceptionSystem {
     for (const npc of this.npcs) {
       const dx = npc.x - this.player.x;
       const dy = npc.y - this.player.y;
+      if (dist > npc.perceptionRadius) {
+      if (npc.state !== "roaming") {
+        npc.state = "roaming";
+        npc.chaseSteps = 0; // ✅ reset chase
+     }
+   }
 
       // Manhattan distance (cheap + grid-consistent)
       const dist = Math.abs(dx) + Math.abs(dy);
