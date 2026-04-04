@@ -1,4 +1,6 @@
 import { Camera } from "./Camera.js";
+import { getTileDef } from "../world/getTileDef.js";
+
 
 export class Renderer {
   constructor(canvas) {
@@ -55,25 +57,18 @@ export class Renderer {
   const tilesWide = Math.ceil(ctx.canvas.width / tileSize);
   const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
-  // draw tiles
-  for (let y = 0; y < tilesHigh; y++) {
-    for (let x = 0; x < tilesWide; x++) {
-      const wx = x + camera.x;
-      const wy = y + camera.y;
+  const tileId = world.getTile(wx, wy);
+if (tileId == null) continue;
 
-      const tile = world.getTile(wx, wy);
-      if (tile == null) continue;
+const tile = getTileDef(tileId);
 
-      const isEven = (wx + wy) % 2 === 0;
-      ctx.fillStyle =
-        tile === 0
-          ? (isEven ? "#1a1a1a" : "#222")
-          : (isEven ? "#3a5" : "#4b6");
+// draw tile
+ctx.fillStyle = tile.color;
+ctx.fillRect(sx, sy, tileSize, tileSize);
 
-      const { sx, sy } = camera.worldToScreen(wx, wy);
-      ctx.fillRect(sx, sy, tileSize, tileSize);
-    }
-  }
+// optional grid
+ctx.strokeStyle = "rgba(0,0,0,0.25)";
+ctx.strokeRect(sx, sy, tileSize, tileSize);
 
   // draw entities ON TOP of tiles
   for (const entity of entities) {
