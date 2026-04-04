@@ -9,24 +9,27 @@ export class NPCPerceptionSystem {
   }
 
   update(dt = 1) {
-    
-    if (!this.player) return;
+  if (!this.player) return;
 
-    this._cooldown -= dt;
-    if (this._cooldown > 0) return;
+  for (const npc of this.npcs) {
+    const dx = npc.x - this.player.x;
+    const dy = npc.y - this.player.y;
 
-    // reset timer
-    this._cooldown = this._interval;
+    // ✅ dist is defined BEFORE use
+    const dist = Math.abs(dx) + Math.abs(dy);
 
-    for (const npc of this.npcs) {
-      const dx = npc.x - this.player.x;
-      const dy = npc.y - this.player.y;
-      if (dist > npc.perceptionRadius) {
+    if (dist <= npc.perceptionRadius) {
+      if (npc.state !== "alert") {
+        npc.state = "alert";
+      }
+    } else {
       if (npc.state !== "roaming") {
         npc.state = "roaming";
-        npc.chaseSteps = 0; // ✅ reset chase
-     }
-   }
+        npc.chaseSteps = 0; // reset micro‑chase when calming
+      }
+    }
+  }
+}
 
       // Manhattan distance (cheap + grid-consistent)
       const dist = Math.abs(dx) + Math.abs(dy);
