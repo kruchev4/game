@@ -5,7 +5,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 
 
-export class SupabaseWorldProvider {
+export class SupabaseOverworldProvider {
   async load(id) {
     const { data, error } = await supabase
       .from("worlds")
