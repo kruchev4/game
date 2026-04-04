@@ -18,24 +18,25 @@ export class Engine {
   }
 
   async loadWorld(worldId) {
-    this.world = await this.worldProvider.load(worldId);
+  this.world = await this.worldProvider.load(worldId);
 
-    // TEMP: spawn player near center
-   const cx = Math.floor(this.world.width / 2);
-   const cy = Math.floor(this.world.height / 2);
+  // spawn near center, but ensure walkable
+  const cx = Math.floor(this.world.width / 2);
+  const cy = Math.floor(this.world.height / 2);
 
-   const { x, y } = findNearestWalkable(this.world, cx, cy);
+  const { x, y } = findNearestWalkable(this.world, cx, cy);
 
-   this.player = new Player({ x, y });
-   this.entities = [this.player];
-    this.movementSystem = new MovementSystem({
+  this.player = new Player({ x, y });
+  this.entities = [this.player];
+
+  this.movementSystem = new MovementSystem({
     world: this.world,
     player: this.player
-});
+  });
 
-    // Center camera initially on player
-    this.renderer.camera.setPosition(px - 10, py - 8);
-  }
+  // initial camera snap (follow will maintain this)
+  this.renderer.camera.centerOn(x, y, this.world);
+}
 
   start() {
     if (!this.world) {
