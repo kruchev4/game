@@ -8,10 +8,61 @@ export class NPCMovementSystem {
 
   update(dt = 1) {
     for (const npc of this.npcs) {
+      // --- micro‑chase when alert ---
+if (npc.state === "alert") {
+  // stop chasing if we've done enough
+  if (npc.chaseSteps >= npc.maxChaseSteps) {
+    npc.chaseSteps = 0;
+    npc._cooldown = 20;
+    continue;
+  }
+
+  const px = this.player?.x;
+  const py = this.player?.y;
+
+  if (px == null || py == null) continue;
+
+  const dx = Math.sign(px - npc.x);
+  const dy = Math.sign(py - npc.y);
+
+  // Prefer axis-aligned step (grid-friendly)
+  const step =
+    Math.abs(px - npc.x) > Math.abs(py - npc.y)
+      ? { x: dx, y: 0 }
+      : { x: 0, y: dy };
+
+  const nx = npc.x + step.x;
+  const ny = npc.y + step.y;
+
+  // leash check (do not exceed roam radius)
+  const leashDist =
+    Math.abs(nx - npc.roamCenter.x) +
+    Math.abs(ny - npc.roamCenter.y);
+
+  if (leashDist > npc.roamRadius) {
+    npc.chaseSteps = 0;
+    npc._cooldown = 30;
+    continue;
+  }
+
+  // walkability
+  if (!isWalkable(this.world.getTile(nx, ny))) {
+    npc._cooldown = 15;
+    continue;
+  }
+
+  // apply movement
+  npc.x = nx;
+  npc.y = ny;
+  npc.chaseSteps += 1;
+
+  npc._cooldown = 15; // slightly faster than roaming
+  continue;
+}
       npc._cooldown -= dt;
       if (npc._cooldown > 0) continue;
 
-      // not every think cycle results in movement
+      
       if (Math.random() < 0.7) {
         npc._cooldown = 30 + Math.random() * 60;
         continue;
