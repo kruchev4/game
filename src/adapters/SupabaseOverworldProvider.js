@@ -1,9 +1,11 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config/supabaseConfig.js";
+import { createClient } from
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+} from "../config/supabaseConfig.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-
 
 export class SupabaseOverworldProvider {
   async load(id) {
@@ -14,23 +16,17 @@ export class SupabaseOverworldProvider {
       .single();
 
     if (error) throw new Error(error.message);
-
-    return this.#normalizeMap(data.json);
+    return this.#normalize(data.json);
   }
 
-  #normalizeMap(raw) {
+  #normalize(raw) {
     return {
       id: raw.id,
       width: raw.width,
       height: raw.height,
-      tiles: Array.isArray(raw.tiles)
-        ? raw.tiles
-        : Array.from(raw.tiles),
-
+      tiles: raw.tiles,
       getTile(x, y) {
-        if (x < 0 || y < 0 || x >= this.width || y >= this.height) {
-          return 0;
-        }
+        if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
         return this.tiles[y * this.width + x];
       }
     };
