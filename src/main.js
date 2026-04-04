@@ -13,4 +13,5 @@ export async function start(canvas) {
 
   await engine.loadWorld("overworld_C");
   engine.start();
+  window.engine = engine;
 }
