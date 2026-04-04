@@ -1,3 +1,4 @@
+import { isWalkable } from "../world/isWalkable.js";
 export class MovementSystem {
   constructor({ world, player }) {
     this.world = world;
@@ -43,21 +44,28 @@ export class MovementSystem {
     if (dx === 0 && dy === 0) return;
 
     const nx = this.player.x + dx;
-    const ny = this.player.y + dy;
+const ny = this.player.y + dy;
 
-    // bounds check
-    if (
-      nx < 0 ||
-      ny < 0 ||
-      nx >= this.world.width ||
-      ny >= this.world.height
-    ) {
-      return;
-    }
+// bounds check
+if (
+  nx < 0 ||
+  ny < 0 ||
+  nx >= this.world.width ||
+  ny >= this.world.height
+) {
+  return;
+}
 
-    // TODO: collision checks later
-    this.player.x = nx;
-    this.player.y = ny;
-    this.lastMoveTime = now;
-  }
+const tileId = this.world.getTile(nx, ny);
+
+// collision check
+if (!isWalkable(tileId)) {
+  return;
+}
+
+//  apply movement
+this.player.x = nx;
+this.player.y = ny;
+this.lastMoveTime = now; // if you're using move delay
+
 }
