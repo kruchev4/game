@@ -1,5 +1,6 @@
 import { Player } from "./Player.js";
 import { MovementSystem } from "../systems/MovementSystem.js";
+import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 
 
@@ -20,11 +21,13 @@ export class Engine {
     this.world = await this.worldProvider.load(worldId);
 
     // TEMP: spawn player near center
-    const px = Math.floor(this.world.width / 2);
-    const py = Math.floor(this.world.height / 2);
+   const cx = Math.floor(this.world.width / 2);
+   const cy = Math.floor(this.world.height / 2);
 
-    this.player = new Player({ x: px, y: py });
-    this.entities = [this.player];
+   const { x, y } = findNearestWalkable(this.world, cx, cy);
+
+   this.player = new Player({ x, y });
+   this.entities = [this.player];
     this.movementSystem = new MovementSystem({
     world: this.world,
     player: this.player
