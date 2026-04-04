@@ -25,15 +25,7 @@ export class Renderer {
       this.canvas.height
     );
   }
-  // draw click target marker (optional)
-  const p = entities.find(e => e.type === "player");
-    if (p?.moveTarget) {
-    const { sx, sy } = camera.worldToScreen(p.moveTarget.x, p.moveTarget.y);
-    ctx.fillStyle = "#ff3b3b";
-    ctx.beginPath();
-    ctx.arc(sx + tileSize / 2, sy + tileSize / 2, Math.max(3, tileSize * 0.18), 0, Math.PI * 2);
-    ctx.fill();
-  }
+  
 
   drawEntity(entity) {
   const { ctx, tileSize, camera } = this;
@@ -61,32 +53,55 @@ export class Renderer {
   render(world, entities = []) {
   const { ctx, tileSize, camera } = this;
 
+  // background
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   const tilesWide = Math.ceil(ctx.canvas.width / tileSize);
   const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
-  // draw tiles
-for (let y = 0; y < tilesHigh; y++) {
-  for (let x = 0; x < tilesWide; x++) {
-    const wx = x + camera.x;
-    const wy = y + camera.y;
+  // ---- draw tiles ----
+  for (let y = 0; y < tilesHigh; y++) {
+    for (let x = 0; x < tilesWide; x++) {
+      const wx = x + camera.x;
+      const wy = y + camera.y;
 
-    const tileId = world.getTile(wx, wy);
-    if (tileId == null) continue;
+      const tileId = world.getTile(wx, wy);
+      if (tileId == null) continue;
 
-    const tile = getTileDef(tileId);
-    const { sx, sy } = camera.worldToScreen(wx, wy);
+      const tile = getTileDef(tileId);
+      const { sx, sy } = camera.worldToScreen(wx, wy);
 
-    // tile fill
-    ctx.fillStyle = tile.color;
-    ctx.fillRect(sx, sy, tileSize, tileSize);
+      ctx.fillStyle = tile.color;
+      ctx.fillRect(sx, sy, tileSize, tileSize);
 
-    // optional grid (keep while debugging)
-    ctx.strokeStyle = "rgba(0,0,0,0.25)";
-    ctx.strokeRect(sx, sy, tileSize, tileSize);
+      // optional grid
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.strokeRect(sx, sy, tileSize, tileSize);
+    }
   }
+
+  // ---- draw click target marker (optional) ----
+  const p = entities.find(e => e.type === "player");
+  if (p && p.moveTarget) {
+    const { sx, sy } = camera.worldToScreen(p.moveTarget.x, p.moveTarget.y);
+    ctx.fillStyle = "#ff3b3b";
+    ctx.beginPath();
+    ctx.arc(
+      sx + tileSize / 2,
+      sy + tileSize / 2,
+      Math.max(3, tileSize * 0.18),
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+
+  // ---- draw entities (player, etc.) ----
+  for (const entity of entities) {
+    this.drawEntity(entity);
+  }
+}
 }
 
   // draw entities ON TOP of tiles
