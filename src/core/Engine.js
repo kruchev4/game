@@ -4,6 +4,7 @@ import { findNearestWalkable } from "../world/findNearestWalkable.js";
 import { ClickToMoveSystem } from "../systems/ClickToMoveSystem.js";
 import { NPC } from "../entities/NPC.js";
 import { NPCMovementSystem } from "../systems/NPCMovementSystem.js";
+import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
 
 
 
@@ -25,16 +26,22 @@ export class Engine {
   }
 
   async loadWorld(worldId) {
-  this.world = await this.worldProvider.load(worldId);
+    this.world = await this.worldProvider.load(worldId);
 
-  // spawn near center, but ensure walkable
-  const cx = Math.floor(this.world.width / 2);
-  const cy = Math.floor(this.world.height / 2);
+    // spawn near center, but ensure walkable
+    const cx = Math.floor(this.world.width / 2);
+    const cy = Math.floor(this.world.height / 2);
 
-  const { x, y } = findNearestWalkable(this.world, cx, cy);
+    const { x, y } = findNearestWalkable(this.world, cx, cy);
 
-  this.player = new Player({ x, y });
-  this.entities = [this.player];
+    this.player = new Player({ x, y });
+    this.entities = [this.player];
+    
+    this.npcPerceptionSystem = new NPCPerceptionSystem({
+      npcs: this.npcs,
+      player: this.player
+    });
+
     
 
 // TEMP test NPC
