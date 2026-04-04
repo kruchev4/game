@@ -2,6 +2,8 @@ export class MovementSystem {
   constructor({ world, player }) {
     this.world = world;
     this.player = player;
+    this.lastMoveTime = 0;
+    this.moveDelay = 120; // ms per step
 
     this.keys = new Set();
     this._bindInput();
