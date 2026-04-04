@@ -1,10 +1,12 @@
 import { isWalkable } from "../world/isWalkable.js";
 
 export class NPCMovementSystem {
-  constructor({ world, npcs }) {
+  constructor({ world, npcs, player }) {
     this.world = world;
     this.npcs = npcs;
+    this.player = player; // ✅ REQUIRED
   }
+}
 
   update(dt = 1) {
     for (const npc of this.npcs) {
