@@ -122,7 +122,7 @@ if (player && player.moveTarget) {
   ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
   ctx.fill();
 }
-}
+
 
     // ---- draw click target marker ----
     player = entities.find(e => e.type === "player");
