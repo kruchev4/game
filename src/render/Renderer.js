@@ -1,8 +1,14 @@
+import { Camera } from "./Camera.js";
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.tileSize = 16;
+
+    this.camera = new Camera({
+      tileSize: this.tileSize
+    });
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -11,37 +17,42 @@ export class Renderer {
   resize() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+
+    this.camera.resize(
+      this.canvas.width,
+      this.canvas.height
+    );
   }
 
   render(world) {
-    const { ctx, tileSize } = this;
+    const { ctx, tileSize, camera } = this;
 
-    // Clear to black so white background disappears
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    
-const size = tileSize;
-for (let y = 0; y < world.height; y++) {
-  for (let x = 0; x < world.width; x++) {
-    const tile = world.getTile(x, y);
+    const tilesWide = Math.ceil(ctx.canvas.width / tileSize);
+    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
-    // checkerboard debug pattern
-    const isEven = (x + y) % 2 === 0;
+    for (let y = 0; y < tilesHigh; y++) {
+      for (let x = 0; x < tilesWide; x++) {
+        const wx = x + camera.x;
+        const wy = y + camera.y;
 
-    if (tile === 0) {
-      ctx.fillStyle = isEven ? "#1a1a1a" : "#222";
-    } else {
-      ctx.fillStyle = isEven ? "#3a5" : "#4b6";
+        const tile = world.getTile(wx, wy);
+        if (tile == null) continue;
+
+        const isEven = (wx + wy) % 2 === 0;
+        ctx.fillStyle =
+          tile === 0
+            ? (isEven ? "#1a1a1a" : "#222")
+            : (isEven ? "#3a5" : "#4b6");
+
+        const { sx, sy } = camera.worldToScreen(wx, wy);
+        ctx.fillRect(sx, sy, tileSize, tileSize);
+
+        ctx.strokeStyle = "rgba(0,0,0,0.25)";
+        ctx.strokeRect(sx, sy, tileSize, tileSize);
+      }
     }
-
-    ctx.fillRect(x * size, y * size, size, size);
-
-    // optional thin grid line
-    ctx.strokeStyle = "rgba(0,0,0,0.25)";
-    ctx.strokeRect(x * size, y * size, size, size);
-  }
-}
-
   }
 }
