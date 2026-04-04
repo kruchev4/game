@@ -62,9 +62,53 @@ export class Renderer {
         ctx.strokeRect(sx, sy, tileSize, tileSize);
       }
     }
+    // ---- draw A* path polyline (optional) ----
+const player = entities.find(e => e.type === "player");
+if (player && player.movePath && player.movePath.length) {
+  ctx.strokeStyle = "rgba(255, 60, 60, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+
+  // Start at the player's center
+  {
+    const { sx, sy } = camera.worldToScreen(player.x, player.y);
+    ctx.moveTo(sx + tileSize / 2, sy + tileSize / 2);
+  }
+
+  // Draw through each step center
+  for (const step of player.movePath) {
+    const { sx, sy } = camera.worldToScreen(step.x, step.y);
+
+    // Optional: skip drawing segments far off-screen for performance
+    if (
+      sx < -tileSize || sy < -tileSize ||
+      sx > ctx.canvas.width + tileSize ||
+      sy > ctx.canvas.height + tileSize
+    ) {
+      continue;
+    }
+
+    ctx.lineTo(sx + tileSize / 2, sy + tileSize / 2);
+  }
+
+  ctx.stroke();
+
+  // Optional: draw small breadcrumbs
+  ctx.fillStyle = "rgba(255, 60, 60, 0.65)";
+  for (let i = 0; i < player.movePath.length; i += 3) {
+    const step = player.movePath[i];
+    const { sx, sy } = camera.worldToScreen(step.x, step.y);
+    ctx.beginPath();
+    ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
 
     // ---- draw click target marker ----
-    const player = entities.find(e => e.type === "player");
+    player = entities.find(e => e.type === "player");
     if (player && player.moveTarget) {
       const { sx, sy } = camera.worldToScreen(
         player.moveTarget.x,
