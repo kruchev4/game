@@ -68,7 +68,9 @@ export class Renderer {
       }
     }
     // ---- draw A* path polyline (optional) ----
+// ---- draw A* path polyline (optional) ----
 const player = entities.find(e => e.type === "player");
+
 if (player && player.movePath && player.movePath.length) {
   ctx.strokeStyle = "rgba(255, 60, 60, 0.55)";
   ctx.lineWidth = 2;
@@ -83,11 +85,9 @@ if (player && player.movePath && player.movePath.length) {
     ctx.moveTo(sx + tileSize / 2, sy + tileSize / 2);
   }
 
-  // Draw through each step center
   for (const step of player.movePath) {
     const { sx, sy } = camera.worldToScreen(step.x, step.y);
 
-    // Optional: skip drawing segments far off-screen for performance
     if (
       sx < -tileSize || sy < -tileSize ||
       sx > ctx.canvas.width + tileSize ||
@@ -101,7 +101,6 @@ if (player && player.movePath && player.movePath.length) {
 
   ctx.stroke();
 
-  // Optional: draw small breadcrumbs
   ctx.fillStyle = "rgba(255, 60, 60, 0.65)";
   for (let i = 0; i < player.movePath.length; i += 3) {
     const step = player.movePath[i];
@@ -110,6 +109,19 @@ if (player && player.movePath && player.movePath.length) {
     ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 2.2, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// ---- draw click target marker ----
+if (player && player.moveTarget) {
+  const { sx, sy } = camera.worldToScreen(
+    player.moveTarget.x,
+    player.moveTarget.y
+  );
+  ctx.fillStyle = "#ff3b3b";
+  ctx.beginPath();
+  ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
 }
 
     // ---- draw click target marker ----
