@@ -8,35 +8,33 @@ export class TileFactory {
     this.painters = PAINTERS;
   }
 
-  // neighborMask optional: bitmask for autotiling/edges later
-  getTileCanvas(tileId, wx, wy, neighbors = null) {
-  console.count("TILE VARIANT PAINT");
-  console.count("PAINT TILE");
-  const n = neighbors || {};
-  key = `${tileId}|${neighbors.n}|${neighbors.e}|${neighbors.s}|${neighbors.w}
-  const painter = this.painters[tileId] ?? this.painters.__default;
+ getTileCanvas(tileId, wx, wy, neighbors = null) {
+  // NOTE: wx/wy are accepted for API compatibility, but NOT used in caching.
+  // Caching is by tile variant (tileId + neighbor pattern), not world position.
 
+  const n = neighbors || {};
+  const key = `${tileId}|${n.n ?? "x"}|${n.e ?? "x"}|${n.s ?? "x"}|${n.w ?? "x"}`;
 
   const cached = this.cache.get(key);
   if (cached) return cached;
 
   const c = document.createElement("canvas");
-  c.width  = this.tileSize;
+  c.width = this.tileSize;
   c.height = this.tileSize;
 
   const ctx = c.getContext("2d");
   const def = getTileDef(tileId);
 
-  // ✅ Stable seed (NOT world position)
+  // Stable seed (NOT world position) so it doesn't repaint while scrolling
   const seed =
-    (tileId * 73856093) ^
-    ((n.n ?? 0) * 19349663) ^
-    ((n.e ?? 0) * 83492791) ^
-    ((n.s ?? 0) * 29765729) ^
-    ((n.w ?? 0) * 104395301);
+    ((tileId * 73856093) ^
+      ((n.n ?? 0) * 19349663) ^
+      ((n.e ?? 0) * 83492791) ^
+      ((n.s ?? 0) * 29765729) ^
+      ((n.w ?? 0) * 104395301)) >>> 0;
 
-  const painter = PAINTERS[tileId] ?? PAINTERS.__default;
-  painter(ctx, this.tileSize, def, seed >>> 0);
+  const painter = (this.painters?.[tileId] ?? PAINTERS[tileId] ?? PAINTERS.__default);
+  painter(ctx, this.tileSize, def, seed, n);
 
   this.cache.set(key, c);
   return c;
