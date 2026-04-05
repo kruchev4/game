@@ -7,10 +7,12 @@ import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
 import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
 import { LootSystem }          from "../systems/LootSystem.js";
+import { XPSystem }            from "../systems/XPSystem.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
 import { LootWindow }          from "../ui/LootWindow.js";
 import { InventoryWindow }     from "../ui/InventoryWindow.js";
+import { LevelUpWindow }       from "../ui/LevelUpWindow.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 export class Engine {
@@ -36,14 +38,17 @@ export class Engine {
     this._classes     = null;
     this._lootTables  = null;
     this._itemDefs    = null;
+    this._skills      = null;
 
-    this._currentTarget = null;
-    this.combatLog      = null;
-    this._deathScreen   = null;
+    this._currentTarget  = null;
+    this.combatLog       = null;
+    this._deathScreen    = null;
 
-    this.lootSystem      = null;
+    this.lootSystem       = null;
+    this.xpSystem         = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
+    this._levelUpWindow   = null;
 
     // Save system
     this.saveSlot     = null;
@@ -60,21 +65,24 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, lootRes] = await Promise.all([
+    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes] = await Promise.all([
       fetch("./src/data/abilities.json"),
       fetch("./src/data/classes.json"),
       fetch("./src/data/items.json"),
-      fetch("./src/data/loot.json")
+      fetch("./src/data/loot.json"),
+      fetch("./src/data/skills.json")
     ]);
     if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
     if (!classesRes.ok)   throw new Error("Failed to load classes.json");
     if (!itemsRes.ok)     throw new Error("Failed to load items.json");
     if (!lootRes.ok)      throw new Error("Failed to load loot.json");
+    if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
 
     this._abilities  = await abilitiesRes.json();
     this._classes    = await classesRes.json();
     this._itemDefs   = await itemsRes.json();
     this._lootTables = await lootRes.json();
+    this._skills     = await skillsRes.json();
   }
 
   // ─────────────────────────────────────────────
@@ -136,6 +144,10 @@ export class Engine {
 
       // Restore inventory from save data
       this.player.fromSaveData(char);
+
+      // Sync ability bar from restored learnedSkills / abilities
+      // (deferred until after _buildSystems sets up renderer)
+      this._pendingSyncAbilityBar = true;
 
       // Resource
       const res = classDef.resource ?? null;
@@ -240,6 +252,27 @@ export class Engine {
       onEvent: (e) => this._onLootEvent(e)
     });
 
+    // XP system
+    this.xpSystem = new XPSystem({
+      player,
+      skills:  this._skills,
+      onEvent: (e) => this._onXPEvent(e)
+    });
+
+    // Level-up window
+    const classSkills = this._skills[this._playerClassId] ?? [];
+    this._levelUpWindow = new LevelUpWindow({
+      player,
+      classSkills,
+      xpSystem: this.xpSystem
+    });
+    this._levelUpWindow.onConfirm = (skillId, replaceId, statDist) => {
+      this.xpSystem.applySkillPick(skillId, replaceId);
+      this.xpSystem.applyStatPoints(statDist);
+      // Refresh ability bar in renderer
+      this._syncAbilityBar();
+    };
+
     // Push player abilities and item defs to renderer for HUD
     const classDef = this._classes[this._playerClassId];
     renderer.playerAbilities = (classDef?.abilities ?? [])
@@ -261,6 +294,12 @@ export class Engine {
     });
 
     renderer.camera.centerOn(player.x, player.y, world);
+
+    // Sync ability bar now that renderer and skills are ready
+    if (this._pendingSyncAbilityBar) {
+      this._pendingSyncAbilityBar = false;
+      this._syncAbilityBar();
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -418,6 +457,10 @@ export class Engine {
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
         // Spawn loot corpse
         this.lootSystem?.onNPCKilled(event.target);
+        // Award XP
+        if (event.attacker.id === "player") {
+          this.xpSystem?.awardKillXP(event.target);
+        }
         break;
       }
       case "player_death": {
@@ -494,7 +537,50 @@ export class Engine {
   }
 
   // ─────────────────────────────────────────────
-  // DEATH & RESPAWN
+  // XP & LEVELING
+  // ─────────────────────────────────────────────
+
+  _onXPEvent(event) {
+    const log = this.combatLog;
+    switch (event.type) {
+      case "xp_gained":
+        log?.push({ text: `+${event.amount} XP`, type: "system" });
+        break;
+      case "level_up":
+        log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
+        if (event.isSpecial) {
+          // Small delay so combat log shows first
+          setTimeout(() => {
+            this._levelUpWindow?.show(event.level);
+          }, 800);
+        }
+        break;
+      case "skill_learned":
+        log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
+        this._syncAbilityBar();
+        break;
+      case "skill_upgraded":
+        log?.push({ text: `${event.skillId} upgraded to Rank ${event.rank}!`, type: "system" });
+        this._syncAbilityBar();
+        break;
+      case "stats_updated":
+        // Renderer reads from player.stats directly — no action needed
+        break;
+    }
+  }
+
+  /** Sync renderer ability bar after skill changes */
+  _syncAbilityBar() {
+    const classSkills = this._skills?.[this._playerClassId] ?? [];
+    const skillMap    = Object.fromEntries(classSkills.map(s => [s.id, s]));
+
+    // Build ability defs from player's current abilities list
+    this.renderer.playerAbilities = (this.player.abilities ?? [])
+      .map(id => skillMap[id] ?? this._abilities?.[id])
+      .filter(Boolean);
+  }
+
+  // ─────────────────────────────────────────────
   // ─────────────────────────────────────────────
 
   _onPlayerDeath(killerName) {
@@ -607,21 +693,23 @@ export class Engine {
    */
   getSaveData() {
     return {
-      name:      this.player.name     ?? "Hero",
-      classId:   this.player.classId  ?? this._playerClassId,
-      stats:     this.player.stats    ?? {},
+      name:          this.player.name          ?? "Hero",
+      classId:       this.player.classId       ?? this._playerClassId,
+      stats:         this.player.stats         ?? {},
       position: {
         worldId: this.world?.id ?? "overworld_C",
         x:       this.player.x,
         y:       this.player.y
       },
-      gold:       this.player.gold      ?? 0,
-      xp:         this.player.xp        ?? 0,
-      level:      this.player.level     ?? 1,
-      bag:        this.player.bag       ?? [],
-      equipment:  this.player.equipment ?? {},
-      quickSlots: this.player.quickSlots ?? [],
-      inventory:  []  // legacy field, kept for compatibility
+      gold:          this.player.gold          ?? 0,
+      xp:            this.player.xp            ?? 0,
+      level:         this.player.level         ?? 1,
+      bag:           this.player.bag           ?? [],
+      equipment:     this.player.equipment     ?? {},
+      quickSlots:    this.player.quickSlots    ?? [],
+      learnedSkills: this.player.learnedSkills ?? {},
+      abilities:     this.player.abilities     ?? [],
+      inventory:     []
     };
   }
 
