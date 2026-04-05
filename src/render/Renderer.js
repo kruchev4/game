@@ -1,6 +1,7 @@
 import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
 import { TileFactory } from "./TileFactory.js";
+import { ChunkLayer } from "./ChunkLayer.js";
 
 
 // ── Color constants ───────────────────────────────────────────────────────────
@@ -50,6 +51,11 @@ export class Renderer {
     
 
     this.tileFactory = new TileFactory({ tileSize: this.tileSize });
+    this.chunkLayer = new ChunkLayer({
+    tileSize: this.tileSize,
+    chunkSize: 32,
+    tileFactory: this.tileFactory
+    });
 
     this.camera = new Camera({ tileSize: this.tileSize });
 
@@ -120,32 +126,11 @@ export class Renderer {
     const startY = Math.floor(camera.y);
 
   // ── Tiles ──
-    for (let sy = 0; sy < tilesHigh; sy++) {
-      for (let sx = 0; sx < tilesWide; sx++) {
+    // Clear once per frame (your existing approach is fine)
+ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-      
-        const wx = startX + sx;
-        const wy = startY + sy;
-
-        const tileId = world.getTile(wx, wy);
-        if (tileId == null) continue;
-
-        const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
-
-        const neighbors = {
-          n: world.getTile(wx, wy - 1),
-          e: world.getTile(wx + 1, wy),
-          s: world.getTile(wx, wy + 1),
-          w: world.getTile(wx - 1, wy)
-        };
-
-        const tileCanvas =
-          this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
-
-        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
-      
-       
-    }}
+// Draw cached chunks (fast)
+this.chunkLayer.draw(ctx, camera);
   
 
  
