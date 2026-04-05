@@ -169,8 +169,9 @@ export class Engine {
     renderer.playerAbilities = (classDef?.abilities ?? [])
       .map(id => this._abilities[id])
       .filter(Boolean);
-    renderer.abilities    = this._abilities;
+    renderer.abilities     = this._abilities;
     renderer.currentTarget = null;
+    renderer.player        = player; // needed for cooldown ring reads
 
     renderer.camera.centerOn(player.x, player.y, world);
   }
