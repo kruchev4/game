@@ -81,10 +81,12 @@ export class ScreenManager {
   _buildOverlay() {
     this._overlay = document.createElement("div");
     this._overlay.id = "roe-screen";
+    this._overlay.style.pointerEvents = "auto";
     document.body.appendChild(this._overlay);
 
     const pc = document.createElement("canvas");
     pc.id = "roe-particles";
+    pc.style.pointerEvents = "none";
     this._overlay.appendChild(pc);
     this._particleCanvas = pc;
   }
@@ -95,7 +97,7 @@ export class ScreenManager {
       if (c.id !== "roe-particles") c.remove();
     });
     const wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative;z-index:2;width:100%;display:flex;flex-direction:column;align-items:center;";
+    wrap.style.cssText = "position:relative;z-index:2;width:100%;display:flex;flex-direction:column;align-items:center;pointer-events:auto;";
     wrap.innerHTML = html;
     this._overlay.appendChild(wrap);
     return wrap;
@@ -248,6 +250,7 @@ export class ScreenManager {
   // ─────────────────────────────────────────────
 
   _showCreation() {
+    console.log("[ScreenManager] Starting character creation, slot:", this._newSlot);
     this._step    = 1;
     this._name    = "";
     this._raceId  = null;
