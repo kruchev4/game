@@ -132,20 +132,19 @@ export class Renderer {
 
         const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
-        /*const neighbors = {
+        const neighbors = {
           n: world.getTile(wx, wy - 1),
           e: world.getTile(wx + 1, wy),
           s: world.getTile(wx, wy + 1),
           w: world.getTile(wx - 1, wy)
-        };*/
+        };
 
-        /*const tileCanvas =
+        const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
-      }*/
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      }
+       
     }
   }
 
