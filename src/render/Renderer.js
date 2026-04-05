@@ -213,7 +213,7 @@ export class Renderer {
     }
 
     // ── Entities ──
-    /*
+    
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
@@ -225,7 +225,7 @@ export class Renderer {
     this._drawQuickSlots();
     this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
-  }*/
+  }
 
   // ── Target Frame ─────────────────────────────────────────────────────────
 
