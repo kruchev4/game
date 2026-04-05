@@ -1,0 +1,219 @@
+{
+  "spawnGroups": [
+    {
+      "id": "sg_capitol_safe",
+      "name": "Capitol Safe Zone",
+      "centerX": 120, "centerY": 88,
+      "radius": 12,
+      "tier": 0,
+      "safe": true,
+      "npcs": [],
+      "respawnSeconds": 0,
+      "notes": "No monsters spawn near the Crossroads capitol"
+    },
+
+    {
+      "id": "sg_deadmans_pass",
+      "name": "Deadman's Pass Ambushers",
+      "centerX": 108, "centerY": 62,
+      "radius": 6,
+      "tier": 1,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 3 },
+        { "classId": "goblinArcher", "count": 2 }
+      ],
+      "notes": "Tier 1 — close to capitol, starter zone"
+    },
+
+    {
+      "id": "sg_blackwood_north",
+      "name": "Blackwood Raiders",
+      "centerX": 55, "centerY": 75,
+      "radius": 8,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 4 },
+        { "classId": "goblinArcher", "count": 3 }
+      ]
+    },
+
+    {
+      "id": "sg_blackwood_south",
+      "name": "Blackwood Warband",
+      "centerX": 52, "centerY": 90,
+      "radius": 7,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 5 },
+        { "classId": "goblinArcher", "count": 2 }
+      ]
+    },
+
+    {
+      "id": "sg_ashplains",
+      "name": "Ashplains Patrol",
+      "centerX": 175, "centerY": 65,
+      "radius": 10,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 4 },
+        { "classId": "goblinArcher", "count": 4 }
+      ]
+    },
+
+    {
+      "id": "sg_greymarsh",
+      "name": "Greymarsh Skulkers",
+      "centerX": 140, "centerY": 130,
+      "radius": 7,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 4 },
+        { "classId": "goblinArcher", "count": 3 }
+      ]
+    },
+
+    {
+      "id": "sg_scorched_basin",
+      "name": "Scorched Basin Marauders",
+      "centerX": 190, "centerY": 110,
+      "radius": 8,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 5 },
+        { "classId": "goblinArcher", "count": 3 }
+      ]
+    },
+
+    {
+      "id": "sg_cursed_sands",
+      "name": "Cursed Sands Horde",
+      "centerX": 105, "centerY": 150,
+      "radius": 8,
+      "tier": 2,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 5 },
+        { "classId": "goblinArcher", "count": 4 }
+      ]
+    },
+
+    {
+      "id": "sg_withered_fen",
+      "name": "Withered Fen Hunters",
+      "centerX": 50, "centerY": 135,
+      "radius": 9,
+      "tier": 3,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 6 },
+        { "classId": "goblinArcher", "count": 4 }
+      ]
+    },
+
+    {
+      "id": "sg_nw_wastes",
+      "name": "Northwest Wastes",
+      "centerX": 30, "centerY": 30,
+      "radius": 15,
+      "tier": 4,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 6 },
+        { "classId": "goblinArcher", "count": 5 }
+      ]
+    },
+
+    {
+      "id": "sg_ne_wastes",
+      "name": "Northeast Wastes",
+      "centerX": 210, "centerY": 30,
+      "radius": 15,
+      "tier": 4,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 6 },
+        { "classId": "goblinArcher", "count": 5 }
+      ]
+    },
+
+    {
+      "id": "sg_sw_wastes",
+      "name": "Southwest Wastes",
+      "centerX": 30, "centerY": 155,
+      "radius": 15,
+      "tier": 4,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 6 },
+        { "classId": "goblinArcher", "count": 5 }
+      ]
+    },
+
+    {
+      "id": "sg_se_wastes",
+      "name": "Southeast Wastes",
+      "centerX": 210, "centerY": 155,
+      "radius": 15,
+      "tier": 4,
+      "respawnSeconds": 300,
+      "npcs": [
+        { "classId": "goblinMelee",  "count": 6 },
+        { "classId": "goblinArcher", "count": 5 }
+      ]
+    }
+  ],
+
+  "randomEncounters": {
+    "enabled": true,
+    "checkIntervalTicks": 600,
+    "maxActiveRandom": 6,
+    "tiers": [
+      {
+        "tier": 1,
+        "distanceMin": 0,
+        "distanceMax": 40,
+        "spawnChance": 0.15,
+        "npcs": [
+          { "classId": "goblinMelee", "count": 2 }
+        ]
+      },
+      {
+        "tier": 2,
+        "distanceMin": 40,
+        "distanceMax": 90,
+        "spawnChance": 0.20,
+        "npcs": [
+          { "classId": "goblinMelee",  "count": 2 },
+          { "classId": "goblinArcher", "count": 1 }
+        ]
+      },
+      {
+        "tier": 3,
+        "distanceMin": 90,
+        "distanceMax": 140,
+        "spawnChance": 0.25,
+        "npcs": [
+          { "classId": "goblinMelee",  "count": 3 },
+          { "classId": "goblinArcher", "count": 2 }
+        ]
+      },
+      {
+        "tier": 4,
+        "distanceMin": 140,
+        "distanceMax": 999,
+        "spawnChance": 0.30,
+        "npcs": [
+          { "classId": "goblinMelee",  "count": 4 },
+          { "classId": "goblinArcher", "count": 3 }
+        ]
+      }
+    ]
+  }
+}
