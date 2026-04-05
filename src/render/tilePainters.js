@@ -140,4 +140,4 @@ function weaken(rgba, factor) {
   if (!m) return rgba;
   const a = Math.max(0, Math.min(1, Number(m[4]) * factor));
   return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
-}
+}*/
