@@ -6,7 +6,7 @@ export class TileFactory {
     this.tileSize = tileSize;
     this.cache = new Map(); // key: `${id}|${x}|${y}|${mask}`
     this.painters = PAINTERS;
-  }
+  
 
  getTileCanvas(tileId, wx, wy, neighbors = null) {
   // NOTE: wx/wy are accepted for API compatibility, but NOT used in caching.
