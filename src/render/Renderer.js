@@ -40,9 +40,10 @@ const PLAYER_FRAME = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class Renderer {
-  const DEBUG_DISABLE_SPRITES = true;
+  
   
   constructor(canvas) {
+    const DEBUG_DISABLE_SPRITES = true;
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
     this.tileSize = 16;
