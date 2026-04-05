@@ -42,6 +42,9 @@ export class Renderer {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
     this.tileSize = 16;
+    import { TileFactory } from "./TileFactory.js";
+
+    this.tileFactory = new TileFactory({ tileSize: this.tileSize });
 
     this.camera = new Camera({ tileSize: this.tileSize });
 
@@ -116,7 +119,8 @@ export class Renderer {
         const { sx, sy } = camera.worldToScreen(wx, wy);
 
         ctx.fillStyle = tile.color;
-        ctx.fillRect(sx, sy, tileSize, tileSize);
+        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy);
+        ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
 
         ctx.strokeStyle = "rgba(0,0,0,0.25)";
         ctx.strokeRect(sx, sy, tileSize, tileSize);
