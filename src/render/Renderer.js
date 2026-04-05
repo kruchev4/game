@@ -115,8 +115,8 @@ export class Renderer {
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
 
   // ✅ world-space origin for this frame
-    const startX = camera.tileX;
-    const startY = camera.tileY;
+    const startX = Math.floor(camera.x / tileSize);
+    const startY = Math.floor(camera.y / tileSize);
 
   // ── Tiles ──
     for (let sy = 0; sy < tilesHigh; sy++) {
