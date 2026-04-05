@@ -110,14 +110,11 @@ export class Renderer {
 
     // ── Tiles ──
    for (let wy = 0; wy < tilesHigh; wy++) {
-  for (let wx = 0; wx < tilesHigh; wx++) {
-
-    const tileId = world.getTile(wx, wy);
-    if (tileId == null) continue;
-
-    const { sx, sy } = camera.worldToScreen(wx, wy);
-
-    const neighbors = {
+     for (let wx = 0; wx < tilesWide; wx++) {
+      const tileId = world.getTile(wx, wy);
+      if (tileId == null) continue;
+      const { sx, sy } = camera.worldToScreen(wx, wy);
+      const neighbors = {
       n: world.getTile(wx, wy - 1),
       e: world.getTile(wx + 1, wy),
       s: world.getTile(wx, wy + 1),
@@ -126,8 +123,7 @@ export class Renderer {
 
     const tileCanvas =
       this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
-
-    ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+      ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
   }
 }
 
