@@ -146,7 +146,7 @@ export class ScreenManager {
     }).join("");
 
     const wrap = this._setContent(`
-      <div class="cs-wrap">
+      <div style="position:relative;z-index:2;width:100%;max-width:700px;padding:30px 20px 60px;">
         <div style="text-align:center;margin-bottom:28px;">
           <div class="cs-game-title">Realm of Echoes</div>
           <div class="cs-screen-title">Your Adventures</div>
@@ -266,7 +266,7 @@ export class ScreenManager {
     ).join("");
 
     const wrap = this._setContent(`
-      <div class="cc-wrap">
+      <div style="position:relative;z-index:2;width:100%;max-width:860px;padding:30px 20px 60px;">
         <header style="text-align:center;margin-bottom:28px;">
           <div class="realm-title">Realm of Echoes</div>
           <div class="forge-title">Forge Your Fate</div>
