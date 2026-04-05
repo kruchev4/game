@@ -4,22 +4,27 @@ export class Player extends Entity {
   constructor({ x, y } = {}) {
     super({ x, y });
 
-    this.id     = "player";
-    this.type   = "player";
+    this.id   = "player";
+    this.type = "player";
 
-    // Combat stats — set properly at character creation,
-    // these are safe defaults for testing
+    // Combat stats — overwritten by class data at character creation
     this.hp          = 80;
     this.maxHp       = 80;
-    this.actionSpeed = 60;  // ticks between actions
-    this.actionTimer = 60;  // current countdown (exposed for UI)
+    this.actionSpeed = 60;
+    this.actionTimer = 60;
     this.actionReady = false;
+    this.classId     = null;
+    this.abilities   = [];
 
-    this.inCombat    = false;
-    this.dead        = false;
+    // Cooldown state — populated by CombatSystem._tickCooldowns()
+    // Structure: { abilityId -> { remaining: number, max: number } }
+    this.abilityCooldowns = {};
 
-    // Set by MovementSystem for click-to-move rendering
-    this.moveTarget  = null;
-    this.movePath    = null;
+    this.inCombat = false;
+    this.dead     = false;
+
+    // Click-to-move state (set by MovementSystem)
+    this.moveTarget = null;
+    this.movePath   = null;
   }
 }
