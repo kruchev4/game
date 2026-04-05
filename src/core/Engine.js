@@ -8,6 +8,7 @@ import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
 import { LootSystem }          from "../systems/LootSystem.js";
 import { XPSystem }            from "../systems/XPSystem.js";
+import { SpawnSystem }         from "../systems/SpawnSystem.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
 import { LootWindow }          from "../ui/LootWindow.js";
@@ -46,6 +47,7 @@ export class Engine {
 
     this.lootSystem       = null;
     this.xpSystem         = null;
+    this.spawnSystem      = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
     this._levelUpWindow   = null;
@@ -65,24 +67,27 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes] = await Promise.all([
+    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes, spawnRes] = await Promise.all([
       fetch("./src/data/abilities.json"),
       fetch("./src/data/classes.json"),
       fetch("./src/data/items.json"),
       fetch("./src/data/loot.json"),
-      fetch("./src/data/skills.json")
+      fetch("./src/data/skills.json"),
+      fetch("./src/data/spawnGroups.json")
     ]);
     if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
     if (!classesRes.ok)   throw new Error("Failed to load classes.json");
     if (!itemsRes.ok)     throw new Error("Failed to load items.json");
     if (!lootRes.ok)      throw new Error("Failed to load loot.json");
     if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
+    if (!spawnRes.ok)     throw new Error("Failed to load spawnGroups.json");
 
     this._abilities  = await abilitiesRes.json();
     this._classes    = await classesRes.json();
     this._itemDefs   = await itemsRes.json();
     this._lootTables = await lootRes.json();
     this._skills     = await skillsRes.json();
+    this._spawnData  = await spawnRes.json();
   }
 
   // ─────────────────────────────────────────────
@@ -104,8 +109,8 @@ export class Engine {
     ]);
 
     this._spawnPlayer();
-    this._spawnTestNPCs();
-    this._buildSystems();
+    this._buildSystems();   // build systems first so onSpawn can add to entities
+    this._initSpawnSystem();
     this._bindInput();
   }
 
@@ -172,60 +177,37 @@ export class Engine {
   }
 
   /**
-   * Spawn test NPCs on guaranteed walkable tiles near player spawn.
-   * Each NPC offset is passed through findNearestWalkable so they
-   * never land on mountains, water, or void.
+   * Initialise the spawn system and populate the world with NPCs.
+   * Called after _buildSystems so the NPC perception/movement systems
+   * already have references — we add NPCs to this.npcs after the fact.
    */
-  _spawnTestNPCs() {
-    const bx = this._spawnX;
-    const by = this._spawnY;
+  _initSpawnSystem() {
+    this.spawnSystem = new SpawnSystem({
+      world:     this.world,
+      spawnData: this._spawnData,
+      classes:   this._classes,
+      player:    this.player,
+      onSpawn:   (npc) => {
+        this.npcs.push(npc);
+        this.entities.push(npc);
+        // Also register with live systems
+        this.npcPerceptionSystem?.npcs.push(npc);
+        this.npcMovementSystem?.npcs.push(npc);
+        this.npcAISystem?.npcs.push(npc);
+        this.combatSystem?.npcs.push(npc);
+        this.lootSystem  // lootSystem reads this.npcs directly via Engine reference
+      },
+      onDespawn: (npc) => {
+        this.npcs     = this.npcs.filter(n => n.id !== npc.id);
+        this.entities = this.entities.filter(e => e.id !== npc.id);
+        this.npcPerceptionSystem.npcs = this.npcs;
+        this.npcMovementSystem.npcs   = this.npcs;
+        this.npcAISystem.npcs         = this.npcs;
+        this.combatSystem.npcs        = this.npcs;
+      }
+    });
 
-    const spawn = (classId, offsetX, offsetY) => {
-      const classDef = this._classes[classId];
-      const { x, y } = findNearestWalkable(
-        this.world,
-        bx + offsetX,
-        by + offsetY
-      );
-      return new NPC({
-        id:         `${classId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        classId,
-        classDef,
-        x,
-        y,
-        roamCenter: { x, y },
-        roamRadius: classDef?.roamRadius ?? 6
-      });
-    };
-
-    this.npcs = [
-      // Close clusters for early testing
-      spawn("goblinMelee",   6,   0),
-      spawn("goblinArcher",  10, -3),
-      spawn("goblinMelee",  -6,   2),
-      spawn("goblinArcher", -10,  4),
-      spawn("goblinMelee",   3,   8),
-      spawn("goblinArcher",  8,   8),
-
-      // Mid-range groups
-      spawn("goblinMelee",   20,   5),
-      spawn("goblinMelee",   22,   2),
-      spawn("goblinArcher",  25,   8),
-      spawn("goblinMelee",  -20,  -5),
-      spawn("goblinArcher", -22,  -8),
-      spawn("goblinMelee",   15, -15),
-      spawn("goblinArcher",  18, -18),
-
-      // Farther out
-      spawn("goblinMelee",   35,   0),
-      spawn("goblinArcher",  38,   5),
-      spawn("goblinMelee",  -35,  10),
-      spawn("goblinArcher",   0,  30),
-      spawn("goblinMelee",    5,  28),
-      spawn("goblinArcher",  -5, -30),
-      spawn("goblinMelee",    0, -28),
-    ];
-    this.entities = [this.player, ...this.npcs];
+    this.spawnSystem.spawnAll();
   }
 
   // ─────────────────────────────────────────────
@@ -234,6 +216,9 @@ export class Engine {
 
   _buildSystems() {
     const { world, player, npcs, renderer } = this;
+
+    // Start with just the player — SpawnSystem adds NPCs via onSpawn
+    this.entities = [player];
 
     this.npcPerceptionSystem = new NPCPerceptionSystem({ npcs, player });
 
@@ -493,6 +478,8 @@ export class Engine {
         if (event.attacker.id === "player") {
           this.xpSystem?.awardKillXP(event.target);
         }
+        // Notify spawn system for respawn tracking
+        this.spawnSystem?.onNPCDied(event.target);
         break;
       }
       case "player_death": {
@@ -790,7 +777,8 @@ export class Engine {
       this.npcAISystem?.update(this.world);     // 4. NPC decides actions
       this.movementSystem?.update();            // 5. player movement
       this.lootSystem?.update();                // 6. tick corpses
-      this._tickPlayerResource();               // 7. mana regen / rage decay
+      this.spawnSystem?.update();               // 7. respawns + random encounters
+      this._tickPlayerResource();               // 8. mana regen / rage decay
     }
 
     this.combatLog?.update();                   // 6. always age log messages
