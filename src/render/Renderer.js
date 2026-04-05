@@ -63,6 +63,7 @@ export class Renderer {
   }
 
   resize() {
+    window.__renderCount++;
     this.canvas.width  = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.camera.resize(this.canvas.width, this.canvas.height);
