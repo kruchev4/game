@@ -113,6 +113,16 @@ export class Renderer {
       for (let x = 0; x < tilesWide; x++) {
         const wx = x + camera.x;
         const wy = y + camera.y;
+        const neighbors = {
+          n: world.getTile(wx, wy - 1),
+          e: world.getTile(wx + 1, wy),
+          s: world.getTile(wx, wy + 1),
+          w: world.getTile(wx - 1, wy)
+      };
+
+const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+
 
         const tileId = world.getTile(wx, wy);
         if (tileId == null) continue;
