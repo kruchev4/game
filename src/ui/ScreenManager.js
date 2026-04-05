@@ -95,6 +95,7 @@ export class ScreenManager {
       if (c.id !== "roe-particles") c.remove();
     });
     const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;z-index:2;width:100%;display:flex;flex-direction:column;align-items:center;";
     wrap.innerHTML = html;
     this._overlay.appendChild(wrap);
     return wrap;
@@ -217,6 +218,7 @@ export class ScreenManager {
 
     const confirmEl = document.createElement("div");
     confirmEl.className = "cs-confirm-overlay";
+    confirmEl.style.zIndex = "200";
     confirmEl.innerHTML = `
       <div class="cs-confirm-box">
         <div style="font-family:'Cinzel',serif;font-size:.8rem;color:var(--gold-b);margin-bottom:10px;">
