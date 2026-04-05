@@ -5,8 +5,13 @@ export const PAINTERS = {
     ctx.fillRect(0, 0, s, s);
   },
 
+0: (ctx, s) => {
+  ctx.fillStyle = "#00ff00";
+  ctx.fillRect(0, 0, s, s);
+},
+
   // Tile 0: Grass
-  0: (ctx, s, def, seed, neighbors) => {
+ /* 0: (ctx, s, def, seed, neighbors) => {
   fill(ctx, s, def.color || "#4caf50");
 
   dots(ctx, s, seed,     "#3f8f45", 18);
@@ -18,7 +23,7 @@ export const PAINTERS = {
 },
 };
 
-/* -------- helpers -------- */
+
 
 function fill(ctx, s, color) {
   ctx.fillStyle = color;
@@ -128,7 +133,7 @@ function featherEdge(ctx, s, dir, rgba) {
     ctx.fillStyle = rgba; ctx.fillRect(s-1, 0, 1, s);
     ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(s-2, 0, 1, s);
   }
-}
+}*/
 
 function weaken(rgba, factor) {
   const m = rgba.match(/rgba\((\d+),(\d+),(\d+),([0-9.]+)\)/);
