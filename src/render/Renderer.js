@@ -111,7 +111,7 @@ export class Renderer {
         const wy = startY + row;
 
         const tileId = world.getTile(wx, wy);
-        if (tileId == null) continue;
+        //if (tileId == null) continue;
 
         const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
