@@ -40,7 +40,7 @@ const PLAYER_FRAME = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class Renderer {
-  console.log('renderer called');;
+  
   constructor(canvas) {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
@@ -64,7 +64,7 @@ export class Renderer {
   }
 
   resize() {
-    window.__renderCount++;
+    
     this.canvas.width  = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.camera.resize(this.canvas.width, this.canvas.height);
@@ -102,7 +102,7 @@ export class Renderer {
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
-    console.log('render called');
+    
     const { ctx, tileSize, camera } = this;
 
   // clear background
