@@ -203,23 +203,35 @@ _tileCircle(ctx, px, py, r) {
     const startX = cx * cs;
     const startY = cy * cs;
 
-  for (let cy = startCY; cy <= endCY; cy++) {
-    for (let cx = startCX; cx <= endCX; cx++) {
-      const chunkCanvas = this._getOrBuildChunk(cx, cy);
+    for (let y = 0; y < cs; y++) {
+      for (let x = 0; x < cs; x++) {
+        const wx = startX + x;
+        const wy = startY + y;
 
-      const chunkWorldX = cx * cs;
-      const chunkWorldY = cy * cs;
+        // guard for finite maps
+        if (wx < 0 || wy < 0 || wx >= world.width || wy >= world.height) continue;
 
-      const px = Math.floor((chunkWorldX - camera.x) * ts);
-      const py = Math.floor((chunkWorldY - camera.y) * ts);
+        const tileId = world.getTile(wx, wy);
+        if (tileId == null) continue;
 
-    
-      ctx.drawImage(chunkCanvas, px, py);
-  }
-}
-  
+        // neighbor-aware tiles (for edge blending / autotiling)
+        const neighbors = {
+          n: world.getTile(wx, wy - 1),
+          e: world.getTile(wx + 1, wy),
+          s: world.getTile(wx, wy + 1),
+          w: world.getTile(wx - 1, wy)
+        };
 
-  
+        // TileFactory should return a cached tile variant canvas (fast)
+        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+
+        ctx.drawImage(tileCanvas, x * ts, y * ts, ts, ts);
+      }
+    }
+    this._applyChunkBreakup(ctx, startX, startY);
     return c;
   }
 }
+  
+
+ 
