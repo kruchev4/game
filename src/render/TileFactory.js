@@ -9,7 +9,7 @@ export class TileFactory {
 
   // neighborMask optional: bitmask for autotiling/edges later
   getTileCanvas(tileId, wx, wy, neighbors = null) {
-  // ✅ Stable cache key: tile type + neighbors only
+  console.count("PAINT TILE");
   const n = neighbors || {};
   const key = `${tileId}|${n.n}|${n.e}|${n.s}|${n.w}`;
 
