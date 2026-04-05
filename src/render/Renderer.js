@@ -46,11 +46,12 @@ export class Renderer {
     this.camera = new Camera({ tileSize: this.tileSize });
 
     // Set by Engine
-    this.currentTarget   = null;   // NPC entity or null
-    this.playerAbilities = [];     // array of ability defs in slot order
-    this.abilities       = {};     // full ability map id -> def
-    this.player          = null;   // player entity ref (for cooldown reads)
-    this.combatLog       = null;   // CombatLog instance
+    this.currentTarget   = null;
+    this.playerAbilities = [];
+    this.abilities       = {};
+    this.itemDefs        = {};
+    this.player          = null;
+    this.combatLog       = null;
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -67,6 +68,11 @@ export class Renderer {
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
+
+    if (entity.type === "corpse") {
+      this._drawCorpse(entity, sx, sy);
+      return;
+    }
 
     if (entity.type === "npc") {
       ctx.fillStyle = entity === this.currentTarget
@@ -189,6 +195,8 @@ export class Renderer {
     this._drawTargetFrame();
     this._drawPlayerFrame();
     this._drawAbilityBar();
+    this._drawQuickSlots();
+    this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
   }
 
@@ -500,6 +508,157 @@ export class Renderer {
       }
     }
     return -1;
+  }
+
+  // ── Quick slot hit testing ────────────────────────────────────────────────
+
+  getQuickSlotAt(px, py) {
+    const { slotSize, gap, paddingY } = ABILITY_BAR;
+    const startX = this._quickSlotsStartX();
+    const startY = this.canvas.height - slotSize - paddingY;
+
+    for (let i = 0; i < 4; i++) {
+      const sx = startX + i * (slotSize + gap);
+      if (px >= sx && px <= sx + slotSize && py >= startY && py <= startY + slotSize) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  getBagIconHit(px, py) {
+    const { slotSize, paddingY } = ABILITY_BAR;
+    const bx = this._bagIconX();
+    const by = this.canvas.height - slotSize - paddingY;
+    return px >= bx && px <= bx + slotSize && py >= by && py <= by + slotSize;
+  }
+
+  _quickSlotsStartX() {
+    const { slotSize, gap, paddingY } = ABILITY_BAR;
+    const abilities  = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const abilityW   = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const abilityStartX = (this.canvas.width - abilityW) / 2;
+    return abilityStartX + abilityW + 24;
+  }
+
+  _bagIconX() {
+    return this._quickSlotsStartX() + 4 * (ABILITY_BAR.slotSize + ABILITY_BAR.gap) + 16;
+  }
+
+  // ── Corpse drawing ────────────────────────────────────────────────────────
+
+  _drawCorpse(corpse, sx, sy) {
+    const { ctx, tileSize } = this;
+
+    // Fade out as despawn approaches
+    const alpha = Math.max(0.2, 1 - corpse.despawnProgress * 0.8);
+    ctx.globalAlpha = alpha;
+
+    // Dark X marker
+    ctx.strokeStyle = corpse.hasLoot ? "#cc9922" : "#555555";
+    ctx.lineWidth   = 2;
+    const pad = 4;
+    ctx.beginPath();
+    ctx.moveTo(sx + pad,            sy + pad);
+    ctx.lineTo(sx + tileSize - pad, sy + tileSize - pad);
+    ctx.moveTo(sx + tileSize - pad, sy + pad);
+    ctx.lineTo(sx + pad,            sy + tileSize - pad);
+    ctx.stroke();
+
+    // Glow pulse if has loot
+    if (corpse.hasLoot) {
+      const pulse = 0.3 + 0.2 * Math.sin(Date.now() * 0.004);
+      ctx.strokeStyle = `rgba(200, 160, 30, ${pulse})`;
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.lineWidth   = 1;
+  }
+
+  // ── Quick slots ───────────────────────────────────────────────────────────
+
+  _drawQuickSlots() {
+    const player = this.player;
+    if (!player?.quickSlots) return;
+
+    const { ctx }                              = this;
+    const { slotSize, gap, paddingY, borderR } = ABILITY_BAR;
+
+    const startX = this._quickSlotsStartX();
+    const startY = this.canvas.height - slotSize - paddingY;
+
+    for (let i = 0; i < 4; i++) {
+      const itemId = player.quickSlots[i];
+      const def    = itemId ? (this.itemDefs?.[itemId]) : null;
+      const bagSlot = itemId ? player.bag?.find(s => s?.itemId === itemId) : null;
+      const qty    = bagSlot?.qty ?? 0;
+      const sx     = startX + i * (slotSize + gap);
+      const cx     = sx + slotSize / 2;
+      const cy     = startY + slotSize / 2;
+
+      // Background
+      ctx.fillStyle   = "rgba(10, 10, 20, 0.85)";
+      ctx.strokeStyle = def ? "rgba(100, 160, 100, 0.7)" : "rgba(60, 60, 80, 0.4)";
+      ctx.lineWidth   = 1.5;
+      this._roundRect(sx, startY, slotSize, slotSize, borderR);
+      ctx.fill();
+      ctx.stroke();
+      ctx.lineWidth = 1;
+
+      if (def) {
+        // Item icon
+        ctx.font      = "18px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(def.icon ?? "📦", cx, cy + 6);
+
+        // Quantity
+        if (qty > 1) {
+          ctx.fillStyle = "#e8b84a";
+          ctx.font      = "9px monospace";
+          ctx.fillText(qty, sx + slotSize - 6, startY + slotSize - 4);
+        }
+      }
+
+      // Keybind hint
+      ctx.fillStyle = "rgba(180,180,180,0.5)";
+      ctx.font      = "10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`[${i + 5}]`, cx, startY + slotSize - 6);
+
+      ctx.textAlign = "left";
+    }
+  }
+
+  // ── Bag icon ──────────────────────────────────────────────────────────────
+
+  _drawBagIcon() {
+    const { ctx }                              = this;
+    const { slotSize, paddingY, borderR }      = ABILITY_BAR;
+
+    const bx = this._bagIconX();
+    const by = this.canvas.height - slotSize - paddingY;
+    const cx = bx + slotSize / 2;
+    const cy = by + slotSize / 2;
+
+    ctx.fillStyle   = "rgba(10, 10, 20, 0.85)";
+    ctx.strokeStyle = "rgba(120, 100, 60, 0.6)";
+    ctx.lineWidth   = 1.5;
+    this._roundRect(bx, by, slotSize, slotSize, borderR);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    ctx.font      = "22px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("🎒", cx, cy + 8);
+
+    ctx.fillStyle = "rgba(180,180,180,0.5)";
+    ctx.font      = "9px monospace";
+    ctx.fillText("[I]", cx, by + slotSize - 5);
+
+    ctx.textAlign = "left";
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
