@@ -7,7 +7,7 @@ export class Player extends Entity {
     this.id   = "player";
     this.type = "player";
 
-    // Combat stats — overwritten by class data at character creation
+    // ── Combat stats — overwritten by class data at character creation ──
     this.hp          = 80;
     this.maxHp       = 80;
     this.actionSpeed = 60;
@@ -16,14 +16,21 @@ export class Player extends Entity {
     this.classId     = null;
     this.abilities   = [];
 
-    // Cooldown state — populated by CombatSystem._tickCooldowns()
-    // Structure: { abilityId -> { remaining: number, max: number } }
+    // ── Resource (mana / rage / energy — class dependent) ──
+    // resourceDef mirrors the `resource` block from classes.json
+    this.resource    = 0;
+    this.maxResource = 0;
+    this.resourceDef = null; // { type, label, color, max, regenPerTick, ... }
+
+    // ── Cooldown state — written by CombatSystem ──
+    // { abilityId -> { remaining, max } }
     this.abilityCooldowns = {};
 
+    // ── Flags ──
     this.inCombat = false;
     this.dead     = false;
 
-    // Click-to-move state (set by MovementSystem)
+    // ── Click-to-move state — written by MovementSystem ──
     this.moveTarget = null;
     this.movePath   = null;
   }
