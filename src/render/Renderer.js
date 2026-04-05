@@ -109,8 +109,8 @@ export class Renderer {
     const { ctx, tileSize, camera } = this;
 
   // clear background
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    //ctx.fillStyle = "#000";
+    //ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
@@ -139,14 +139,14 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
         };
 
-        /*const tileCanvas =
+        const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
-      }*/
-        ctx.fillStyle = "#000";
+      }
+        /*ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    }
+    }*/
 
  
 
