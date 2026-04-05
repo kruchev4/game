@@ -1,0 +1,85 @@
+{
+  "fighter": {
+    "id": "fighter",
+    "name": "Fighter",
+    "description": "A heavily armoured melee warrior. Excels in close quarters.",
+    "role": "melee-dps",
+    "baseStats": {
+      "hp": 80,
+      "str": 16,
+      "dex": 10,
+      "int": 8,
+      "con": 14,
+      "wis": 10,
+      "cha": 8
+    },
+    "actionSpeed": 60,
+    "abilities": ["slash"],
+    "preferredRange": 1,
+    "color": "#e8c84a"
+  },
+
+  "ranger": {
+    "id": "ranger",
+    "name": "Ranger",
+    "description": "A nimble archer who excels at range. Vulnerable up close.",
+    "role": "ranged-dps",
+    "baseStats": {
+      "hp": 55,
+      "str": 10,
+      "dex": 16,
+      "int": 12,
+      "con": 10,
+      "wis": 12,
+      "cha": 10
+    },
+    "actionSpeed": 70,
+    "abilities": ["shoot", "frostArrow", "multishot"],
+    "preferredRange": 6,
+    "color": "#6abf5e"
+  },
+
+  "goblinMelee": {
+    "id": "goblinMelee",
+    "name": "Goblin Warrior",
+    "description": "A scrappy melee goblin. Rushes the player on sight.",
+    "role": "npc-melee",
+    "baseStats": {
+      "hp": 30,
+      "str": 10,
+      "dex": 12,
+      "int": 5,
+      "con": 8,
+      "wis": 6,
+      "cha": 4
+    },
+    "actionSpeed": 70,
+    "abilities": ["goblinStab"],
+    "preferredRange": 1,
+    "color": "#cc3333",
+    "perceptionRadius": 5,
+    "roamRadius": 6
+  },
+
+  "goblinArcher": {
+    "id": "goblinArcher",
+    "name": "Goblin Archer",
+    "description": "Hangs back and slings rocks. Will try to maintain distance.",
+    "role": "npc-ranged",
+    "baseStats": {
+      "hp": 22,
+      "str": 7,
+      "dex": 14,
+      "int": 6,
+      "con": 7,
+      "wis": 6,
+      "cha": 4
+    },
+    "actionSpeed": 90,
+    "abilities": ["goblinSling"],
+    "preferredRange": 4,
+    "color": "#b05a20",
+    "perceptionRadius": 7,
+    "roamRadius": 6
+  }
+}
