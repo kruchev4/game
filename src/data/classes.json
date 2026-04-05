@@ -76,7 +76,9 @@
     "preferredRange": 1,
     "color": "#cc3333",
     "perceptionRadius": 5,
-    "roamRadius": 6
+    "roamRadius": 6,
+    "level": 1,
+    "xpValue": 20
   },
 
   "goblinArcher": {
@@ -98,6 +100,8 @@
     "preferredRange": 4,
     "color": "#b05a20",
     "perceptionRadius": 7,
-    "roamRadius": 6
+    "roamRadius": 6,
+    "level": 1,
+    "xpValue": 25
   }
 }
