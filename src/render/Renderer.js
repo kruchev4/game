@@ -40,6 +40,7 @@ const PLAYER_FRAME = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class Renderer {
+  const DEBUG_DISABLE_SPRITES = true;
   
   constructor(canvas) {
     this.canvas   = canvas;
@@ -71,7 +72,7 @@ export class Renderer {
   }
 
   // ── Entity drawing ────────────────────────────────────────────────────────
-
+  if (!DEBUG_DISABLE_SPRITES) {
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -97,7 +98,7 @@ export class Renderer {
     ctx.lineWidth   = entity === this.currentTarget ? 2 : 1;
     ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
     ctx.lineWidth = 1;
-  }
+  }}
 
   // ── Main render ───────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ export class Renderer {
 
  
 
-
+  if (!DEBUG_DISABLE_SPRITES) {
     // ── NPC perception rings ──
     for (const entity of entities) {
       if (entity.type !== "npc" || entity.dead) continue;
@@ -199,7 +200,7 @@ export class Renderer {
         ctx.fill();
       }
       ctx.lineWidth = 1;
-    }
+    }}
 
     // ── Move target marker ──
     if (player?.moveTarget) {
@@ -213,6 +214,7 @@ export class Renderer {
     }
 
     // ── Entities ──
+    if (!DEBUG_DISABLE_SPRITES) {
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
@@ -224,7 +226,7 @@ export class Renderer {
     this._drawQuickSlots();
     this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
-  }
+  }}
 
   // ── Target Frame ─────────────────────────────────────────────────────────
 
