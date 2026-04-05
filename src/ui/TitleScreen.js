@@ -32,7 +32,7 @@ export class TitleScreen {
   constructor({ canvas, slots, saveProvider }) {
     this.canvas       = canvas;
     this.ctx          = canvas.getContext("2d");
-    this.slots        = slots;
+    this.slots        = slots ?? [];   // guard against undefined
     this.saveProvider = saveProvider;
     this.active       = false;
 
