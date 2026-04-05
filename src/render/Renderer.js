@@ -19,6 +19,17 @@ const TARGET_FRAME = {
   topOffset: 14
 };
 
+const PLAYER_FRAME = {
+  width:       240,
+  height:      52,
+  paddingX:    10,
+  paddingY:    8,
+  borderR:     10,
+  portraitSize: 36,
+  barHeight:   10,
+  barGap:      6
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class Renderer {
@@ -171,6 +182,7 @@ export class Renderer {
 
     // ── HUD ──
     this._drawTargetFrame();
+    this._drawPlayerFrame();
     this._drawAbilityBar();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
   }
@@ -224,6 +236,111 @@ export class Renderer {
     ctx.fillStyle = "#ffffff";
     ctx.font      = "10px monospace";
     ctx.fillText(`${target.hp} / ${target.maxHp}`, barX + 2, barY + barH - 1);
+  }
+
+  // ── Player Frame (bottom-center, above ability bar) ──────────────────────
+
+  _drawPlayerFrame() {
+    const player = this.player;
+    if (!player) return;
+
+    const { ctx } = this;
+    const {
+      width, height, paddingX, paddingY,
+      borderR, portraitSize, barHeight, barGap
+    } = PLAYER_FRAME;
+
+    const { slotSize, gap, paddingY: barPaddingY, count } = ABILITY_BAR;
+    const abilities   = (this.playerAbilities ?? []).slice(0, count);
+    const abilityBarH = abilities.length ? slotSize + barPaddingY : 0;
+
+    // Position: centered horizontally, just above the ability bar
+    const x = (ctx.canvas.width - width) / 2;
+    const y = ctx.canvas.height - abilityBarH - height - 6;
+
+    // ── Panel background ──
+    ctx.fillStyle = "rgba(10, 10, 20, 0.85)";
+    this._roundRect(x, y, width, height, borderR);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(100, 160, 100, 0.6)";
+    ctx.lineWidth   = 1.5;
+    this._roundRect(x, y, width, height, borderR);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // ── Portrait box ──
+    const portX = x + paddingX;
+    const portY = y + (height - portraitSize) / 2;
+
+    // Background
+    const classColor  = this._classColor();
+    ctx.fillStyle     = "rgba(20, 20, 35, 0.9)";
+    ctx.strokeStyle   = classColor;
+    ctx.lineWidth     = 1.5;
+    ctx.fillRect(portX, portY, portraitSize, portraitSize);
+    ctx.strokeRect(portX, portY, portraitSize, portraitSize);
+    ctx.lineWidth = 1;
+
+    // Class initial letter
+    const initial = (player.classId ?? "?")[0].toUpperCase();
+    ctx.fillStyle = classColor;
+    ctx.font      = `bold 18px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(initial, portX + portraitSize / 2, portY + portraitSize / 2 + 6);
+    ctx.textAlign = "left";
+
+    // ── Bars area ──
+    const barsX = portX + portraitSize + paddingX;
+    const barsW = width - portraitSize - paddingX * 3;
+
+    // Total bar block height (2 bars + gap)
+    const totalBarsH = barHeight * 2 + barGap;
+    const barsY      = y + (height - totalBarsH) / 2;
+
+    // HP bar
+    this._drawResourceBar(
+      ctx, barsX, barsY, barsW, barHeight,
+      player.hp, player.maxHp,
+      "#44cc44", "#cc3333", "#ccaa22",
+      `${Math.ceil(player.hp)} / ${player.maxHp}`
+    );
+
+    // Resource bar (mana / rage / etc.)
+    const def     = player.resourceDef;
+    const resColor = def?.color ?? "#3366ff";
+    const resLabel = def?.label ?? "MP";
+
+    this._drawResourceBar(
+      ctx, barsX, barsY + barHeight + barGap, barsW, barHeight,
+      player.resource, player.maxResource,
+      resColor, resColor, resColor,
+      `${Math.floor(player.resource)} / ${player.maxResource}  ${resLabel}`
+    );
+  }
+
+  /**
+   * Draw a single labeled resource bar.
+   * Color transitions high→mid→low using the three color params
+   * (for HP). For flat-color bars (mana/rage) pass the same color for all three.
+   */
+  _drawResourceBar(ctx, x, y, w, h, current, max, colorHigh, colorLow, colorMid, label) {
+    const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
+
+    // Track
+    ctx.fillStyle = "#222233";
+    ctx.fillRect(x, y, w, h);
+
+    // Fill — use gradient-like color steps for HP
+    ctx.fillStyle = colorHigh === colorLow
+      ? colorHigh
+      : pct > 0.5 ? colorHigh : pct > 0.25 ? colorMid : colorLow;
+    ctx.fillRect(x, y, w * pct, h);
+
+    // Label
+    ctx.fillStyle = "rgba(220,220,220,0.85)";
+    ctx.font      = "9px monospace";
+    ctx.fillText(label, x + 3, y + h - 2);
   }
 
   // ── Ability Bar ───────────────────────────────────────────────────────────
@@ -375,6 +492,14 @@ export class Renderer {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  _classColor() {
+    const colors = {
+      fighter: "#e8c84a",
+      ranger:  "#6abf5e"
+    };
+    return colors[this.player?.classId] ?? "#aaaaaa";
+  }
 
   _roundRect(x, y, w, h, r) {
     this.ctx.beginPath();
