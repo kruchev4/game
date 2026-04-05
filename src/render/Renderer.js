@@ -165,7 +165,15 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, r, 0, Math.PI * 2);
       ctx.stroke();
-    }
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(10, 10, 260, 40);
+      ctx.fillStyle = "#0f0";
+      ctx.font = "12px monospace";
+      ctx.fillText(
+          `cam(tile)=(${camera.x.toFixed(2)}, ${camera.y.toFixed(2)})`,
+          16, 34
+          );
+       }
 
     // ── A* path polyline ──
     const player = entities.find(e => e.type === "player");
