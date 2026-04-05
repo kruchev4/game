@@ -109,35 +109,30 @@ export class Renderer {
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
     // ── Tiles ──
-    for (let y = 0; y < tilesHigh; y++) {
-      for (let x = 0; x < tilesWide; x++) {
-        const wx = x + camera.x;
-        const wy = y + camera.y;
-        const neighbors = {
-          n: world.getTile(wx, wy - 1),
-          e: world.getTile(wx + 1, wy),
-          s: world.getTile(wx, wy + 1),
-          w: world.getTile(wx - 1, wy)
-      };
+    for (let wy = startY; wy < endY; wy++) {
+  for (let wx = startX; wx < endX; wx++) {
 
-const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
-ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+    const tileId = world.getTile(wx, wy);
+    if (tileId == null) continue;
 
+    const { sx, sy } = camera.worldToScreen(wx, wy);
 
-        const tileId = world.getTile(wx, wy);
-        if (tileId == null) continue;
+    const neighbors = {
+      n: world.getTile(wx, wy - 1),
+      e: world.getTile(wx + 1, wy),
+      s: world.getTile(wx, wy + 1),
+      w: world.getTile(wx - 1, wy)
+    };
 
-        const tile       = getTileDef(tileId);
-        const { sx, sy } = camera.worldToScreen(wx, wy);
+    const tileCanvas =
+      this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
-        ctx.fillStyle = tile.color;
-        
-        ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+    ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
 
-        ctx.strokeStyle = "rgba(0,0,0,0.25)";
-        ctx.strokeRect(sx, sy, tileSize, tileSize);
-      }
-    }
+    
+  }
+}
+
 
     // ── NPC perception rings ──
     for (const entity of entities) {
