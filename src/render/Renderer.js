@@ -116,8 +116,8 @@ export class Renderer {
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
 
  
-    const startX = Math.floor(camera.x / tileSize);
-    const startY = Math.floor(camera.y / tileSize);
+    const startX = Math.floor(camera.x);
+    const startY = Math.floor(camera.y);
 
   // ── Tiles ──
     for (let sy = 0; sy < tilesHigh; sy++) {
