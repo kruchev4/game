@@ -33,6 +33,10 @@ export class Engine {
     this._currentTarget = null;
     this.combatLog      = null;
 
+    // Save system — set by main.js before loadWorld()
+    this.saveSlot     = null;   // 1-based slot number
+    this.saveProvider = null;
+
     // Change to "fighter" to test melee
     this._playerClassId = "ranger";
   }
@@ -381,6 +385,54 @@ export class Engine {
     if (def.type === "rage" && !p.inCombat) {
       p.resource = Math.max(0, p.resource - 0.3);
     }
+  }
+
+  // ─────────────────────────────────────────────
+  // SAVE SYSTEM
+  // ─────────────────────────────────────────────
+
+  /**
+   * Build a save data object from current game state.
+   * Called on zone change.
+   */
+  getSaveData() {
+    return {
+      name:      this.player.name     ?? "Hero",
+      classId:   this.player.classId  ?? this._playerClassId,
+      stats:     this.player.stats    ?? {},
+      position: {
+        worldId: this.world?.id ?? "overworld_C",
+        x:       this.player.x,
+        y:       this.player.y
+      },
+      gold:      this.player.gold      ?? 0,
+      inventory: this.player.inventory ?? []
+    };
+  }
+
+  /**
+   * Persist current state to the assigned save slot.
+   * Silent — errors are logged but not thrown.
+   */
+  async saveToSlot() {
+    if (!this.saveProvider || !this.saveSlot) return;
+    try {
+      await this.saveProvider.save(this.saveSlot, this.getSaveData());
+      this.combatLog?.push({ text: "Game saved.", type: "system" });
+    } catch (e) {
+      console.error("[Engine] Save failed:", e);
+    }
+  }
+
+  /**
+   * Call this when the player transitions to a new zone.
+   * Triggers auto-save and loads the new world.
+   */
+  async changeZone(worldId) {
+    await this.saveToSlot();
+    await this._loadWorldFromProvider(worldId);
+    this._spawnTestNPCs();
+    this._buildSystems();
   }
 
   // ─────────────────────────────────────────────
