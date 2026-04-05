@@ -211,7 +211,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
       ctx.fill();*/
-    }
+    
 
     // ── Entities ──
     
