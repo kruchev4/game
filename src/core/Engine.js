@@ -91,6 +91,14 @@ export class Engine {
       this.player.actionTimer = classDef.actionSpeed;
       this.player.classId     = this._playerClassId;
       this.player.abilities   = classDef.abilities ?? [];
+
+      // Resource (mana, rage, etc.)
+      const res = classDef.resource ?? null;
+      if (res) {
+        this.player.resourceDef  = res;
+        this.player.maxResource  = res.max;
+        this.player.resource     = res.startAt ?? res.max;
+      }
     }
   }
 
@@ -262,11 +270,27 @@ export class Engine {
             text: `${event.ability.name} hits ${this._npcLabel(event.target)} for ${event.damage}`,
             type: "damage_out"
           });
+          // Rage builds on damage dealt
+          const def = this.player.resourceDef;
+          if (def?.type === "rage" && def.buildOnHitDealt) {
+            this.player.resource = Math.min(
+              this.player.maxResource,
+              this.player.resource + def.buildOnHitDealt
+            );
+          }
         } else {
           log?.push({
             text: `${this._npcLabel(event.attacker)} hits you for ${event.damage}`,
             type: "damage_in"
           });
+          // Rage builds on damage taken
+          const def = this.player.resourceDef;
+          if (def?.type === "rage" && def.buildOnHitTaken) {
+            this.player.resource = Math.min(
+              this.player.maxResource,
+              this.player.resource + def.buildOnHitTaken
+            );
+          }
         }
         break;
       }
@@ -319,6 +343,25 @@ export class Engine {
   }
 
   // ─────────────────────────────────────────────
+  // RESOURCE
+  // ─────────────────────────────────────────────
+
+  _tickPlayerResource() {
+    const p   = this.player;
+    const def = p?.resourceDef;
+    if (!def) return;
+
+    if (def.regenPerTick && def.regenPerTick > 0) {
+      p.resource = Math.min(p.maxResource, p.resource + def.regenPerTick);
+    }
+
+    // Rage decays slowly out of combat
+    if (def.type === "rage" && !p.inCombat) {
+      p.resource = Math.max(0, p.resource - 0.3);
+    }
+  }
+
+  // ─────────────────────────────────────────────
   // GAME LOOP
   // ─────────────────────────────────────────────
 
@@ -337,6 +380,7 @@ export class Engine {
     this.npcAISystem?.update(this.world);     // 4. NPC decides actions
     this.movementSystem?.update();            // 5. player movement
     this.combatLog?.update();                 // 6. age log messages
+    this._tickPlayerResource();               // 7. mana regen / rage decay
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
