@@ -1,5 +1,7 @@
 import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
+import { TileFactory } from "./TileFactory.js";
+
 
 // ── Color constants ───────────────────────────────────────────────────────────
 const WHITE = "#eeeeee";
