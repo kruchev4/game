@@ -35,6 +35,12 @@ export class NPCMovementSystem {
     for (const npc of this.npcs) {
       if (npc.dead) continue;
 
+      // If player is dead, NPCs go back to roaming
+      if (this.player.dead && npc.state === "alert") {
+        npc.state = "roaming";
+        this._paths.delete(npc.id);
+      }
+
       npc._cooldown -= dt;
       if (npc._cooldown > 0) continue;
 
