@@ -5,7 +5,7 @@ export class TileFactory {
   constructor({ tileSize = 16 } = {}) {
     this.tileSize = tileSize;
     this.cache = new Map(); // key includes neighbor signature now
-  }
+  
 
   neighbors: { n,e,s,w } tileIds
   getTileCanvas(tileId, wx, wy, neighbors) {
