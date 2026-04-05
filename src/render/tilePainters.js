@@ -133,7 +133,7 @@ function featherEdge(ctx, s, dir, rgba) {
     ctx.fillStyle = rgba; ctx.fillRect(s-1, 0, 1, s);
     ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(s-2, 0, 1, s);
   }
-}*/
+}
 
 function weaken(rgba, factor) {
   const m = rgba.match(/rgba\((\d+),(\d+),(\d+),([0-9.]+)\)/);
