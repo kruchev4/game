@@ -143,9 +143,9 @@ export class Renderer {
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
-      }
+      
        
-    }
+    }}}
   
 
  
