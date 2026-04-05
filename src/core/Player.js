@@ -6,6 +6,7 @@ export class Player extends Entity {
 
     this.id   = "player";
     this.type = "player";
+    this.name = "Hero"; // overwritten by character creation
 
     // ── Combat stats — overwritten by class data at character creation ──
     this.hp          = 80;
