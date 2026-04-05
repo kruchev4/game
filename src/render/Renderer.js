@@ -104,6 +104,7 @@ export class Renderer {
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
+    console.log('render');
     
     const { ctx, tileSize, camera } = this;
 
