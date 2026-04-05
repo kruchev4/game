@@ -1,6 +1,11 @@
 import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
 
+// ── Color constants ───────────────────────────────────────────────────────────
+const WHITE = "#eeeeee";
+const DIM   = "#888899";
+const GOLD  = "#e8c84a";
+
 // ── UI Layout constants ───────────────────────────────────────────────────────
 const ABILITY_BAR = {
   slotSize: 56,
