@@ -294,25 +294,31 @@ export class Renderer {
     const barsX = portX + portraitSize + paddingX;
     const barsW = width - portraitSize - paddingX * 3;
 
-    // Total bar block height (2 bars + gap)
-    const totalBarsH = barHeight * 2 + barGap;
+    // Total bar block height (name label + 2 bars + gap)
+    const nameH      = 14;
+    const totalBarsH = nameH + barHeight * 2 + barGap + 4;
     const barsY      = y + (height - totalBarsH) / 2;
+
+    // Player name
+    ctx.fillStyle = WHITE;
+    ctx.font      = `bold 11px monospace`;
+    ctx.fillText(player.name ?? "Hero", barsX, barsY + nameH - 2);
 
     // HP bar
     this._drawResourceBar(
-      ctx, barsX, barsY, barsW, barHeight,
+      ctx, barsX, barsY + nameH + 2, barsW, barHeight,
       player.hp, player.maxHp,
       "#44cc44", "#cc3333", "#ccaa22",
       `${Math.ceil(player.hp)} / ${player.maxHp}`
     );
 
-    // Resource bar (mana / rage / etc.)
-    const def     = player.resourceDef;
+    // Resource bar
+    const def      = player.resourceDef;
     const resColor = def?.color ?? "#3366ff";
     const resLabel = def?.label ?? "MP";
 
     this._drawResourceBar(
-      ctx, barsX, barsY + barHeight + barGap, barsW, barHeight,
+      ctx, barsX, barsY + nameH + barHeight + barGap + 4, barsW, barHeight,
       player.resource, player.maxResource,
       resColor, resColor, resColor,
       `${Math.floor(player.resource)} / ${player.maxResource}  ${resLabel}`
