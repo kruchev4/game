@@ -1,368 +1,580 @@
 /**
- * TitleScreen.js
+ * CharacterCreation.js
  *
- * Canvas-drawn title + character select screen.
- * Shows all save slots. Filled slots are selectable characters.
- * Empty slots are greyed out. A "New Character" button is always visible.
+ * HTML overlay character creation screen.
+ * 4 steps: Name → Class → Stats → Review
  *
- * Automatically assigns the next free slot on new character creation.
- * If all slots are full, the oldest save is overwritten (future: let user choose).
+ * Inject the overlay into document.body, animate between steps,
+ * call onConfirm({ name, raceId, classId, stats }) when done.
  *
- * Usage:
- *   const title = new TitleScreen({ canvas, slots, saveProvider });
- *   title.onLoad   = (slotIndex, saveData) => { ... };
- *   title.onNew    = (slotIndex) => { ... };  // slotIndex = slot to save new char into
- *   title.show();
+ * Requires: src/styles/character-creation.css loaded in index.html
  */
 
-const BG_COLOR  = "#0a0a14";
-const GOLD      = "#e8c84a";
-const WHITE     = "#eeeeee";
-const DIM       = "#555566";
-const RED       = "#cc4444";
-const FONT_MONO = "monospace";
+const STAT_NAMES = ["STR", "DEX", "INT", "CON", "WIS", "CHA"];
+const MAX_REROLLS = 3;
 
-export class TitleScreen {
+// Races with emoji icon and stat bonus label
+const RACES = [
+  { id: "human",     icon: "🧑",  name: "Human",    bonus: "+1 all stats" },
+  { id: "elf",       icon: "🧝",  name: "Elf",      bonus: "+2 DEX, +1 INT" },
+  { id: "dwarf",     icon: "⛏️",  name: "Dwarf",    bonus: "+2 CON, +1 STR" },
+  { id: "halfling",  icon: "🌿",  name: "Halfling", bonus: "+2 DEX, +1 CHA" },
+  { id: "half-orc",  icon: "💪",  name: "Half-Orc", bonus: "+2 STR, +1 CON" },
+  { id: "tiefling",  icon: "😈",  name: "Tiefling", bonus: "+2 INT, +1 CHA" },
+];
+
+// Class icons and display metadata (stats come from classes.json)
+const CLASS_META = {
+  fighter: { icon: "⚔️",  role: "Melee DPS",   tags: ["strength", "armor", "melee"],   primaryStat: "STR" },
+  ranger:  { icon: "🏹",  role: "Ranged DPS",  tags: ["dexterity", "ranged", "nature"], primaryStat: "DEX" },
+};
+
+export class CharacterCreation {
   /**
-   * @param {object}             opts
-   * @param {HTMLCanvasElement}  opts.canvas
-   * @param {Array<object|null>} opts.slots        - save slot data, null = empty
-   * @param {SaveProvider}       opts.saveProvider
+   * @param {object} opts
+   * @param {HTMLCanvasElement} opts.canvas    - game canvas (used for sizing reference)
+   * @param {object}            opts.classes   - classes.json data
+   * @param {object}            opts.abilities - abilities.json data
    */
-  constructor({ canvas, slots, saveProvider }) {
-    this.canvas       = canvas;
-    this.ctx          = canvas.getContext("2d");
-    this.slots        = slots ?? [];   // guard against undefined
-    this.saveProvider = saveProvider;
-    this.active       = false;
+  constructor({ canvas, classes, abilities }) {
+    this.canvas    = canvas;
+    this.classes   = classes;
+    this.abilities = abilities;
 
-    this.onLoad = null;   // (slotIndex, saveData) => {}
-    this.onNew  = null;   // (slotIndex) => {}
+    // State
+    this.step      = 1;         // 1=Name+Race, 2=Class, 3=Stats, 4=Review
+    this.name      = "";
+    this.raceId    = null;
+    this.classId   = null;
+    this.stats     = null;
+    this.rerolls   = MAX_REROLLS;
 
-    this._regions  = [];
-    this._tick     = 0;
-    this._confirm  = null; // { action: "delete", slotIndex }
-    this._onClick  = (e) => this._handleClick(e);
+    this.onConfirm = null;      // ({ name, raceId, classId, stats }) => {}
+
+    this._overlay  = null;
+    this._particle = null;
   }
 
+  // ─────────────────────────────────────────────
+  // PUBLIC
+  // ─────────────────────────────────────────────
+
   show() {
-    this.active = true;
-    this.canvas.addEventListener("pointerdown", this._onClick);
-    this._loop();
+    this._buildOverlay();
+    this._renderStep();
+    this._startParticles();
   }
 
   hide() {
-    this.active = false;
-    this.canvas.removeEventListener("pointerdown", this._onClick);
-  }
-
-  _loop() {
-    if (!this.active) return;
-    this._tick++;
-    this._draw();
-    requestAnimationFrame(() => this._loop());
+    this._overlay?.remove();
+    this._overlay = null;
+    if (this._particleRAF) cancelAnimationFrame(this._particleRAF);
   }
 
   // ─────────────────────────────────────────────
-  // DRAWING
+  // OVERLAY CONSTRUCTION
   // ─────────────────────────────────────────────
 
-  _draw() {
-    const { ctx, canvas } = this;
-    const W = canvas.width  = window.innerWidth;
-    const H = canvas.height = window.innerHeight;
+  _buildOverlay() {
+    this._overlay = document.createElement("div");
+    this._overlay.id = "cc-overlay";
+    document.body.appendChild(this._overlay);
 
-    this._regions = [];
+    // Particle canvas
+    const pc = document.createElement("canvas");
+    pc.id = "cc-particles";
+    this._overlay.appendChild(pc);
+    this._particleCanvas = pc;
 
-    // Background
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(0, 0, W, H);
-    this._drawStars(W, H);
+    // Main wrap
+    const wrap = document.createElement("div");
+    wrap.className = "cc-wrap";
+    this._overlay.appendChild(wrap);
+    this._wrap = wrap;
+  }
 
-    // Panel
-    const panelW = Math.min(580, W - 40);
-    const panelH = Math.min(600, H - 40);
-    const panelX = (W - panelW) / 2;
-    const panelY = (H - panelH) / 2;
+  // ─────────────────────────────────────────────
+  // STEP RENDERING
+  // ─────────────────────────────────────────────
 
-    ctx.fillStyle   = "rgba(12, 12, 26, 0.97)";
-    ctx.strokeStyle = "rgba(120, 100, 180, 0.45)";
-    ctx.lineWidth   = 1.5;
-    this._roundRect(panelX, panelY, panelW, panelH, 14);
-    ctx.fill();
-    ctx.stroke();
-    ctx.lineWidth = 1;
+  _renderStep() {
+    this._wrap.innerHTML = "";
 
-    const cx = panelX + panelW / 2;
-    let cy    = panelY + 44;
+    // Header
+    this._wrap.insertAdjacentHTML("beforeend", `
+      <div class="cc-header">
+        <div class="realm-title">REALM OF ECHOES</div>
+        <div class="forge-title">Forge Your Fate</div>
+        <div class="orn">✦</div>
+      </div>
+    `);
 
-    // ── Title ──
-    ctx.textAlign = "center";
+    // Step dots
+    const dots = [1, 2, 3, 4].map(i => {
+      const cls = i === this.step ? "sdot active"
+                : i < this.step  ? "sdot done"
+                :                  "sdot";
+      return `<div class="${cls}"></div>`;
+    }).join("");
+    this._wrap.insertAdjacentHTML("beforeend", `<div class="step-dots">${dots}</div>`);
 
-    const pulse       = 0.75 + 0.25 * Math.sin(this._tick * 0.03);
-    ctx.shadowColor   = `rgba(200, 160, 50, ${pulse * 0.7})`;
-    ctx.shadowBlur    = 20;
-    ctx.fillStyle     = GOLD;
-    ctx.font          = `bold 28px ${FONT_MONO}`;
-    ctx.fillText("REALM OF ECHOES", cx, cy);
-    ctx.shadowBlur    = 0;
-    cy += 20;
+    // Step content
+    switch (this.step) {
+      case 1: this._renderNameRace(); break;
+      case 2: this._renderClass();    break;
+      case 3: this._renderStats();    break;
+      case 4: this._renderReview();   break;
+    }
+  }
 
-    ctx.fillStyle = DIM;
-    ctx.font      = `12px ${FONT_MONO}`;
-    ctx.fillText("Select your hero or begin anew", cx, cy);
-    cy += 32;
+  // ── Step 1: Name + Race ──────────────────────────────────
 
-    // Divider
-    ctx.strokeStyle = "rgba(120,100,180,0.25)";
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    ctx.moveTo(panelX + 30, cy);
-    ctx.lineTo(panelX + panelW - 30, cy);
-    ctx.stroke();
-    cy += 20;
+  _renderNameRace() {
+    const raceCards = RACES.map(r => `
+      <div class="rcard ${this.raceId === r.id ? "sel" : ""}"
+           data-race="${r.id}">
+        <div class="rice">${r.icon}</div>
+        <div class="rname">${r.name}</div>
+        <div class="rbonus">${r.bonus}</div>
+      </div>
+    `).join("");
 
-    // ── Save slots ──
-    const slotH   = 68;
-    const slotGap = 8;
-    const slotX   = panelX + 20;
-    const slotW   = panelW - 40;
+    this._wrap.insertAdjacentHTML("beforeend", `
+      <div class="card">
+        <div class="card-inner">
+          <div class="ctitle">Your Name</div>
+          <div class="name-wrap">
+            <input id="inp-name" type="text" maxlength="20"
+                   placeholder="Enter your name"
+                   value="${this._escHtml(this.name)}" />
+            <div class="name-hint">Choose wisely — your legend begins here.</div>
+          </div>
+          <div class="ctitle">Choose Your Race</div>
+          <div class="race-grid">${raceCards}</div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <span class="step-lbl">Step 1 of 4</span>
+        <button class="btn btn-next" id="btn-next1">Next →</button>
+      </div>
+    `);
 
-    for (let i = 0; i < this.slots.length; i++) {
-      const data   = this.slots[i];
-      const sy     = cy + i * (slotH + slotGap);
-      const filled = data !== null;
+    // Events
+    const inp = this._wrap.querySelector("#inp-name");
+    inp.focus();
+    inp.addEventListener("input", e => { this.name = e.target.value; this._updateNext1(); });
 
-      // Slot background
-      ctx.fillStyle   = filled
-        ? "rgba(24, 28, 52, 0.9)"
-        : "rgba(14, 14, 24, 0.5)";
-      ctx.strokeStyle = filled
-        ? "rgba(100, 120, 200, 0.45)"
-        : "rgba(50, 50, 70, 0.3)";
-      ctx.lineWidth = 1;
-      this._roundRect(slotX, sy, slotW, slotH, 8);
-      ctx.fill();
-      ctx.stroke();
+    this._wrap.querySelectorAll(".rcard").forEach(el => {
+      el.addEventListener("click", () => {
+        this.raceId = el.dataset.race;
+        this._wrap.querySelectorAll(".rcard").forEach(c => c.classList.remove("sel"));
+        el.classList.add("sel");
+        this._updateNext1();
+      });
+    });
 
-      if (filled) {
-        // Character name
-        ctx.fillStyle = WHITE;
-        ctx.font      = `bold 15px ${FONT_MONO}`;
-        ctx.textAlign = "left";
-        ctx.fillText(data.name ?? "Unknown", slotX + 14, sy + 24);
+    this._wrap.querySelector("#btn-next1").addEventListener("click", () => {
+      if (this.name.trim() && this.raceId) {
+        this.step = 2;
+        this._renderStep();
+      }
+    });
 
-        // Class + date
-        ctx.fillStyle = "rgba(160,160,200,0.8)";
-        ctx.font      = `11px ${FONT_MONO}`;
-        const classLabel = (data.classId ?? "")
-          .replace(/([A-Z])/g, " $1")
-          .replace(/\b\w/g, c => c.toUpperCase())
-          .trim();
-        const dateStr = data.savedAt
-          ? new Date(data.savedAt).toLocaleDateString()
-          : "";
-        ctx.fillText(
-          `${classLabel}${dateStr ? "  ·  " + dateStr : ""}`,
-          slotX + 14, sy + 42
-        );
+    this._updateNext1();
+  }
 
-        // Gold
-        if (data.gold !== undefined) {
-          ctx.fillStyle = GOLD;
-          ctx.font      = `10px ${FONT_MONO}`;
-          ctx.fillText(`${data.gold} gold`, slotX + 14, sy + 58);
+  _updateNext1() {
+    const btn = this._wrap.querySelector("#btn-next1");
+    if (btn) btn.disabled = !(this.name.trim() && this.raceId);
+  }
+
+  // ── Step 2: Class ────────────────────────────────────────
+
+  _renderClass() {
+    const classCards = Object.entries(this.classes)
+      .filter(([id]) => CLASS_META[id])
+      .map(([id, def]) => {
+        const meta  = CLASS_META[id];
+        const abils = (def.abilities ?? [])
+          .map(aid => this.abilities[aid]?.name ?? aid)
+          .join(", ");
+        const tags = meta.tags.map((t, i) =>
+          `<span class="ctag ${i === 0 ? "pri" : ""}">${t}</span>`
+        ).join("");
+
+        return `
+          <div class="clcard ${this.classId === id ? "sel" : ""}" data-class="${id}">
+            <div class="cl-hd">
+              <span class="cl-ic">${meta.icon}</span>
+              <span class="cl-nm">${def.name}</span>
+            </div>
+            <div class="cl-role">${meta.role} · Primary: ${meta.primaryStat}</div>
+            <div class="cl-desc">${def.description}</div>
+            <div class="cl-tags">${tags}</div>
+            <div class="cl-abilities">Abilities: <span>${abils}</span></div>
+          </div>
+        `;
+      }).join("");
+
+    this._wrap.insertAdjacentHTML("beforeend", `
+      <div class="card">
+        <div class="card-inner">
+          <div class="ctitle">Choose Your Class</div>
+          <div class="class-grid">${classCards}</div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button class="btn btn-back" id="btn-back2">← Back</button>
+        <span class="step-lbl">Step 2 of 4</span>
+        <button class="btn btn-next" id="btn-next2">Next →</button>
+      </div>
+    `);
+
+    this._wrap.querySelectorAll(".clcard").forEach(el => {
+      el.addEventListener("click", () => {
+        this.classId = el.dataset.class;
+        this._wrap.querySelectorAll(".clcard").forEach(c => c.classList.remove("sel"));
+        el.classList.add("sel");
+        this._updateNext2();
+      });
+    });
+
+    this._wrap.querySelector("#btn-back2").addEventListener("click", () => {
+      this.step = 1; this._renderStep();
+    });
+    this._wrap.querySelector("#btn-next2").addEventListener("click", () => {
+      if (this.classId) {
+        if (!this.stats) this.stats = this._rollAll();
+        this.step = 3;
+        this._renderStep();
+      }
+    });
+
+    this._updateNext2();
+  }
+
+  _updateNext2() {
+    const btn = this._wrap.querySelector("#btn-next2");
+    if (btn) btn.disabled = !this.classId;
+  }
+
+  // ── Step 3: Stats ────────────────────────────────────────
+
+  _renderStats() {
+    const rollsLeft = this.rerolls;
+
+    const statBlocks = STAT_NAMES.map(name => {
+      const val  = this.stats[name];
+      const mod  = Math.floor((val - 10) / 2);
+      const modS = mod >= 0 ? `+${mod}` : `${mod}`;
+      const modC = mod > 0 ? "pos" : mod < 0 ? "neg" : "zero";
+
+      const dice = this._getDiceDisplay(name);
+      const diceHtml = dice.map((d, i) =>
+        `<div class="die ${d.kept ? "kept" : "dropped"}" id="die-${name}-${i}">${d.val}</div>`
+      ).join("");
+
+      return `
+        <div class="sblock" id="sblock-${name}">
+          <div class="sl-row">
+            <div class="sname">${name}</div>
+          </div>
+          <div class="sv-row">
+            <div class="sval" id="sval-${name}">${val}</div>
+            <div class="smod ${modC}">${modS}</div>
+          </div>
+          <div class="dice-row">${diceHtml}</div>
+        </div>
+      `;
+    }).join("");
+
+    const totalMod = STAT_NAMES.reduce((s, n) => {
+      return s + Math.floor((this.stats[n] - 10) / 2);
+    }, 0);
+    const totalRaw = STAT_NAMES.reduce((s, n) => s + this.stats[n], 0);
+
+    this._wrap.insertAdjacentHTML("beforeend", `
+      <div class="card">
+        <div class="card-inner">
+          <div class="ctitle">Roll Ability Scores</div>
+          <div class="reroll-note" id="reroll-note">
+            ${rollsLeft > 0
+              ? `${rollsLeft} reroll${rollsLeft !== 1 ? "s" : ""} remaining`
+              : "No rerolls remaining — these are your stats"}
+          </div>
+          <button class="roll-btn" id="btn-roll"
+                  ${rollsLeft <= 0 ? "disabled" : ""}>
+            ⚄ Roll All Stats
+          </button>
+          <div class="stats-grid">${statBlocks}</div>
+          <div class="stats-sum">
+            <div class="sum-item">
+              <div class="sum-lbl">Total</div>
+              <div class="sum-val" id="sum-total">${totalRaw}</div>
+            </div>
+            <div class="sum-item">
+              <div class="sum-lbl">Modifier Sum</div>
+              <div class="sum-val" id="sum-mod">${totalMod >= 0 ? "+" : ""}${totalMod}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button class="btn btn-back" id="btn-back3">← Back</button>
+        <span class="step-lbl">Step 3 of 4</span>
+        <button class="btn btn-next" id="btn-next3">Review →</button>
+      </div>
+    `);
+
+    this._wrap.querySelector("#btn-roll").addEventListener("click", () => {
+      if (this.rerolls <= 0) return;
+      this.rerolls--;
+      this._animateRoll();
+    });
+
+    this._wrap.querySelector("#btn-back3").addEventListener("click", () => {
+      this.step = 2; this._renderStep();
+    });
+
+    this._wrap.querySelector("#btn-next3").addEventListener("click", () => {
+      this.step = 4; this._renderStep();
+    });
+  }
+
+  _animateRoll() {
+    const newStats = this._rollAll();
+
+    // Animate each stat block in sequence
+    STAT_NAMES.forEach((name, i) => {
+      setTimeout(() => {
+        const block = this._wrap.querySelector(`#sblock-${name}`);
+        if (!block) return;
+
+        block.classList.add("rolling");
+        setTimeout(() => block.classList.remove("rolling"), 400);
+
+        // Animate dice
+        const newDice = this._getDiceDisplayForStats(name, newStats);
+        newDice.forEach((d, di) => {
+          const el = this._wrap.querySelector(`#die-${name}-${di}`);
+          if (!el) return;
+          el.classList.add("spin");
+          setTimeout(() => {
+            el.textContent = d.val;
+            el.className   = `die ${d.kept ? "kept" : "dropped"} spin`;
+            setTimeout(() => el.classList.remove("spin"), 350);
+          }, 100);
+        });
+
+        // Update value
+        const valEl = this._wrap.querySelector(`#sval-${name}`);
+        if (valEl) valEl.textContent = newStats[name];
+
+      }, i * 80);
+    });
+
+    // Update stats after animation completes
+    setTimeout(() => {
+      this.stats = newStats;
+
+      // Update sums
+      const totalRaw = STAT_NAMES.reduce((s, n) => s + this.stats[n], 0);
+      const totalMod = STAT_NAMES.reduce((s, n) => {
+        return s + Math.floor((this.stats[n] - 10) / 2);
+      }, 0);
+
+      const sumT = this._wrap.querySelector("#sum-total");
+      const sumM = this._wrap.querySelector("#sum-mod");
+      if (sumT) sumT.textContent = totalRaw;
+      if (sumM) sumM.textContent = `${totalMod >= 0 ? "+" : ""}${totalMod}`;
+
+      // Update reroll note
+      const note = this._wrap.querySelector("#reroll-note");
+      const btn  = this._wrap.querySelector("#btn-roll");
+      if (note) note.textContent = this.rerolls > 0
+        ? `${this.rerolls} reroll${this.rerolls !== 1 ? "s" : ""} remaining`
+        : "No rerolls remaining — these are your stats";
+      if (btn) btn.disabled = this.rerolls <= 0;
+
+    }, STAT_NAMES.length * 80 + 400);
+  }
+
+  // ── Step 4: Review ───────────────────────────────────────
+
+  _renderReview() {
+    const classDef  = this.classes[this.classId];
+    const classMeta = CLASS_META[this.classId] ?? {};
+    const race      = RACES.find(r => r.id === this.raceId);
+    const hp        = classDef?.baseStats?.hp ?? 10;
+
+    const sheetRows = [
+      ["Name",  this.name],
+      ["Race",  race?.name ?? this.raceId],
+      ["Class", classDef?.name ?? this.classId],
+      ["HP",    hp],
+      ["Role",  classMeta.role ?? ""],
+    ].map(([k, v]) => `
+      <div class="sh-row">
+        <span class="sh-k">${k}</span>
+        <span class="sh-v gold">${v}</span>
+      </div>
+    `).join("");
+
+    const statCells = STAT_NAMES.map(name => {
+      const val = this.stats[name];
+      const mod = Math.floor((val - 10) / 2);
+      return `
+        <div class="csm">
+          <div class="csm-n">${name}</div>
+          <div class="csm-v">${val}</div>
+          <div class="csm-m">${mod >= 0 ? "+" : ""}${mod}</div>
+        </div>
+      `;
+    }).join("");
+
+    this._wrap.insertAdjacentHTML("beforeend", `
+      <div class="card">
+        <div class="card-inner">
+          <div class="ctitle">Character Sheet</div>
+          <div class="review-layout">
+            <div class="portrait-box">
+              <div class="portrait-icon">${classMeta.icon ?? "⚔️"}</div>
+              <div class="portrait-name">${this._escHtml(this.name)}</div>
+              <div class="portrait-sub">${race?.name ?? ""} ${classDef?.name ?? ""}</div>
+              <div class="portrait-sub" style="color:var(--gold-b)">${race?.bonus ?? ""}</div>
+            </div>
+            <div>
+              ${sheetRows}
+              <div class="csm-grid">${statCells}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button class="btn btn-back" id="btn-back4">← Back</button>
+        <span class="step-lbl">Step 4 of 4</span>
+        <button class="btn btn-enter" id="btn-enter">Enter the Realm →</button>
+      </div>
+    `);
+
+    this._wrap.querySelector("#btn-back4").addEventListener("click", () => {
+      this.step = 3; this._renderStep();
+    });
+
+    this._wrap.querySelector("#btn-enter").addEventListener("click", async () => {
+      this.hide();
+      await this.onConfirm?.({
+        name:    this.name.trim(),
+        raceId:  this.raceId,
+        classId: this.classId,
+        stats:   { ...this.stats }
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────
+  // ROLLING LOGIC
+  // ─────────────────────────────────────────────
+
+  _rollAll() {
+    return Object.fromEntries(
+      STAT_NAMES.map(s => [s, this._roll4d6DropLowest()])
+    );
+  }
+
+  _roll4d6DropLowest() {
+    const dice = Array.from({ length: 4 }, () => Math.ceil(Math.random() * 6));
+    dice.sort((a, b) => a - b);
+    return dice.slice(1).reduce((a, b) => a + b, 0);
+  }
+
+  // Returns the 4 dice with kept/dropped flags for display
+  _getDiceDisplay(statName) {
+    return this._getDiceDisplayForStats(statName, this.stats);
+  }
+
+  _getDiceDisplayForStats(statName, stats) {
+    // Reverse-engineer kept dice from total (approximation for display)
+    // We store last roll result for accurate display
+    if (!this._lastRolls) this._lastRolls = {};
+    if (!this._lastRolls[statName]) {
+      // Generate plausible dice that sum to stats[statName]
+      return this._generateDisplayDice(stats[statName]);
+    }
+    return this._lastRolls[statName];
+  }
+
+  _generateDisplayDice(total) {
+    // Generate 4 random dice that look plausible for the total
+    const dice = Array.from({ length: 4 }, () => Math.ceil(Math.random() * 6));
+    dice.sort((a, b) => a - b);
+    // Mark lowest as dropped
+    return dice.map((val, i) => ({ val, kept: i > 0 }));
+  }
+
+  // ─────────────────────────────────────────────
+  // PARTICLE EFFECT
+  // ─────────────────────────────────────────────
+
+  _startParticles() {
+    const canvas = this._particleCanvas;
+    const ctx    = canvas.getContext("2d");
+
+    const particles = Array.from({ length: 40 }, () => this._newParticle(canvas));
+
+    const tick = () => {
+      if (!this._overlay) return;
+
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      for (const p of particles) {
+        p.y  -= p.speed;
+        p.x  += p.drift;
+        p.life--;
+
+        if (p.life <= 0 || p.y < 0) {
+          Object.assign(p, this._newParticle(canvas));
         }
 
-        // Play button
-        const playW = 80;
-        const playX = slotX + slotW - playW - 50;
-        this._drawBtn(ctx, playX, sy + 19, playW, 30, "Play →", "#223355", WHITE);
-        this._addRegion(`load_${i}`, playX, sy + 19, playW, 30);
-
-        // Delete button
-        const delX = slotX + slotW - 40;
-        this._drawBtn(ctx, delX, sy + 19, 32, 30, "✕", "#331111", RED);
-        this._addRegion(`delete_${i}`, delX, sy + 19, 32, 30);
-
-      } else {
-        // Empty slot — just a label
-        ctx.fillStyle = "rgba(80,80,100,0.35)";
-        ctx.font      = `11px ${FONT_MONO}`;
-        ctx.textAlign = "center";
-        ctx.fillText(`— Empty —`, slotX + slotW / 2, sy + slotH / 2 + 4);
+        const alpha = Math.min(1, p.life / 40) * p.alpha;
+        ctx.fillStyle = `rgba(${p.r},${p.g},${p.b},${alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
       }
-    }
 
-    cy += this.slots.length * (slotH + slotGap) + 16;
+      this._particleRAF = requestAnimationFrame(tick);
+    };
 
-    // ── New Character button ──
-    const newBtnW = 200;
-    const newBtnX = cx - newBtnW / 2;
-    this._drawBtn(ctx, newBtnX, cy, newBtnW, 42, "+ New Character", "#1a2e1a", "#88ee88");
-    this._addRegion("new", newBtnX, cy, newBtnW, 42);
-
-    cy += 56;
-
-    // Version footer
-    ctx.fillStyle = "rgba(80,80,100,0.4)";
-    ctx.font      = `10px ${FONT_MONO}`;
-    ctx.textAlign = "center";
-    ctx.fillText("v0.1 — Early Development", cx, panelY + panelH - 16);
-
-    // Confirm dialog overlay
-    if (this._confirm) {
-      this._drawConfirm(ctx, W, H);
-    }
-
-    ctx.textAlign = "left";
+    tick();
   }
 
-  _drawBtn(ctx, x, y, w, h, label, bg, color) {
-    ctx.fillStyle   = bg;
-    ctx.strokeStyle = "rgba(180,180,220,0.15)";
-    ctx.lineWidth   = 1;
-    this._roundRect(x, y, w, h, 7);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = color;
-    ctx.font      = `bold 12px ${FONT_MONO}`;
-    ctx.textAlign = "center";
-    ctx.fillText(label, x + w / 2, y + h / 2 + 4);
-  }
-
-  _drawConfirm(ctx, W, H) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, W, H);
-
-    const dW = 300, dH = 130;
-    const dx = (W - dW) / 2;
-    const dy = (H - dH) / 2;
-
-    ctx.fillStyle   = "rgba(18,14,32,0.98)";
-    ctx.strokeStyle = "rgba(180,50,50,0.6)";
-    ctx.lineWidth   = 1.5;
-    this._roundRect(dx, dy, dW, dH, 12);
-    ctx.fill();
-    ctx.stroke();
-    ctx.lineWidth = 1;
-
-    ctx.fillStyle = WHITE;
-    ctx.font      = `bold 14px ${FONT_MONO}`;
-    ctx.textAlign = "center";
-    ctx.fillText("Delete this character?", dx + dW / 2, dy + 34);
-
-    ctx.fillStyle = DIM;
-    ctx.font      = `11px ${FONT_MONO}`;
-    ctx.fillText("This cannot be undone.", dx + dW / 2, dy + 54);
-
-    const bW     = 106;
-    const gap    = 14;
-    const startX = dx + (dW - (bW * 2 + gap)) / 2;
-    const bY     = dy + 76;
-
-    this._drawBtn(ctx, startX,          bY, bW, 32, "Cancel", "#223344", WHITE);
-    this._addRegion("confirm_cancel", startX, bY, bW, 32);
-
-    this._drawBtn(ctx, startX + bW + gap, bY, bW, 32, "Delete", "#441111", RED);
-    this._addRegion("confirm_delete", startX + bW + gap, bY, bW, 32);
-  }
-
-  _drawStars(W, H) {
-    const ctx = this.ctx;
-    for (let i = 0; i < 100; i++) {
-      const sx      = (i * 137 + 41) % W;
-      const sy      = (i * 251 + 83) % H;
-      const twinkle = 0.15 + 0.6 * Math.abs(Math.sin(i * 0.7 + this._tick * 0.012));
-      ctx.fillStyle = `rgba(255,255,255,${twinkle})`;
-      ctx.beginPath();
-      ctx.arc(sx, sy, i % 4 === 0 ? 1.2 : 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  _newParticle(canvas) {
+    const isEmber = Math.random() > 0.5;
+    return {
+      x:     Math.random() * (canvas.width || window.innerWidth),
+      y:     (canvas.height || window.innerHeight) + 10,
+      speed: 0.4 + Math.random() * 1.2,
+      drift: (Math.random() - 0.5) * 0.5,
+      size:  0.5 + Math.random() * 2,
+      life:  60 + Math.random() * 120,
+      alpha: 0.3 + Math.random() * 0.5,
+      r: isEmber ? 220 + Math.random() * 35 : 180,
+      g: isEmber ? 80  + Math.random() * 60 : 160,
+      b: isEmber ? 10  + Math.random() * 20 : 220,
+    };
   }
 
   // ─────────────────────────────────────────────
-  // INPUT
+  // HELPERS
   // ─────────────────────────────────────────────
 
-  _addRegion(id, x, y, w, h) {
-    this._regions.push({ id, x, y, w, h });
-  }
-
-  async _handleClick(e) {
-    if (!this.active) return;
-
-    const rect   = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width  / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    const px     = (e.clientX - rect.left) * scaleX;
-    const py     = (e.clientY - rect.top)  * scaleY;
-
-    for (let i = this._regions.length - 1; i >= 0; i--) {
-      const r = this._regions[i];
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-        await this._handleRegion(r.id);
-        return;
-      }
-    }
-  }
-
-  async _handleRegion(id) {
-    if (id === "new") {
-      this.active = false;
-      this.canvas.removeEventListener("pointerdown", this._onClick);
-      const slotIndex = this.slots.findIndex(s => s === null);
-      this.onNew?.(slotIndex >= 0 ? slotIndex : 0);
-      return;
-    }
-
-    if (id === "confirm_cancel") {
-      this._confirm = null;
-      return;
-    }
-
-    if (id === "confirm_delete") {
-      if (this._confirm) {
-        const idx = this._confirm.slotIndex;
-        await this.saveProvider.delete(idx + 1);
-        this.slots[idx] = null;
-        this._confirm   = null;
-      }
-      return;
-    }
-
-    if (id.startsWith("load_")) {
-      const idx  = parseInt(id.replace("load_", ""));
-      const data = this.slots[idx];
-      if (data) {
-        this.active = false;
-        this.canvas.removeEventListener("pointerdown", this._onClick);
-        this.onLoad?.(idx, data);
-      }
-      return;
-    }
-
-    if (id.startsWith("delete_")) {
-      const idx = parseInt(id.replace("delete_", ""));
-      if (this.slots[idx]) {
-        this._confirm = { action: "delete", slotIndex: idx };
-      }
-      return;
-    }
-  }
-
-  _roundRect(x, y, w, h, r) {
-    this.ctx.beginPath();
-    this.ctx.moveTo(x + r, y);
-    this.ctx.lineTo(x + w - r, y);
-    this.ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    this.ctx.lineTo(x + w, y + h - r);
-    this.ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    this.ctx.lineTo(x + r, y + h);
-    this.ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    this.ctx.lineTo(x, y + r);
-    this.ctx.quadraticCurveTo(x, y, x + r, y);
-    this.ctx.closePath();
+  _escHtml(str) {
+    return (str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 }
