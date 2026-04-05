@@ -6,6 +6,7 @@ import { NPCMovementSystem }   from "../systems/NPCMovementSystem.js";
 import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
 import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
+import { CombatLog }           from "../ui/CombatLog.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 export class Engine {
@@ -30,6 +31,7 @@ export class Engine {
     this._abilities     = null;
     this._classes       = null;
     this._currentTarget = null;
+    this.combatLog      = null;
 
     // Change to "fighter" to test melee
     this._playerClassId = "ranger";
@@ -173,6 +175,9 @@ export class Engine {
     renderer.currentTarget = null;
     renderer.player        = player; // needed for cooldown ring reads
 
+    this.combatLog         = new CombatLog();
+    renderer.combatLog     = this.combatLog;
+
     renderer.camera.centerOn(player.x, player.y, world);
   }
 
@@ -237,40 +242,81 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _onCombatEvent(event) {
+    const log = this.combatLog;
+
     switch (event.type) {
-      case "engage":
-        console.log(`[Combat] ${event.entity.id} entered combat`);
+      case "engage": {
+        const who = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
+        log?.push({ text: `${who} entered combat`, type: "system" });
         break;
-      case "disengage":
-        console.log(`[Combat] ${event.entity.id} left combat`);
+      }
+      case "disengage": {
+        const who = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
+        log?.push({ text: `${who} left combat`, type: "system" });
         break;
-      case "hit":
-        console.log(
-          `[Combat] ${event.attacker.id} → ${event.target.id} ` +
-          `[${event.ability.name}] ${event.damage} dmg ` +
-          `(${event.target.hp}/${event.target.maxHp} HP)`
-        );
+      }
+      case "hit": {
+        const isPlayer = event.attacker.id === "player";
+        if (isPlayer) {
+          log?.push({
+            text: `${event.ability.name} hits ${this._npcLabel(event.target)} for ${event.damage}`,
+            type: "damage_out"
+          });
+        } else {
+          log?.push({
+            text: `${this._npcLabel(event.attacker)} hits you for ${event.damage}`,
+            type: "damage_in"
+          });
+        }
         break;
+      }
       case "out_of_range":
-        console.log(
-          `[Combat] ${event.ability.name} failed — out of range or LoS blocked`
-        );
+        log?.push({
+          text: `${event.ability.name} — out of range or LoS blocked`,
+          type: "miss"
+        });
         break;
-      case "kill":
-        console.log(`[Combat] ${event.target.id} died`);
+      case "on_cooldown":
+        log?.push({
+          text: `${event.ability.name} is not ready yet`,
+          type: "miss"
+        });
+        break;
+      case "kill": {
+        const killer = event.attacker.id === "player" ? "You" : this._npcLabel(event.attacker);
+        const victim = event.target.id  === "player" ? "you" : this._npcLabel(event.target);
+        log?.push({ text: `${killer} killed ${victim}!`, type: "kill" });
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
         break;
+      }
       case "combat_end":
-        console.log("[Combat] All enemies down");
+        log?.push({ text: "All enemies defeated.", type: "system" });
         break;
       case "effect_applied":
-        console.log(`[Combat] ${event.effect.type} → ${event.entity.id}`);
+        log?.push({
+          text: `${event.effect.type} applied to ${event.entity.id === "player" ? "you" : this._npcLabel(event.entity)}`,
+          type: "effect"
+        });
         break;
       case "effect_expired":
-        console.log(`[Combat] ${event.effect.type} expired on ${event.entity?.id}`);
+        log?.push({
+          text: `${event.effect.type} wore off`,
+          type: "effect"
+        });
         break;
+    }
+  }
+
+  /** Format an NPC id into a readable label e.g. "Goblin Warrior" */
+  _npcLabel(entity) {
+    return (entity.classId ?? entity.id)
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .trim()
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
     }
   }
 
@@ -292,6 +338,7 @@ export class Engine {
     this.combatSystem?.update();              // 3. timers + resolution
     this.npcAISystem?.update(this.world);     // 4. NPC decides actions
     this.movementSystem?.update();            // 5. player movement
+    this.combatLog?.update();                 // 6. age log messages
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
