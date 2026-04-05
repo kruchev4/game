@@ -73,7 +73,7 @@ export class Renderer {
   }
 
   // ── Entity drawing ────────────────────────────────────────────────────────
-  /*
+  
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -99,12 +99,12 @@ export class Renderer {
     ctx.lineWidth   = entity === this.currentTarget ? 2 : 1;
     ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
     ctx.lineWidth = 1;
-  }*/
+  }
 
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
-    console.log('render');
+    
     
     const { ctx, tileSize, camera } = this;
 
@@ -139,13 +139,10 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
         };
 
-        /*const tileCanvas =
+        const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
-        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);*/
-        ctx.fillStyle = "#00ff00"; // bright green test
-        ctx.fillRect(px, py, tileSize, tileSize);
-       
+        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
       }
     }
 
@@ -153,7 +150,7 @@ export class Renderer {
 
   
     // ── NPC perception rings ──
-    /*for (const entity of entities) {
+    for (const entity of entities) {
       if (entity.type !== "npc" || entity.dead) continue;
 
       const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -166,7 +163,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, r, 0, Math.PI * 2);
       ctx.stroke();
-    }*/
+    }
 
     // ── A* path polyline ──
     /*const player = entities.find(e => e.type === "player");
