@@ -131,38 +131,35 @@ export class SaveProvider {
 
     if (this._useSupabase) {
       try {
-        // Check if a row already exists for this player + slot
-        const { data: existing } = await this._supabase
+        // Find existing row for this player that has this slot number in its data
+        const { data: rows } = await this._supabase
           .from("player_saves")
-          .select("uuid")
-          .eq("player_token", this._playerToken)
-          .eq("data->slot", slot)
-          .maybeSingle();
+          .select("uuid, data")
+          .eq("player_token", this._playerToken);
+
+        const existing = (rows ?? []).find(r => r.data?.slot === slot);
 
         if (existing?.uuid) {
-          // Update existing row
+          // Update by uuid — no filter on jsonb needed
           const { error } = await this._supabase
             .from("player_saves")
-            .update({
-              char_name: payload.name,
-              data:      payload
-            })
+            .update({ char_name: payload.name, data: payload })
             .eq("uuid", existing.uuid);
 
-          if (error) console.warn("[SaveProvider] Supabase update failed:", error.message);
+          if (error) console.warn("[SaveProvider] Update failed:", error.message);
         } else {
           // Insert new row
           const { error } = await this._supabase
             .from("player_saves")
-            .insert({
-              player_token: this._playerToken,
-              char_name:    payload.name,
-              data:         payload
-            });
+            .insert({ player_token: this._playerToken, char_name: payload.name, data: payload });
 
-          if (error) console.warn("[SaveProvider] Supabase insert failed:", error.message);
+          if (error) console.warn("[SaveProvider] Insert failed:", error.message);
         }
       } catch (e) {
+        console.warn("[SaveProvider] Supabase save exception:", e.message);
+      }
+    }
+  }
         console.warn("[SaveProvider] Supabase save failed:", e.message);
       }
     }
@@ -178,11 +175,19 @@ export class SaveProvider {
 
     if (this._useSupabase) {
       try {
-        await this._supabase
+        // Load all rows for player, find the one matching this slot, delete by uuid
+        const { data: rows } = await this._supabase
           .from("player_saves")
-          .delete()
-          .eq("player_token", this._playerToken)
-          .eq("data->slot", slot);
+          .select("uuid, data")
+          .eq("player_token", this._playerToken);
+
+        const target = (rows ?? []).find(r => r.data?.slot === slot);
+        if (target?.uuid) {
+          await this._supabase
+            .from("player_saves")
+            .delete()
+            .eq("uuid", target.uuid);
+        }
       } catch (e) {
         console.warn("[SaveProvider] Supabase delete failed:", e.message);
       }
