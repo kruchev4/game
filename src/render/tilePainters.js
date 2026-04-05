@@ -21,7 +21,7 @@ export const PAINTERS = {
     flower(ctx, s, seed+99);
 
     // tile separation: 1px vignette (keeps map readable)
-    vignette(ctx, s, 0.10);
+    vignette(ctx, s, 0.00);
   },
 };
 
