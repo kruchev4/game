@@ -8,29 +8,34 @@ export class TileFactory {
   }
 
   // neighborMask optional: bitmask for autotiling/edges later
-  getTileCanvas(tileId, wx, wy, neighborMask = 0) {
-    const key = `${tileId}|${wx}|${wy}|${neighborMask}`;
-    const cached = this.cache.get(key);
-    if (cached) return cached;
+  getTileCanvas(tileId, wx, wy, neighbors = null) {
+  // ✅ Stable cache key: tile type + neighbors only
+  const n = neighbors || {};
+  const key = `${tileId}|${n.n}|${n.e}|${n.s}|${n.w}`;
 
-    const c = document.createElement("canvas");
-    c.width = this.tileSize;
-    c.height = this.tileSize;
+  const cached = this.cache.get(key);
+  if (cached) return cached;
 
-    const ctx = c.getContext("2d");
-    const def = getTileDef(tileId);
-    const seed = hash2(wx, wy, tileId);
+  const c = document.createElement("canvas");
+  c.width  = this.tileSize;
+  c.height = this.tileSize;
 
-    const painter = PAINTERS[tileId] ?? PAINTERS.__default;
-    painter(ctx, this.tileSize, def, seed, neighborMask);
+  const ctx = c.getContext("2d");
+  const def = getTileDef(tileId);
 
-    this.cache.set(key, c);
-    return c;
-  }
+  // ✅ Stable seed (NOT world position)
+  const seed =
+    (tileId * 73856093) ^
+    ((n.n ?? 0) * 19349663) ^
+    ((n.e ?? 0) * 83492791) ^
+    ((n.s ?? 0) * 29765729) ^
+    ((n.w ?? 0) * 104395301);
 
-  clear() {
-    this.cache.clear();
-  }
+  const painter = PAINTERS[tileId] ?? PAINTERS.__default;
+  painter(ctx, this.tileSize, def, seed >>> 0);
+
+  this.cache.set(key, c);
+  return c;
 }
 
 // deterministic hash for stable variation
