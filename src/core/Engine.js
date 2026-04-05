@@ -317,8 +317,8 @@ export class Engine {
       .trim()
       .replace(/\b\w/g, c => c.toUpperCase());
   }
-    }
-  }
+}
+  
 
   // ─────────────────────────────────────────────
   // GAME LOOP
