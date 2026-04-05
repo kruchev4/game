@@ -286,7 +286,7 @@ export class CombatSystem {
       this._disengage(target);
 
       if (target.id === this.player.id) {
-        // Player died — emit special event so Engine can handle it
+        console.log("[CombatSystem] Player died — firing player_death event");
         this.onEvent({ type: "player_death", attacker, target });
       } else {
         this.onEvent({ type: "kill", attacker, target });
@@ -358,10 +358,21 @@ export class CombatSystem {
   _removeDeadCombatants() {
     for (const id of [...this.combatants]) {
       const entity = this._findEntityById(id);
-      if (entity?.dead) this._disengage(entity);
+      if (!entity?.dead) continue;
+
+      // Player death is handled by Engine via player_death event —
+      // don't disengage or modify player.dead here
+      if (id === this.player.id) continue;
+
+      this._disengage(entity);
     }
 
-    if (this.combatants.size === 1 && this.combatants.has(this.player.id)) {
+    // End combat only if all NPCs are gone and player is alive
+    if (
+      !this.player.dead &&
+      this.combatants.size === 1 &&
+      this.combatants.has(this.player.id)
+    ) {
       this._disengage(this.player);
       this.onEvent({ type: "combat_end" });
     }
