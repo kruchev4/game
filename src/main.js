@@ -2,17 +2,16 @@
  * main.js — Entry point. Self-executes on load.
  *
  * Flow:
- *   TitleScreen (shows saved characters + New Character button)
- *     ├─ Play [saved char] → Engine
- *     └─ New Character     → CharacterCreation → save → Engine
+ *   ScreenManager (character select + creation HTML overlay)
+ *     ├─ Play saved char  → Engine
+ *     └─ Create new char  → auto-save → Engine
  */
 
 import { Engine }                    from "./core/Engine.js";
 import { Renderer }                  from "./render/Renderer.js";
 import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 import { SaveProvider }              from "./adapters/SaveProvider.js";
-import { TitleScreen }               from "./ui/TitleScreen.js";
-import { CharacterCreation }         from "./ui/CharacterCreation.js";
+import { ScreenManager }             from "./ui/ScreenManager.js";
 
 const WORLD_ID = "overworld_C";
 
@@ -37,29 +36,27 @@ async function start() {
     const abilities = await abilitiesRes.json();
     const classes   = await classesRes.json();
 
-    // Load save slots once — mutated in place as characters are saved/deleted
-    const slots = await saveProvider.loadAll();
-
     // ── Launch engine ──────────────────────────────────────────────────
     async function launchGame(character, saveSlot) {
       const engine        = new Engine({ worldProvider, renderer });
       engine.saveSlot     = saveSlot;
       engine.saveProvider = saveProvider;
-
-      // Return to title screen if player quits after death
-      engine.onQuitToTitle = () => showTitle();
+      engine.onQuitToTitle = () => showScreens();
 
       await engine.loadWorld(WORLD_ID, character);
       engine.start();
       window.engine = engine;
     }
 
-    // ── Title screen ───────────────────────────────────────────────────
-    function showTitle() {
-      const title = new TitleScreen({ canvas, slots, saveProvider });
+    // ── Show pre-game screens ──────────────────────────────────────────
+    async function showScreens() {
+      // Always reload slots fresh — reflects any saves made during gameplay
+      const slots = await saveProvider.loadAll();
+
+      const mgr = new ScreenManager({ slots, saveProvider, classes, abilities });
 
       // Load existing character
-      title.onLoad = async (slotIndex, saveData) => {
+      mgr.onPlay = async (slotIndex, saveData) => {
         await launchGame({
           name:    saveData.name,
           raceId:  saveData.raceId,
@@ -68,46 +65,29 @@ async function start() {
         }, slotIndex + 1);
       };
 
-      // New character — slotIndex is the first free slot
-      title.onNew = (slotIndex) => {
-        showCharacterCreation(slotIndex);
-      };
-
-      title.show();
-    }
-
-    // ── Character creation ─────────────────────────────────────────────
-    function showCharacterCreation(slotIndex) {
-      const creation = new CharacterCreation({ canvas, classes, abilities });
-
-      creation.onConfirm = async ({ name, raceId, classId, stats }) => {
-        const character = { name, raceId, classId, stats };
-
-        // Save immediately into the assigned slot
+      // New character confirmed — save then launch
+      mgr.onCreate = async (slotIndex, character) => {
         await saveProvider.save(slotIndex + 1, {
           ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
-          gold:      0,
+          gold:      50,
+          xp:        0,
           inventory: []
         });
-
-        // Update local slots array so title screen reflects new save
-        slots[slotIndex] = { name, raceId, classId, stats };
-
         await launchGame(character, slotIndex + 1);
       };
 
-      creation.show();
+      mgr.show();
     }
 
-    showTitle();
+    showScreens();
 
   } catch (e) {
     console.error("[Realm of Echoes] Startup error:", e);
 
     const canvas = document.getElementById("game");
     if (canvas) {
-      const ctx = canvas.getContext("2d");
+      const ctx     = canvas.getContext("2d");
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
       ctx.fillStyle = "#000";
