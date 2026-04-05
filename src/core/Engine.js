@@ -116,6 +116,7 @@ export class Engine {
 
   async _loadWorldFromProvider(worldId) {
     this.world = await this.worldProvider.load(worldId);
+    this.renderer.chunkLayer.setWorld(this.world);
   }
 
   _spawnPlayer() {
