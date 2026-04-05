@@ -9,10 +9,12 @@ export class TileFactory {
   }
 
  getTileCanvas(tileId, wx, wy, neighbors = null) {
-  // NOTE: wx/wy are accepted for API compatibility, but NOT used in caching.
-  // Caching is by tile variant (tileId + neighbor pattern), not world position.
+  // Optional debug (turn off once confirmed)
+  // console.count("TILE VARIANT PAINT");
 
   const n = neighbors || {};
+
+  
   const key = `${tileId}|${n.n ?? "x"}|${n.e ?? "x"}|${n.s ?? "x"}|${n.w ?? "x"}`;
 
   const cached = this.cache.get(key);
@@ -25,7 +27,7 @@ export class TileFactory {
   const ctx = c.getContext("2d");
   const def = getTileDef(tileId);
 
-  // Stable seed (NOT world position) so it doesn't repaint while scrolling
+  // ✅ Stable seed (NOT world position)
   const seed =
     ((tileId * 73856093) ^
       ((n.n ?? 0) * 19349663) ^
