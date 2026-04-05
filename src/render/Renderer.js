@@ -112,8 +112,8 @@ export class Renderer {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
-    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
+    const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 2;
+    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 2;
 
  
     const startX = Math.floor(camera.x);
