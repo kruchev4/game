@@ -1,14 +1,23 @@
 /**
  * SlotPicker.js
  *
- * Canvas-drawn save slot picker.
- * Shows up to 5 slots — filled slots show character info,
- * empty slots show "Empty". Supports loading and deleting.
+ * Canvas-drawn save slot picker. Two modes:
+ *
+ *   mode: "load" (default)
+ *     - Only filled slots are clickable
+ *     - Shows Load + Delete buttons on filled slots
+ *     - Used when loading an existing character
+ *
+ *   mode: "save"
+ *     - ALL slots are clickable (empty or filled)
+ *     - No delete buttons
+ *     - Used after character creation to pick where to save
+ *     - Filled slots show "Overwrite" warning
  *
  * Usage:
- *   const picker = new SlotPicker({ canvas, slots });
- *   picker.onLoad = (slotIndex, data) => { ... };  // 0-based index
- *   picker.onBack = () => { ... };
+ *   const picker = new SlotPicker({ canvas, slots, saveProvider, mode: "save" });
+ *   picker.onSelect = (slotIndex, existingData) => { ... };
+ *   picker.onBack   = () => { ... };
  *   picker.show();
  */
 
@@ -17,29 +26,33 @@ const GOLD      = "#e8c84a";
 const WHITE     = "#eeeeee";
 const DIM       = "#888899";
 const RED       = "#cc4444";
+const ORANGE    = "#cc8833";
 const FONT_MONO = "monospace";
 
 export class SlotPicker {
   /**
    * @param {object}             opts
    * @param {HTMLCanvasElement}  opts.canvas
-   * @param {Array<object|null>} opts.slots      - array of save data, null = empty
+   * @param {Array<object|null>} opts.slots        - array of save data, null = empty
    * @param {SaveProvider}       opts.saveProvider
+   * @param {"load"|"save"}      [opts.mode]        - default "load"
    */
-  constructor({ canvas, slots, saveProvider }) {
+  constructor({ canvas, slots, saveProvider, mode = "load" }) {
     this.canvas       = canvas;
     this.ctx          = canvas.getContext("2d");
-    this.slots        = slots;      // length = MAX_SLOTS
+    this.slots        = slots;
     this.saveProvider = saveProvider;
+    this.mode         = mode;
     this.active       = false;
 
-    // Callbacks
-    this.onLoad = null; // (slotIndex, saveData) => {}
-    this.onBack = null;
+    // Unified callback — fired for both load and save slot selection
+    // (slotIndex: 0-based, existingData: object|null)
+    this.onSelect = null;
+    this.onBack   = null;
 
-    this._regions  = [];
-    this._confirm  = null; // { action: "load"|"delete", slotIndex }
-    this._onClick  = (e) => this._handleClick(e);
+    this._regions = [];
+    this._confirm = null; // { action: "delete", slotIndex }
+    this._onClick = (e) => this._handleClick(e);
   }
 
   show() {
@@ -71,7 +84,7 @@ export class SlotPicker {
 
     // Panel
     const panelW = Math.min(560, W - 40);
-    const panelH = Math.min(540, H - 60);
+    const panelH = Math.min(560, H - 60);
     const panelX = (W - panelW) / 2;
     const panelY = (H - panelH) / 2;
 
@@ -90,32 +103,44 @@ export class SlotPicker {
     ctx.fillStyle = GOLD;
     ctx.font      = `bold 20px ${FONT_MONO}`;
     ctx.textAlign = "center";
-    ctx.fillText("Load Character", cx, cy);
-    cy += 36;
+    ctx.fillText(
+      this.mode === "save" ? "Choose a Save Slot" : "Load Character",
+      cx, cy
+    );
+
+    if (this.mode === "save") {
+      ctx.fillStyle = DIM;
+      ctx.font      = `11px ${FONT_MONO}`;
+      ctx.fillText("Select a slot to save your character into", cx, cy + 20);
+    }
+
+    cy += this.mode === "save" ? 48 : 36;
 
     // Slots
-    const slotH   = 64;
+    const slotH   = 66;
     const slotGap = 10;
     const slotX   = panelX + 24;
     const slotW   = panelW - 48;
 
     for (let i = 0; i < this.slots.length; i++) {
-      const data   = this.slots[i];
-      const sy     = cy + i * (slotH + slotGap);
-      const filled = data !== null;
+      const data     = this.slots[i];
+      const sy       = cy + i * (slotH + slotGap);
+      const filled   = data !== null;
+      const clickable = this.mode === "save" || filled;
 
       // Slot background
-      ctx.fillStyle   = filled ? "rgba(24,28,50,0.9)" : "rgba(14,14,24,0.7)";
-      ctx.strokeStyle = filled ? "rgba(100,120,180,0.5)" : "rgba(60,60,80,0.35)";
+      ctx.fillStyle   = filled  ? "rgba(24,28,50,0.9)" : "rgba(14,14,24,0.7)";
+      ctx.strokeStyle = clickable
+        ? filled ? "rgba(100,120,180,0.5)" : "rgba(80,100,80,0.5)"
+        : "rgba(40,40,60,0.3)";
       this._roundRect(slotX, sy, slotW, slotH, 8);
       ctx.fill();
       ctx.stroke();
 
       if (filled) {
-        // Character info
         const savedDate = data.savedAt
           ? new Date(data.savedAt).toLocaleDateString()
-          : "Unknown date";
+          : "";
 
         ctx.fillStyle = WHITE;
         ctx.font      = `bold 14px ${FONT_MONO}`;
@@ -124,35 +149,61 @@ export class SlotPicker {
 
         ctx.fillStyle = DIM;
         ctx.font      = `11px ${FONT_MONO}`;
-        const classLabel = (data.classId ?? "").replace(/\b\w/g, c => c.toUpperCase());
+        const classLabel = (data.classId ?? "")
+          .replace(/([A-Z])/g, " $1")
+          .replace(/\b\w/g, c => c.toUpperCase())
+          .trim();
         ctx.fillText(
-          `${classLabel}  ·  ${data.position?.worldId ?? ""}  ·  Saved ${savedDate}`,
+          `${classLabel}${savedDate ? "  ·  Saved " + savedDate : ""}`,
           slotX + 14, sy + 40
         );
 
-        // Gold if present
-        if (data.gold !== undefined) {
-          ctx.fillStyle = GOLD;
-          ctx.fillText(`${data.gold} gold`, slotX + 14, sy + 56);
+        if (this.mode === "save") {
+          // Overwrite warning
+          ctx.fillStyle = ORANGE;
+          ctx.font      = `10px ${FONT_MONO}`;
+          ctx.fillText("⚠ Overwrite", slotX + 14, sy + 56);
+
+          // Select button
+          const btnW = 100;
+          const btnX = slotX + slotW - btnW - 14;
+          this._drawSmallButton(ctx, btnX, sy + 18, btnW, 30, "Select", "#334466", WHITE);
+          this._addRegion(`select_${i}`, btnX, sy + 18, btnW, 30);
+
+        } else {
+          // Load mode — Load + Delete buttons
+          if (data.gold !== undefined) {
+            ctx.fillStyle = GOLD;
+            ctx.font      = `10px ${FONT_MONO}`;
+            ctx.fillText(`${data.gold} gold`, slotX + 14, sy + 56);
+          }
+
+          const loadBtnW = 80;
+          const loadBtnX = slotX + slotW - loadBtnW - 50;
+          this._drawSmallButton(ctx, loadBtnX, sy + 18, loadBtnW, 30, "Load", "#334466", WHITE);
+          this._addRegion(`select_${i}`, loadBtnX, sy + 18, loadBtnW, 30);
+
+          const delBtnX = slotX + slotW - 42;
+          this._drawSmallButton(ctx, delBtnX, sy + 18, 34, 30, "✕", "#441414", RED);
+          this._addRegion(`delete_${i}`, delBtnX, sy + 18, 34, 30);
         }
-
-        // Load button
-        const loadBtnW = 80;
-        const loadBtnX = slotX + slotW - loadBtnW - 50;
-        this._drawSmallButton(ctx, loadBtnX, sy + 16, loadBtnW, 30, "Load", "#334466", WHITE);
-        this._addRegion(`load_${i}`, loadBtnX, sy + 16, loadBtnW, 30);
-
-        // Delete button
-        const delBtnX = slotX + slotW - 42;
-        this._drawSmallButton(ctx, delBtnX, sy + 16, 34, 30, "✕", "#441414", RED);
-        this._addRegion(`delete_${i}`, delBtnX, sy + 16, 34, 30);
 
       } else {
         // Empty slot
-        ctx.fillStyle = DIM;
-        ctx.font      = `12px ${FONT_MONO}`;
         ctx.textAlign = "center";
-        ctx.fillText(`Slot ${i + 1} — Empty`, slotX + slotW / 2, sy + slotH / 2 + 5);
+
+        if (this.mode === "save") {
+          // In save mode — empty slots are clickable
+          ctx.fillStyle = "#aabbaa";
+          ctx.font      = `bold 12px ${FONT_MONO}`;
+          ctx.fillText(`Slot ${i + 1} — Empty  (New Save)`, slotX + slotW / 2, sy + slotH / 2 + 4);
+          this._addRegion(`select_${i}`, slotX, sy, slotW, slotH);
+        } else {
+          // In load mode — empty slots are inert
+          ctx.fillStyle = "rgba(100,100,120,0.4)";
+          ctx.font      = `12px ${FONT_MONO}`;
+          ctx.fillText(`Slot ${i + 1} — Empty`, slotX + slotW / 2, sy + slotH / 2 + 4);
+        }
       }
     }
 
@@ -164,7 +215,7 @@ export class SlotPicker {
     this._drawSmallButton(ctx, backBtnX, cy, backBtnW, 36, "← Back", "#222233", DIM);
     this._addRegion("back", backBtnX, cy, backBtnW, 36);
 
-    // Confirm dialog (delete)
+    // Confirm dialog (delete — load mode only)
     if (this._confirm) {
       this._drawConfirmDialog(ctx, W, H);
     }
@@ -173,7 +224,6 @@ export class SlotPicker {
   }
 
   _drawConfirmDialog(ctx, W, H) {
-    // Dim overlay
     ctx.fillStyle = "rgba(0,0,0,0.65)";
     ctx.fillRect(0, 0, W, H);
 
@@ -198,13 +248,12 @@ export class SlotPicker {
     ctx.font      = `11px ${FONT_MONO}`;
     ctx.fillText("This cannot be undone.", dx + dW / 2, dy + 56);
 
-    const btnY  = dy + 80;
-    const btnW  = 110;
-    const gap   = 16;
-    const totalW = btnW * 2 + gap;
-    const startX = dx + (dW - totalW) / 2;
+    const btnY   = dy + 80;
+    const btnW   = 110;
+    const gap    = 16;
+    const startX = dx + (dW - (btnW * 2 + gap)) / 2;
 
-    this._drawSmallButton(ctx, startX,          btnY, btnW, 34, "Cancel", "#223", WHITE);
+    this._drawSmallButton(ctx, startX,          btnY, btnW, 34, "Cancel", "#223344", WHITE);
     this._addRegion("confirm_cancel", startX, btnY, btnW, 34);
 
     this._drawSmallButton(ctx, startX + btnW + gap, btnY, btnW, 34, "Delete", "#441414", RED);
@@ -214,6 +263,7 @@ export class SlotPicker {
   _drawSmallButton(ctx, x, y, w, h, label, bg, color) {
     ctx.fillStyle   = bg;
     ctx.strokeStyle = "rgba(180,180,220,0.2)";
+    ctx.lineWidth   = 1;
     this._roundRect(x, y, w, h, 6);
     ctx.fill();
     ctx.stroke();
@@ -237,7 +287,7 @@ export class SlotPicker {
     const px     = (e.clientX - rect.left) * scaleX;
     const py     = (e.clientY - rect.top)  * scaleY;
 
-    // Check regions back-to-front (confirm dialog regions registered last)
+    // Check regions back-to-front so confirm dialog takes priority
     for (let i = this._regions.length - 1; i >= 0; i--) {
       const r = this._regions[i];
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
@@ -270,13 +320,10 @@ export class SlotPicker {
       return;
     }
 
-    if (id.startsWith("load_")) {
-      const idx  = parseInt(id.replace("load_", ""));
-      const data = this.slots[idx];
-      if (data) {
-        this.hide();
-        this.onLoad?.(idx, data);
-      }
+    if (id.startsWith("select_")) {
+      const idx  = parseInt(id.replace("select_", ""));
+      this.hide();
+      this.onSelect?.(idx, this.slots[idx]);
       return;
     }
 
