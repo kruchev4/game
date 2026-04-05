@@ -136,14 +136,23 @@ export class Engine {
 
       // If rolled stats provided, use them; otherwise use class base stats
       const stats = char?.stats ?? classDef.baseStats;
-      this.player.hp    = classDef.baseStats.hp; // HP always from class
+      this.player.hp    = classDef.baseStats.hp;
       this.player.maxHp = classDef.baseStats.hp;
 
-      // Store rolled stats for future use (skills, checks, etc.)
       this.player.stats = stats;
 
       // Restore inventory from save data
       this.player.fromSaveData(char);
+
+      // Ensure learnedSkills is seeded from starting abilities so
+      // _rebuildAbilityBar doesn't filter them out on first skill pick.
+      // Starting abilities begin at rank 1 if not already in learnedSkills.
+      if (!this.player.learnedSkills) this.player.learnedSkills = {};
+      for (const abilityId of this.player.abilities) {
+        if (this.player.learnedSkills[abilityId] === undefined) {
+          this.player.learnedSkills[abilityId] = 1;
+        }
+      }
 
       // Sync ability bar from restored learnedSkills / abilities
       // (deferred until after _buildSystems sets up renderer)
