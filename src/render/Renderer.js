@@ -29,10 +29,11 @@ export class Renderer {
 
     this.camera = new Camera({ tileSize: this.tileSize });
 
-    // Set by Engine — used for HUD rendering
-    this.currentTarget   = null;  // NPC entity or null
-    this.playerAbilities = [];    // array of ability definition objects { id, name, ... }
-    this.abilities       = {};    // full ability map (id -> def), for lookup
+    // Set by Engine
+    this.currentTarget   = null;   // NPC entity or null
+    this.playerAbilities = [];     // array of ability defs in slot order
+    this.abilities       = {};     // full ability map id -> def
+    this.player          = null;   // player entity ref (for cooldown reads)
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -50,15 +51,14 @@ export class Renderer {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
 
-    // Determine color before drawing
     if (entity.type === "npc") {
       ctx.fillStyle = entity === this.currentTarget
-        ? "#ffaa00"                      // orange = targeted
+        ? "#ffaa00"
         : entity.state === "alert"
-          ? "#ff5555"                    // red = aware/chasing
-          : "#cc3333";                   // dark red = roaming
+          ? "#ff5555"
+          : "#cc3333";
     } else {
-      ctx.fillStyle = "#ffd700";         // player gold
+      ctx.fillStyle = "#ffd700";
     }
 
     ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
@@ -74,7 +74,6 @@ export class Renderer {
   render(world, entities = []) {
     const { ctx, tileSize, camera } = this;
 
-    // Background
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -153,7 +152,7 @@ export class Renderer {
       ctx.lineWidth = 1;
     }
 
-    // ── Right-click move target marker ──
+    // ── Move target marker ──
     if (player?.moveTarget) {
       const { sx, sy } = camera.worldToScreen(
         player.moveTarget.x, player.moveTarget.y
@@ -169,24 +168,23 @@ export class Renderer {
       if (!entity.dead) this.drawEntity(entity);
     }
 
-    // ── HUD overlays ──
+    // ── HUD ──
     this._drawTargetFrame();
     this._drawAbilityBar();
   }
 
-  // ── Target Frame (top-center) ─────────────────────────────────────────────
+  // ── Target Frame ─────────────────────────────────────────────────────────
 
   _drawTargetFrame() {
     const target = this.currentTarget;
     if (!target || target.dead) return;
 
-    const { ctx }                                         = this;
+    const { ctx }                                                    = this;
     const { width, height, paddingX, paddingY, borderR, topOffset } = TARGET_FRAME;
 
     const x = (ctx.canvas.width - width) / 2;
     const y = topOffset;
 
-    // Panel
     ctx.fillStyle = "rgba(10, 10, 20, 0.85)";
     this._roundRect(x, y, width, height, borderR);
     ctx.fill();
@@ -197,7 +195,6 @@ export class Renderer {
     ctx.stroke();
     ctx.lineWidth = 1;
 
-    // Name
     const label = target.id
       .replace(/_/g, " ")
       .replace(/\b\w/g, c => c.toUpperCase());
@@ -206,12 +203,10 @@ export class Renderer {
     ctx.font      = "bold 13px monospace";
     ctx.fillText(label, x + paddingX, y + paddingY + 12);
 
-    // Class
     ctx.fillStyle = "#aaaaaa";
     ctx.font      = "11px monospace";
     ctx.fillText(target.classId ?? "", x + paddingX, y + paddingY + 26);
 
-    // HP bar track
     const barX = x + paddingX;
     const barY = y + height - paddingY - 10;
     const barW = width - paddingX * 2;
@@ -220,18 +215,16 @@ export class Renderer {
     ctx.fillStyle = "#333333";
     ctx.fillRect(barX, barY, barW, barH);
 
-    // HP bar fill
     const hpPct   = Math.max(0, target.hp / target.maxHp);
     ctx.fillStyle = hpPct > 0.5 ? "#44cc44" : hpPct > 0.25 ? "#ccaa22" : "#cc3333";
     ctx.fillRect(barX, barY, barW * hpPct, barH);
 
-    // HP label
     ctx.fillStyle = "#ffffff";
     ctx.font      = "10px monospace";
     ctx.fillText(`${target.hp} / ${target.maxHp}`, barX + 2, barY + barH - 1);
   }
 
-  // ── Ability Bar (bottom-center) ───────────────────────────────────────────
+  // ── Ability Bar ───────────────────────────────────────────────────────────
 
   _drawAbilityBar() {
     const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
@@ -244,59 +237,122 @@ export class Renderer {
     const startX = (ctx.canvas.width - totalW) / 2;
     const startY = ctx.canvas.height - slotSize - paddingY;
 
-    const hasTarget = this.currentTarget && !this.currentTarget.dead;
+    const hasTarget   = this.currentTarget && !this.currentTarget.dead;
+    const cooldowns   = this.player?.abilityCooldowns ?? {};
 
     for (let i = 0; i < abilities.length; i++) {
       const ability = abilities[i];
       const sx      = startX + i * (slotSize + gap);
       const sy      = startY;
+      const cx      = sx + slotSize / 2;
+      const cy      = sy + slotSize / 2;
 
-      // Slot background
-      ctx.fillStyle = "rgba(10, 10, 20, 0.88)";
+      const cd      = cooldowns[ability.id] ?? null;
+      const onCD    = cd && cd.remaining > 0;
+
+      // ── Slot background ──
+      ctx.fillStyle = onCD
+        ? "rgba(6, 6, 14, 0.92)"      // darker when on cooldown
+        : "rgba(10, 10, 20, 0.88)";
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.fill();
 
-      // Border — gold when usable, grey otherwise
-      ctx.strokeStyle = hasTarget
-        ? "rgba(255, 180, 50, 0.85)"
-        : "rgba(120, 120, 140, 0.55)";
+      // ── Border ──
+      ctx.strokeStyle = onCD
+        ? "rgba(80, 80, 100, 0.5)"    // dim when on cooldown
+        : hasTarget
+          ? "rgba(255, 180, 50, 0.85)"
+          : "rgba(120, 120, 140, 0.55)";
       ctx.lineWidth = 1.5;
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.stroke();
       ctx.lineWidth = 1;
 
-      // Ability name (centered, wraps if long)
-      ctx.fillStyle = "#ffffff";
+      // ── Ability name ──
+      ctx.fillStyle = onCD ? "rgba(130,130,130,0.7)" : "#ffffff";
       ctx.font      = "bold 10px monospace";
       ctx.textAlign = "center";
-      this._drawWrappedText(
-        ability.name,
-        sx + slotSize / 2,
-        sy + 18,
-        slotSize - 8,
-        12
-      );
+      this._drawWrappedText(ability.name, cx, sy + 18, slotSize - 8, 12);
 
-      // Range / type tag
-      ctx.fillStyle = ability.type === "melee" ? "#ffaa55" : "#88aaff";
-      ctx.font      = "9px monospace";
+      // ── Range tag ──
+      ctx.fillStyle = onCD
+        ? "rgba(100,100,120,0.6)"
+        : ability.type === "melee" ? "#ffaa55" : "#88aaff";
+      ctx.font = "9px monospace";
       ctx.fillText(
         ability.type === "melee" ? "MELEE" : `${ability.range}t`,
-        sx + slotSize / 2,
+        cx,
         sy + slotSize - 18
       );
 
-      // Keybind hint
-      ctx.fillStyle = "rgba(200, 200, 200, 0.55)";
+      // ── Keybind ──
+      ctx.fillStyle = "rgba(200,200,200,0.55)";
       ctx.font      = "10px monospace";
-      ctx.fillText(`[${i + 1}]`, sx + slotSize / 2, sy + slotSize - 6);
+      ctx.fillText(`[${i + 1}]`, cx, sy + slotSize - 6);
 
       ctx.textAlign = "left";
+
+      // ── Cooldown sweep ring ──
+      if (onCD) {
+        this._drawCooldownRing(cx, cy, slotSize, cd);
+      }
     }
   }
 
+  /**
+   * Draws a clockwise-sweeping arc overlay on an ability slot.
+   * The arc starts at 12 o'clock and sweeps clockwise.
+   * Full circle = ability just used. Empty = ready.
+   *
+   * @param {number} cx         - centre x of slot
+   * @param {number} cy         - centre y of slot
+   * @param {number} slotSize
+   * @param {{ remaining: number, max: number }} cd
+   */
+  _drawCooldownRing(cx, cy, slotSize, cd) {
+    const { ctx } = this;
+
+    const radius   = slotSize * 0.38;
+    const progress = cd.remaining / cd.max;   // 1 = just fired, 0 = ready
+
+    // Dark overlay behind the ring to dim the slot
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Track ring (full circle, dim)
+    ctx.strokeStyle = "rgba(60, 60, 80, 0.7)";
+    ctx.lineWidth   = 3.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Sweep arc — starts at 12 o'clock (-π/2), sweeps clockwise
+    // The filled portion represents remaining cooldown.
+    // As remaining decreases toward 0, the arc shrinks.
+    const startAngle = -Math.PI / 2;
+    const endAngle   = startAngle + (Math.PI * 2 * progress);
+
+    ctx.strokeStyle = "rgba(220, 180, 60, 0.9)";
+    ctx.lineWidth   = 3.5;
+    ctx.lineCap     = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+    ctx.stroke();
+
+    // Cooldown remaining label (seconds approximation — ticks / 60)
+    const secsRemaining = (cd.remaining / 60).toFixed(1);
+    ctx.fillStyle = "rgba(255, 220, 100, 0.9)";
+    ctx.font      = "bold 11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(secsRemaining, cx, cy + 4);
+    ctx.textAlign = "left";
+    ctx.lineWidth = 1;
+    ctx.lineCap   = "butt";
+  }
+
   // ── Ability bar hit testing ───────────────────────────────────────────────
-  // Returns 0-based slot index if (px, py) hits a slot, else -1.
 
   getAbilitySlotAt(px, py) {
     const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
