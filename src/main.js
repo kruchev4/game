@@ -1,12 +1,10 @@
 /**
- * main.js — Entry point
- *
- * Loaded as a module from index.html. Self-executes immediately.
+ * main.js — Entry point. Self-executes on load.
  *
  * Flow:
- *   TitleScreen (canvas)
- *     ├─ New  → CharacterCreation (HTML overlay, 4 steps) → SlotPicker → Engine
- *     └─ Load → SlotPicker → Engine
+ *   TitleScreen (shows saved characters + New Character button)
+ *     ├─ Play [saved char] → Engine
+ *     └─ New Character     → CharacterCreation → save → Engine
  */
 
 import { Engine }                    from "./core/Engine.js";
@@ -14,7 +12,6 @@ import { Renderer }                  from "./render/Renderer.js";
 import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { TitleScreen }               from "./ui/TitleScreen.js";
-import { SlotPicker }                from "./ui/SlotPicker.js";
 import { CharacterCreation }         from "./ui/CharacterCreation.js";
 
 const WORLD_ID = "overworld_C";
@@ -28,7 +25,7 @@ async function start() {
     const worldProvider = new SupabaseOverworldProvider();
     const saveProvider  = new SaveProvider();
 
-    // Load data files once — shared across all screens
+    // Load data files once
     const [abilitiesRes, classesRes] = await Promise.all([
       fetch("./src/data/abilities.json"),
       fetch("./src/data/classes.json")
@@ -40,84 +37,72 @@ async function start() {
     const abilities = await abilitiesRes.json();
     const classes   = await classesRes.json();
 
-    // Load save slots upfront so title screen knows if Load is available
-    const slots    = await saveProvider.loadAll();
-    const hasSaves = slots.some(s => s !== null);
+    // Load save slots once — mutated in place as characters are saved/deleted
+    const slots = await saveProvider.loadAll();
 
-    // ── Launch engine with confirmed character ───────────────────────────
+    // ── Launch engine ──────────────────────────────────────────────────
     async function launchGame(character, saveSlot) {
       const engine        = new Engine({ worldProvider, renderer });
       engine.saveSlot     = saveSlot;
       engine.saveProvider = saveProvider;
+
+      // Return to title screen if player quits after death
+      engine.onQuitToTitle = () => showTitle();
 
       await engine.loadWorld(WORLD_ID, character);
       engine.start();
       window.engine = engine;
     }
 
-    // ── After new character creation: pick a slot to save into ───────────
-    function showSaveSlotPickerForNew(character) {
-      const picker = new SlotPicker({ canvas, slots, saveProvider, mode: "save" });
+    // ── Title screen ───────────────────────────────────────────────────
+    function showTitle() {
+      const title = new TitleScreen({ canvas, slots, saveProvider });
 
-      picker.onSelect = async (slotIndex, _existing) => {
+      // Load existing character
+      title.onLoad = async (slotIndex, saveData) => {
+        await launchGame({
+          name:    saveData.name,
+          raceId:  saveData.raceId,
+          classId: saveData.classId,
+          stats:   saveData.stats
+        }, slotIndex + 1);
+      };
+
+      // New character — slotIndex is the first free slot
+      title.onNew = (slotIndex) => {
+        showCharacterCreation(slotIndex);
+      };
+
+      title.show();
+    }
+
+    // ── Character creation ─────────────────────────────────────────────
+    function showCharacterCreation(slotIndex) {
+      const creation = new CharacterCreation({ canvas, classes, abilities });
+
+      creation.onConfirm = async ({ name, raceId, classId, stats }) => {
+        const character = { name, raceId, classId, stats };
+
+        // Save immediately into the assigned slot
         await saveProvider.save(slotIndex + 1, {
-          name:      character.name,
-          raceId:    character.raceId,
-          classId:   character.classId,
-          stats:     character.stats,
+          ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
           gold:      0,
           inventory: []
         });
-        slots[slotIndex] = { name: character.name, classId: character.classId };
+
+        // Update local slots array so title screen reflects new save
+        slots[slotIndex] = { name, raceId, classId, stats };
+
         await launchGame(character, slotIndex + 1);
-      };
-
-      picker.onBack = () => showCharacterCreation();
-      picker.show();
-    }
-
-    // ── Character creation (HTML overlay, 4 steps) ───────────────────────
-    function showCharacterCreation() {
-      const creation = new CharacterCreation({ canvas, classes, abilities });
-
-      creation.onConfirm = ({ name, raceId, classId, stats }) => {
-        showSaveSlotPickerForNew({ name, raceId, classId, stats });
       };
 
       creation.show();
     }
 
-    // ── Slot picker in load mode ─────────────────────────────────────────
-    function showLoadPicker() {
-      const picker = new SlotPicker({ canvas, slots, saveProvider, mode: "load" });
-
-      picker.onSelect = async (slotIndex, saveData) => {
-        const character = {
-          name:    saveData.name,
-          raceId:  saveData.raceId,
-          classId: saveData.classId,
-          stats:   saveData.stats
-        };
-        await launchGame(character, slotIndex + 1);
-      };
-
-      picker.onBack = () => showTitle();
-      picker.show();
-    }
-
-    // ── Title screen (canvas) ────────────────────────────────────────────
-    function showTitle() {
-      const title = new TitleScreen({ canvas, hasSaves });
-      title.onNew  = () => showCharacterCreation();
-      title.onLoad = () => showLoadPicker();
-      title.show();
-    }
-
     showTitle();
 
   } catch (e) {
-    // Surface any startup errors visibly
     console.error("[Realm of Echoes] Startup error:", e);
 
     const canvas = document.getElementById("game");
@@ -138,5 +123,4 @@ async function start() {
   }
 }
 
-// Self-execute when module loads
 start();
