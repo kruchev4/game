@@ -42,7 +42,8 @@ export class Engine {
     // Called by main.js — fires when player quits to title after death
     this.onQuitToTitle = null;
 
-    this._playerClassId = "ranger";
+    // Fallback class for testing only — overridden by character data
+    this._playerClassId = null;
   }
 
   // ─────────────────────────────────────────────
