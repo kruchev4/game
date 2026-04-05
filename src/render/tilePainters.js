@@ -5,10 +5,7 @@ export const PAINTERS = {
     ctx.fillRect(0, 0, s, s);
   },
 
-0: (ctx, s) => {
-  ctx.fillStyle = "#00ff00";
-  ctx.fillRect(0, 0, s, s);
-},}
+
 
   // Tile 0: Grass
  0: (ctx, s, def, seed, neighbors) => {
