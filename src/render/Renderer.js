@@ -26,22 +26,19 @@ export class Renderer {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
 
-    ctx.fillStyle = "#ffd700"; // gold
-    ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
-
-    ctx.strokeStyle = "#000";
-    ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
+    // Set color BEFORE drawing
     if (entity.type === "npc") {
-      
-      ctx.fillStyle =
-      entity.state === "alert"
+      ctx.fillStyle = entity.state === "alert"
         ? "#ff5555"   // red = aware
         : "#cc3333";  // darker red = roaming
-
-      } else {
-     ctx.fillStyle = "#ffd700"; // player gold
-      }
+    } else {
+      ctx.fillStyle = "#ffd700"; // player gold
     }
+
+    ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
+    ctx.strokeStyle = "#000";
+    ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
+  }
 
   render(world, entities = []) {
     const { ctx, tileSize, camera } = this;
@@ -149,26 +146,6 @@ if (player && player.moveTarget) {
   ctx.fill();
 }
 
-
-    // ---- draw click target marker ----
-    
-    if (player && player.moveTarget) {
-      const { sx, sy } = camera.worldToScreen(
-        player.moveTarget.x,
-        player.moveTarget.y
-      );
-
-      ctx.fillStyle = "#ff3b3b";
-      ctx.beginPath();
-      ctx.arc(
-        sx + tileSize / 2,
-        sy + tileSize / 2,
-        Math.max(3, tileSize * 0.18),
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
 
     // ---- draw entities ----
     for (const entity of entities) {
