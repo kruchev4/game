@@ -11,7 +11,8 @@ export class TileFactory {
   getTileCanvas(tileId, wx, wy, neighbors = null) {
   console.count("PAINT TILE");
   const n = neighbors || {};
-  const key = `${tileId}|${n.n}|${n.e}|${n.s}|${n.w}`;
+ key = `${tileId}|${neighbors.n}|${neighbors.e}|${neighbors.s}|${neighbors.w}
+
 
   const cached = this.cache.get(key);
   if (cached) return cached;
