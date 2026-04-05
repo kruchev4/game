@@ -44,7 +44,7 @@ export class Renderer {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
     this.tileSize = 16;
-    import { TileFactory } from "./TileFactory.js";
+    
 
     this.tileFactory = new TileFactory({ tileSize: this.tileSize });
 
