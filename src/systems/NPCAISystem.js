@@ -41,6 +41,8 @@ export class NPCAISystem {
    * @param {object} world  - needed for LoS checks inside inRange
    */
   update(world) {
+    if (this.player.dead) return; // no AI decisions against a dead player
+
     for (const npc of this.npcs) {
       if (npc.dead) continue;
       if (!npc.inCombat) continue;
