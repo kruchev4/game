@@ -25,8 +25,8 @@ export const PAINTERS = {
 
     // tile separation: 1px vignette (keeps map readable)
     vignette(ctx, s, 0.00);
-  },
-};*/
+  },*/
+};
 
 /* -------- helpers -------- */
 
