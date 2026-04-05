@@ -134,12 +134,11 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
         };
 
-        /*const tileCanvas =
+        const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
-        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);*/
-        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy);
-        ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
+       
       }
     }
 
