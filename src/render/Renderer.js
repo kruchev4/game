@@ -43,7 +43,7 @@ export class Renderer {
   
   
   constructor(canvas) {
-    const DEBUG_DISABLE_SPRITES = true;
+    
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
     this.tileSize = 16;
@@ -73,7 +73,7 @@ export class Renderer {
   }
 
   // ── Entity drawing ────────────────────────────────────────────────────────
-  if (!DEBUG_DISABLE_SPRITES) {
+  /*
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -99,7 +99,7 @@ export class Renderer {
     ctx.lineWidth   = entity === this.currentTarget ? 2 : 1;
     ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
     ctx.lineWidth = 1;
-  }}
+  }*/
 
   // ── Main render ───────────────────────────────────────────────────────────
 
@@ -150,9 +150,9 @@ export class Renderer {
 
  
 
-  if (!DEBUG_DISABLE_SPRITES) {
+  
     // ── NPC perception rings ──
-    for (const entity of entities) {
+    /*for (const entity of entities) {
       if (entity.type !== "npc" || entity.dead) continue;
 
       const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -165,10 +165,10 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, r, 0, Math.PI * 2);
       ctx.stroke();
-    }
+    }*/
 
     // ── A* path polyline ──
-    const player = entities.find(e => e.type === "player");
+    /*const player = entities.find(e => e.type === "player");
 
     if (player?.movePath?.length) {
       ctx.strokeStyle = "rgba(255, 60, 60, 0.55)";
@@ -201,21 +201,21 @@ export class Renderer {
         ctx.fill();
       }
       ctx.lineWidth = 1;
-    }}
+    }*/
 
     // ── Move target marker ──
-    if (player?.moveTarget) {
+    /*if (player?.moveTarget) {
       const { sx, sy } = camera.worldToScreen(
         player.moveTarget.x, player.moveTarget.y
       );
       ctx.fillStyle = "rgba(255, 59, 59, 0.75)";
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fill();*/
     }
 
     // ── Entities ──
-    if (!DEBUG_DISABLE_SPRITES) {
+    /*
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
@@ -227,7 +227,7 @@ export class Renderer {
     this._drawQuickSlots();
     this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
-  }}
+  }*/
 
   // ── Target Frame ─────────────────────────────────────────────────────────
 
