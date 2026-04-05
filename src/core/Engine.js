@@ -1,4 +1,4 @@
-import { Player }              from "../entities/Player.js";
+import { Player }              from "../core/Player.js";
 import { NPC }                 from "../entities/NPC.js";
 import { MovementSystem }      from "../systems/MovementSystem.js";
 import { ClickToMoveSystem }   from "../systems/ClickToMoveSystem.js";
