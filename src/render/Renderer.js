@@ -2,10 +2,13 @@ import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
 import { TileFactory } from "./TileFactory.js";
 
+
+// ── Color constants ───────────────────────────────────────────────────────────
 const WHITE = "#eeeeee";
 const DIM   = "#888899";
 const GOLD  = "#e8c84a";
 
+// ── UI Layout constants ───────────────────────────────────────────────────────
 const ABILITY_BAR = {
   slotSize: 56,
   gap:      8,
@@ -24,25 +27,33 @@ const TARGET_FRAME = {
 };
 
 const PLAYER_FRAME = {
-  width:        240,
-  height:       52,
-  paddingX:     10,
-  paddingY:     8,
-  borderR:      10,
+  width:       240,
+  height:      52,
+  paddingX:    10,
+  paddingY:    8,
+  borderR:     10,
   portraitSize: 36,
-  barHeight:    10,
-  barGap:       6
+  barHeight:   10,
+  barGap:      6
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 export class Renderer {
+  
+  
   constructor(canvas) {
+    
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
     this.tileSize = 16;
+    
 
     this.tileFactory = new TileFactory({ tileSize: this.tileSize });
-    this.camera      = new Camera({ tileSize: this.tileSize });
 
+    this.camera = new Camera({ tileSize: this.tileSize });
+
+    // Set by Engine
     this.currentTarget   = null;
     this.playerAbilities = [];
     this.abilities       = {};
@@ -55,13 +66,14 @@ export class Renderer {
   }
 
   resize() {
+    
     this.canvas.width  = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.camera.resize(this.canvas.width, this.canvas.height);
   }
 
   // ── Entity drawing ────────────────────────────────────────────────────────
-
+  
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
@@ -92,66 +104,118 @@ export class Renderer {
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
+    
+    
     const { ctx, tileSize, camera } = this;
 
-    // Clear background
+  // clear background
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 2;
-    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 2;
+    const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
+    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
 
+  // ✅ world-space origin for this frame
     const startX = Math.floor(camera.x / tileSize);
     const startY = Math.floor(camera.y / tileSize);
 
-    // ── Tiles ──
-    for (let row = 0; row < tilesHigh; row++) {
-      for (let col = 0; col < tilesWide; col++) {
-        const wx = startX + col;
-        const wy = startY + row;
+  // ── Tiles ──
+    for (let sy = 0; sy < tilesHigh; sy++) {
+      for (let sx = 0; sx < tilesWide; sx++) {
+
+      // ✅ world tile coordinates
+        const wx = startX + sx;
+        const wy = startY + sy;
 
         const tileId = world.getTile(wx, wy);
-        //if (tileId == null) continue;
+        if (tileId == null) continue;
 
         const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
-        // TileFactory wired — swap drawImage back in when ready:
-        // const neighbors = {
-        //   n: world.getTile(wx, wy-1), e: world.getTile(wx+1, wy),
-        //   s: world.getTile(wx, wy+1), w: world.getTile(wx-1, wy)
-        // };
-        // ctx.drawImage(this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors), px, py, tileSize, tileSize);
+        const neighbors = {
+          n: world.getTile(wx, wy - 1),
+          e: world.getTile(wx + 1, wy),
+          s: world.getTile(wx, wy + 1),
+          w: world.getTile(wx - 1, wy)
+        };
 
-        const tile = getTileDef(tileId);
-        ctx.fillStyle = tile?.color ?? "#222233";
-        ctx.fillRect(px, py, tileSize, tileSize);
-      }
+        /*const tileCanvas =
+          this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+
+        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
+      }*/
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
 
+ 
+
+  
     // ── NPC perception rings ──
     for (const entity of entities) {
       if (entity.type !== "npc" || entity.dead) continue;
+
       const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
       const r = entity.perceptionRadius * tileSize;
+
       ctx.strokeStyle = entity.state === "alert"
         ? "rgba(255, 80, 80, 0.4)"
         : "rgba(255, 255, 255, 0.15)";
+
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, r, 0, Math.PI * 2);
       ctx.stroke();
     }
 
+    // ── A* path polyline ──
+    /*const player = entities.find(e => e.type === "player");
+
+    if (player?.movePath?.length) {
+      ctx.strokeStyle = "rgba(255, 60, 60, 0.55)";
+      ctx.lineWidth   = 2;
+      ctx.lineJoin    = "round";
+      ctx.lineCap     = "round";
+      ctx.beginPath();
+
+      const { sx: psx, sy: psy } = camera.worldToScreen(player.x, player.y);
+      ctx.moveTo(psx + tileSize / 2, psy + tileSize / 2);
+
+      for (const step of player.movePath) {
+        const { sx, sy } = camera.worldToScreen(step.x, step.y);
+        if (
+          sx < -tileSize || sy < -tileSize ||
+          sx > ctx.canvas.width  + tileSize ||
+          sy > ctx.canvas.height + tileSize
+        ) continue;
+        ctx.lineTo(sx + tileSize / 2, sy + tileSize / 2);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 60, 60, 0.65)";
+      for (let i = 0; i < player.movePath.length; i += 3) {
+        const { sx, sy } = camera.worldToScreen(
+          player.movePath[i].x, player.movePath[i].y
+        );
+        ctx.beginPath();
+        ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.lineWidth = 1;
+    }*/
+
     // ── Move target marker ──
-    const player = entities.find(e => e.type === "player");
-    if (player?.moveTarget) {
-      const { sx, sy } = camera.worldToScreen(player.moveTarget.x, player.moveTarget.y);
+    /*if (player?.moveTarget) {
+      const { sx, sy } = camera.worldToScreen(
+        player.moveTarget.x, player.moveTarget.y
+      );
       ctx.fillStyle = "rgba(255, 59, 59, 0.75)";
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fill();*/
     }
 
     // ── Entities ──
+    
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
@@ -216,22 +280,27 @@ export class Renderer {
     ctx.fillText(`${target.hp} / ${target.maxHp}`, barX + 2, barY + barH - 1);
   }
 
-  // ── Player Frame ─────────────────────────────────────────────────────────
+  // ── Player Frame (bottom-center, above ability bar) ──────────────────────
 
   _drawPlayerFrame() {
     const player = this.player;
     if (!player) return;
 
     const { ctx } = this;
-    const { width, height, paddingX, paddingY, borderR, portraitSize, barHeight, barGap } = PLAYER_FRAME;
-    const { slotSize, gap, paddingY: barPaddingY, count } = ABILITY_BAR;
+    const {
+      width, height, paddingX, paddingY,
+      borderR, portraitSize, barHeight, barGap
+    } = PLAYER_FRAME;
 
+    const { slotSize, gap, paddingY: barPaddingY, count } = ABILITY_BAR;
     const abilities   = (this.playerAbilities ?? []).slice(0, count);
     const abilityBarH = abilities.length ? slotSize + barPaddingY : 0;
 
+    // Position: centered horizontally, just above the ability bar
     const x = (ctx.canvas.width - width) / 2;
     const y = ctx.canvas.height - abilityBarH - height - 6;
 
+    // ── Panel background ──
     ctx.fillStyle = "rgba(10, 10, 20, 0.85)";
     this._roundRect(x, y, width, height, borderR);
     ctx.fill();
@@ -242,82 +311,120 @@ export class Renderer {
     ctx.stroke();
     ctx.lineWidth = 1;
 
-    const portX      = x + paddingX;
-    const portY      = y + (height - portraitSize) / 2;
-    const classColor = this._classColor();
+    // ── Portrait box ──
+    const portX = x + paddingX;
+    const portY = y + (height - portraitSize) / 2;
 
-    ctx.fillStyle   = "rgba(20, 20, 35, 0.9)";
-    ctx.strokeStyle = classColor;
-    ctx.lineWidth   = 1.5;
+    // Background
+    const classColor  = this._classColor();
+    ctx.fillStyle     = "rgba(20, 20, 35, 0.9)";
+    ctx.strokeStyle   = classColor;
+    ctx.lineWidth     = 1.5;
     ctx.fillRect(portX, portY, portraitSize, portraitSize);
     ctx.strokeRect(portX, portY, portraitSize, portraitSize);
     ctx.lineWidth = 1;
 
+    // Class initial letter
     const initial = (player.classId ?? "?")[0].toUpperCase();
     ctx.fillStyle = classColor;
-    ctx.font      = "bold 18px monospace";
+    ctx.font      = `bold 18px monospace`;
     ctx.textAlign = "center";
     ctx.fillText(initial, portX + portraitSize / 2, portY + portraitSize / 2 + 6);
     ctx.textAlign = "left";
 
-    // XP ring
-    const xpPct  = Math.min(1, (player.xp ?? 0) / Math.max(1, 100 * Math.pow(player.level ?? 1, 1.5)));
-    const ringCx = portX + portraitSize / 2;
-    const ringCy = portY + portraitSize / 2;
-    const ringR  = portraitSize / 2 + 3;
+    // ── XP ring sweep around portrait ──
+    // Color shifts from dark gold → bright gold as XP fills
+    // Resets each level with a flash on level up
+    const xpPct    = Math.min(1, (player.xp ?? 0) / Math.max(1,
+      100 * Math.pow(player.level ?? 1, 1.5)));
+    const ringCx   = portX + portraitSize / 2;
+    const ringCy   = portY + portraitSize / 2;
+    const ringR    = portraitSize / 2 + 3;
 
+    // Track
     ctx.strokeStyle = "rgba(60,40,10,0.6)";
     ctx.lineWidth   = 2.5;
     ctx.beginPath();
     ctx.arc(ringCx, ringCy, ringR, 0, Math.PI * 2);
     ctx.stroke();
 
+    // Fill arc — clockwise from 12 o'clock
     if (xpPct > 0) {
+      const startA  = -Math.PI / 2;
+      const endA    = startA + Math.PI * 2 * xpPct;
+      // Color: interpolate dark gold → bright gold based on fill
       const r = Math.round(150 + 70 * xpPct);
       const g = Math.round(80  + 80 * xpPct);
       ctx.strokeStyle = `rgba(${r}, ${g}, 20, 0.9)`;
       ctx.lineWidth   = 2.5;
       ctx.lineCap     = "round";
       ctx.beginPath();
-      ctx.arc(ringCx, ringCy, ringR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * xpPct, false);
+      ctx.arc(ringCx, ringCy, ringR, startA, endA, false);
       ctx.stroke();
       ctx.lineCap = "butt";
     }
 
+    // Level number below portrait
     ctx.fillStyle = "rgba(200,160,50,0.8)";
-    ctx.font      = "bold 9px monospace";
+    ctx.font      = `bold 9px monospace`;
     ctx.textAlign = "center";
     ctx.fillText(`Lv ${player.level ?? 1}`, portX + portraitSize / 2, portY + portraitSize + 11);
     ctx.textAlign = "left";
 
-    const barsX      = portX + portraitSize + paddingX;
-    const barsW      = width - portraitSize - paddingX * 3;
+    // ── Bars area ──
+    const barsX = portX + portraitSize + paddingX;
+    const barsW = width - portraitSize - paddingX * 3;
+
+    // Total bar block height (name label + 2 bars + gap)
     const nameH      = 14;
     const totalBarsH = nameH + barHeight * 2 + barGap + 4;
     const barsY      = y + (height - totalBarsH) / 2;
 
+    // Player name
     ctx.fillStyle = WHITE;
-    ctx.font      = "bold 11px monospace";
+    ctx.font      = `bold 11px monospace`;
     ctx.fillText(player.name ?? "Hero", barsX, barsY + nameH - 2);
 
-    this._drawResourceBar(ctx, barsX, barsY + nameH + 2, barsW, barHeight,
-      player.hp, player.maxHp, "#44cc44", "#cc3333", "#ccaa22",
-      `${Math.ceil(player.hp)} / ${player.maxHp}`);
+    // HP bar
+    this._drawResourceBar(
+      ctx, barsX, barsY + nameH + 2, barsW, barHeight,
+      player.hp, player.maxHp,
+      "#44cc44", "#cc3333", "#ccaa22",
+      `${Math.ceil(player.hp)} / ${player.maxHp}`
+    );
 
+    // Resource bar
     const def      = player.resourceDef;
     const resColor = def?.color ?? "#3366ff";
-    this._drawResourceBar(ctx, barsX, barsY + nameH + barHeight + barGap + 4, barsW, barHeight,
-      player.resource, player.maxResource, resColor, resColor, resColor,
-      `${Math.floor(player.resource)} / ${player.maxResource}  ${def?.label ?? "MP"}`);
+    const resLabel = def?.label ?? "MP";
+
+    this._drawResourceBar(
+      ctx, barsX, barsY + nameH + barHeight + barGap + 4, barsW, barHeight,
+      player.resource, player.maxResource,
+      resColor, resColor, resColor,
+      `${Math.floor(player.resource)} / ${player.maxResource}  ${resLabel}`
+    );
   }
 
+  /**
+   * Draw a single labeled resource bar.
+   * Color transitions high→mid→low using the three color params
+   * (for HP). For flat-color bars (mana/rage) pass the same color for all three.
+   */
   _drawResourceBar(ctx, x, y, w, h, current, max, colorHigh, colorLow, colorMid, label) {
     const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
+
+    // Track
     ctx.fillStyle = "#222233";
     ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = colorHigh === colorLow ? colorHigh
+
+    // Fill — use gradient-like color steps for HP
+    ctx.fillStyle = colorHigh === colorLow
+      ? colorHigh
       : pct > 0.5 ? colorHigh : pct > 0.25 ? colorMid : colorLow;
     ctx.fillRect(x, y, w * pct, h);
+
+    // Label
     ctx.fillStyle = "rgba(220,220,220,0.85)";
     ctx.font      = "9px monospace";
     ctx.fillText(label, x + 3, y + h - 2);
@@ -331,104 +438,158 @@ export class Renderer {
 
     const { ctx }                              = this;
     const { slotSize, gap, paddingY, borderR } = ABILITY_BAR;
-    const totalW  = abilities.length * slotSize + (abilities.length - 1) * gap;
-    const startX  = (ctx.canvas.width - totalW) / 2;
-    const startY  = ctx.canvas.height - slotSize - paddingY;
-    const hasTarget = this.currentTarget && !this.currentTarget.dead;
-    const cooldowns = this.player?.abilityCooldowns ?? {};
+
+    const totalW = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const startX = (ctx.canvas.width - totalW) / 2;
+    const startY = ctx.canvas.height - slotSize - paddingY;
+
+    const hasTarget   = this.currentTarget && !this.currentTarget.dead;
+    const cooldowns   = this.player?.abilityCooldowns ?? {};
 
     for (let i = 0; i < abilities.length; i++) {
       const ability = abilities[i];
-      const sx = startX + i * (slotSize + gap);
-      const sy = startY;
-      const cx = sx + slotSize / 2;
-      const cy = sy + slotSize / 2;
-      const cd = cooldowns[ability.id] ?? null;
-      const onCD = cd && cd.remaining > 0;
+      const sx      = startX + i * (slotSize + gap);
+      const sy      = startY;
+      const cx      = sx + slotSize / 2;
+      const cy      = sy + slotSize / 2;
 
-      ctx.fillStyle = onCD ? "rgba(6,6,14,0.92)" : "rgba(10,10,20,0.88)";
+      const cd      = cooldowns[ability.id] ?? null;
+      const onCD    = cd && cd.remaining > 0;
+
+      // ── Slot background ──
+      ctx.fillStyle = onCD
+        ? "rgba(6, 6, 14, 0.92)"      // darker when on cooldown
+        : "rgba(10, 10, 20, 0.88)";
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.fill();
 
-      ctx.strokeStyle = onCD ? "rgba(80,80,100,0.5)" : hasTarget ? "rgba(255,180,50,0.85)" : "rgba(120,120,140,0.55)";
+      // ── Border ──
+      ctx.strokeStyle = onCD
+        ? "rgba(80, 80, 100, 0.5)"    // dim when on cooldown
+        : hasTarget
+          ? "rgba(255, 180, 50, 0.85)"
+          : "rgba(120, 120, 140, 0.55)";
       ctx.lineWidth = 1.5;
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.stroke();
       ctx.lineWidth = 1;
 
+      // ── Ability name ──
       ctx.fillStyle = onCD ? "rgba(130,130,130,0.7)" : "#ffffff";
       ctx.font      = "bold 10px monospace";
       ctx.textAlign = "center";
       this._drawWrappedText(ability.name, cx, sy + 18, slotSize - 8, 12);
 
-      ctx.fillStyle = onCD ? "rgba(100,100,120,0.6)" : ability.type === "melee" ? "#ffaa55" : "#88aaff";
+      // ── Range tag ──
+      ctx.fillStyle = onCD
+        ? "rgba(100,100,120,0.6)"
+        : ability.type === "melee" ? "#ffaa55" : "#88aaff";
       ctx.font = "9px monospace";
-      ctx.fillText(ability.type === "melee" ? "MELEE" : `${ability.range}t`, cx, sy + slotSize - 18);
+      ctx.fillText(
+        ability.type === "melee" ? "MELEE" : `${ability.range}t`,
+        cx,
+        sy + slotSize - 18
+      );
 
+      // ── Keybind ──
       ctx.fillStyle = "rgba(200,200,200,0.55)";
       ctx.font      = "10px monospace";
       ctx.fillText(`[${i + 1}]`, cx, sy + slotSize - 6);
+
       ctx.textAlign = "left";
 
-      if (onCD) this._drawCooldownRing(cx, cy, slotSize, cd);
+      // ── Cooldown sweep ring ──
+      if (onCD) {
+        this._drawCooldownRing(cx, cy, slotSize, cd);
+      }
     }
   }
 
+  /**
+   * Draws a clockwise-sweeping arc overlay on an ability slot.
+   * The arc starts at 12 o'clock and sweeps clockwise.
+   * Full circle = ability just used. Empty = ready.
+   *
+   * @param {number} cx         - centre x of slot
+   * @param {number} cy         - centre y of slot
+   * @param {number} slotSize
+   * @param {{ remaining: number, max: number }} cd
+   */
   _drawCooldownRing(cx, cy, slotSize, cd) {
-    const { ctx }  = this;
-    const radius   = slotSize * 0.38;
-    const progress = cd.remaining / cd.max;
+    const { ctx } = this;
 
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    const radius   = slotSize * 0.38;
+    const progress = cd.remaining / cd.max;   // 1 = just fired, 0 = ready
+
+    // Dark overlay behind the ring to dim the slot
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.beginPath();
     ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(60,60,80,0.7)";
+    // Track ring (full circle, dim)
+    ctx.strokeStyle = "rgba(60, 60, 80, 0.7)";
     ctx.lineWidth   = 3.5;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(220,180,60,0.9)";
+    // Sweep arc — starts at 12 o'clock (-π/2), sweeps clockwise
+    // The filled portion represents remaining cooldown.
+    // As remaining decreases toward 0, the arc shrinks.
+    const startAngle = -Math.PI / 2;
+    const endAngle   = startAngle + (Math.PI * 2 * progress);
+
+    ctx.strokeStyle = "rgba(220, 180, 60, 0.9)";
     ctx.lineWidth   = 3.5;
     ctx.lineCap     = "round";
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress, false);
+    ctx.arc(cx, cy, radius, startAngle, endAngle, false);
     ctx.stroke();
 
-    ctx.fillStyle = "rgba(255,220,100,0.9)";
+    // Cooldown remaining label (seconds approximation — ticks / 60)
+    const secsRemaining = (cd.remaining / 60).toFixed(1);
+    ctx.fillStyle = "rgba(255, 220, 100, 0.9)";
     ctx.font      = "bold 11px monospace";
     ctx.textAlign = "center";
-    ctx.fillText((cd.remaining / 60).toFixed(1), cx, cy + 4);
+    ctx.fillText(secsRemaining, cx, cy + 4);
     ctx.textAlign = "left";
     ctx.lineWidth = 1;
     ctx.lineCap   = "butt";
   }
 
-  // ── Hit testing ───────────────────────────────────────────────────────────
+  // ── Ability bar hit testing ───────────────────────────────────────────────
 
   getAbilitySlotAt(px, py) {
     const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
     if (!abilities.length) return -1;
+
     const { slotSize, gap, paddingY } = ABILITY_BAR;
     const totalW = abilities.length * slotSize + (abilities.length - 1) * gap;
     const startX = (this.canvas.width - totalW) / 2;
     const startY = this.canvas.height - slotSize - paddingY;
+
     for (let i = 0; i < abilities.length; i++) {
       const sx = startX + i * (slotSize + gap);
-      if (px >= sx && px <= sx + slotSize && py >= startY && py <= startY + slotSize) return i;
+      if (px >= sx && px <= sx + slotSize && py >= startY && py <= startY + slotSize) {
+        return i;
+      }
     }
     return -1;
   }
+
+  // ── Quick slot hit testing ────────────────────────────────────────────────
 
   getQuickSlotAt(px, py) {
     const { slotSize, gap, paddingY } = ABILITY_BAR;
     const startX = this._quickSlotsStartX();
     const startY = this.canvas.height - slotSize - paddingY;
+
     for (let i = 0; i < 4; i++) {
       const sx = startX + i * (slotSize + gap);
-      if (px >= sx && px <= sx + slotSize && py >= startY && py <= startY + slotSize) return i;
+      if (px >= sx && px <= sx + slotSize && py >= startY && py <= startY + slotSize) {
+        return i;
+      }
     }
     return -1;
   }
@@ -441,9 +602,9 @@ export class Renderer {
   }
 
   _quickSlotsStartX() {
-    const { slotSize, gap } = ABILITY_BAR;
-    const abilities     = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
-    const abilityW      = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const { slotSize, gap, paddingY } = ABILITY_BAR;
+    const abilities  = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const abilityW   = abilities.length * slotSize + (abilities.length - 1) * gap;
     const abilityStartX = (this.canvas.width - abilityW) / 2;
     return abilityStartX + abilityW + 24;
   }
@@ -452,27 +613,34 @@ export class Renderer {
     return this._quickSlotsStartX() + 4 * (ABILITY_BAR.slotSize + ABILITY_BAR.gap) + 16;
   }
 
-  // ── Corpse ───────────────────────────────────────────────────────────────
+  // ── Corpse drawing ────────────────────────────────────────────────────────
 
   _drawCorpse(corpse, sx, sy) {
     const { ctx, tileSize } = this;
+
+    // Fade out as despawn approaches
     const alpha = Math.max(0.2, 1 - corpse.despawnProgress * 0.8);
     ctx.globalAlpha = alpha;
+
+    // Dark X marker
     ctx.strokeStyle = corpse.hasLoot ? "#cc9922" : "#555555";
     ctx.lineWidth   = 2;
     const pad = 4;
     ctx.beginPath();
-    ctx.moveTo(sx + pad, sy + pad);
+    ctx.moveTo(sx + pad,            sy + pad);
     ctx.lineTo(sx + tileSize - pad, sy + tileSize - pad);
     ctx.moveTo(sx + tileSize - pad, sy + pad);
-    ctx.lineTo(sx + pad, sy + tileSize - pad);
+    ctx.lineTo(sx + pad,            sy + tileSize - pad);
     ctx.stroke();
+
+    // Glow pulse if has loot
     if (corpse.hasLoot) {
       const pulse = 0.3 + 0.2 * Math.sin(Date.now() * 0.004);
-      ctx.strokeStyle = `rgba(200,160,30,${pulse})`;
+      ctx.strokeStyle = `rgba(200, 160, 30, ${pulse})`;
       ctx.lineWidth   = 1;
       ctx.strokeRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
     }
+
     ctx.globalAlpha = 1;
     ctx.lineWidth   = 1;
   }
@@ -482,22 +650,25 @@ export class Renderer {
   _drawQuickSlots() {
     const player = this.player;
     if (!player?.quickSlots) return;
+
     const { ctx }                              = this;
     const { slotSize, gap, paddingY, borderR } = ABILITY_BAR;
+
     const startX = this._quickSlotsStartX();
     const startY = this.canvas.height - slotSize - paddingY;
 
     for (let i = 0; i < 4; i++) {
-      const itemId  = player.quickSlots[i];
-      const def     = itemId ? this.itemDefs?.[itemId] : null;
+      const itemId = player.quickSlots[i];
+      const def    = itemId ? (this.itemDefs?.[itemId]) : null;
       const bagSlot = itemId ? player.bag?.find(s => s?.itemId === itemId) : null;
-      const qty     = bagSlot?.qty ?? 0;
-      const sx      = startX + i * (slotSize + gap);
-      const cx      = sx + slotSize / 2;
-      const cy      = startY + slotSize / 2;
+      const qty    = bagSlot?.qty ?? 0;
+      const sx     = startX + i * (slotSize + gap);
+      const cx     = sx + slotSize / 2;
+      const cy     = startY + slotSize / 2;
 
-      ctx.fillStyle   = "rgba(10,10,20,0.85)";
-      ctx.strokeStyle = def ? "rgba(100,160,100,0.7)" : "rgba(60,60,80,0.4)";
+      // Background
+      ctx.fillStyle   = "rgba(10, 10, 20, 0.85)";
+      ctx.strokeStyle = def ? "rgba(100, 160, 100, 0.7)" : "rgba(60, 60, 80, 0.4)";
       ctx.lineWidth   = 1.5;
       this._roundRect(sx, startY, slotSize, slotSize, borderR);
       ctx.fill();
@@ -505,19 +676,25 @@ export class Renderer {
       ctx.lineWidth = 1;
 
       if (def) {
+        // Item icon
         ctx.font      = "18px monospace";
         ctx.textAlign = "center";
         ctx.fillText(def.icon ?? "📦", cx, cy + 6);
+
+        // Quantity
         if (qty > 1) {
           ctx.fillStyle = "#e8b84a";
           ctx.font      = "9px monospace";
           ctx.fillText(qty, sx + slotSize - 6, startY + slotSize - 4);
         }
       }
+
+      // Keybind hint
       ctx.fillStyle = "rgba(180,180,180,0.5)";
       ctx.font      = "10px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`[${i + 5}]`, cx, startY + slotSize - 6);
+
       ctx.textAlign = "left";
     }
   }
@@ -525,15 +702,16 @@ export class Renderer {
   // ── Bag icon ──────────────────────────────────────────────────────────────
 
   _drawBagIcon() {
-    const { ctx }                         = this;
-    const { slotSize, paddingY, borderR } = ABILITY_BAR;
+    const { ctx }                              = this;
+    const { slotSize, paddingY, borderR }      = ABILITY_BAR;
+
     const bx = this._bagIconX();
     const by = this.canvas.height - slotSize - paddingY;
     const cx = bx + slotSize / 2;
     const cy = by + slotSize / 2;
 
-    ctx.fillStyle   = "rgba(10,10,20,0.85)";
-    ctx.strokeStyle = "rgba(120,100,60,0.6)";
+    ctx.fillStyle   = "rgba(10, 10, 20, 0.85)";
+    ctx.strokeStyle = "rgba(120, 100, 60, 0.6)";
     ctx.lineWidth   = 1.5;
     this._roundRect(bx, by, slotSize, slotSize, borderR);
     ctx.fill();
@@ -543,16 +721,22 @@ export class Renderer {
     ctx.font      = "22px monospace";
     ctx.textAlign = "center";
     ctx.fillText("🎒", cx, cy + 8);
+
     ctx.fillStyle = "rgba(180,180,180,0.5)";
     ctx.font      = "9px monospace";
     ctx.fillText("[I]", cx, by + slotSize - 5);
+
     ctx.textAlign = "left";
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   _classColor() {
-    return { fighter: "#e8c84a", ranger: "#6abf5e" }[this.player?.classId] ?? "#aaaaaa";
+    const colors = {
+      fighter: "#e8c84a",
+      ranger:  "#6abf5e"
+    };
+    return colors[this.player?.classId] ?? "#aaaaaa";
   }
 
   _roundRect(x, y, w, h, r) {
