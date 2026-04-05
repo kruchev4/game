@@ -7,6 +7,9 @@ export const PAINTERS = {
 
   // Tile 0: Grass
   0: (ctx, s, def, seed) => {
+  fill(ctx, s, def.color || "#4caf50");
+}
+  /*0: (ctx, s, def, seed) => {
     // base
     fill(ctx, s, def.color || "#4caf50");
 
@@ -23,7 +26,7 @@ export const PAINTERS = {
     // tile separation: 1px vignette (keeps map readable)
     vignette(ctx, s, 0.00);
   },
-};
+};*/
 
 /* -------- helpers -------- */
 
