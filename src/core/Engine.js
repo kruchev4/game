@@ -189,9 +189,32 @@ export class Engine {
       });
     };
 
-    this.npcs     = [
-      spawn("goblinMelee",  6,  0),   // melee goblin — nearby
-      spawn("goblinArcher", 10, -3)   // ranged goblin — further back
+    this.npcs = [
+      // Close clusters for early testing
+      spawn("goblinMelee",   6,   0),
+      spawn("goblinArcher",  10, -3),
+      spawn("goblinMelee",  -6,   2),
+      spawn("goblinArcher", -10,  4),
+      spawn("goblinMelee",   3,   8),
+      spawn("goblinArcher",  8,   8),
+
+      // Mid-range groups
+      spawn("goblinMelee",   20,   5),
+      spawn("goblinMelee",   22,   2),
+      spawn("goblinArcher",  25,   8),
+      spawn("goblinMelee",  -20,  -5),
+      spawn("goblinArcher", -22,  -8),
+      spawn("goblinMelee",   15, -15),
+      spawn("goblinArcher",  18, -18),
+
+      // Farther out
+      spawn("goblinMelee",   35,   0),
+      spawn("goblinArcher",  38,   5),
+      spawn("goblinMelee",  -35,  10),
+      spawn("goblinArcher",   0,  30),
+      spawn("goblinMelee",    5,  28),
+      spawn("goblinArcher",  -5, -30),
+      spawn("goblinMelee",    0, -28),
     ];
     this.entities = [this.player, ...this.npcs];
   }
