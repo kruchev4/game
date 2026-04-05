@@ -34,6 +34,7 @@ export class Renderer {
     this.playerAbilities = [];     // array of ability defs in slot order
     this.abilities       = {};     // full ability map id -> def
     this.player          = null;   // player entity ref (for cooldown reads)
+    this.combatLog       = null;   // CombatLog instance
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -171,6 +172,7 @@ export class Renderer {
     // ── HUD ──
     this._drawTargetFrame();
     this._drawAbilityBar();
+    this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
   }
 
   // ── Target Frame ─────────────────────────────────────────────────────────
