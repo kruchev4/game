@@ -108,14 +108,14 @@ export class Renderer {
     
     const { ctx, tileSize, camera } = this;
 
-  // clear background
-    //ctx.fillStyle = "#000";
-    //ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  //clear background
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
 
-  // ✅ world-space origin for this frame
+  
     const startX = Math.floor(camera.x / tileSize);
     const startY = Math.floor(camera.y / tileSize);
 
@@ -123,12 +123,11 @@ export class Renderer {
     for (let sy = 0; sy < tilesHigh; sy++) {
       for (let sx = 0; sx < tilesWide; sx++) {
 
-      // ✅ world tile coordinates
         const wx = startX + sx;
         const wy = startY + sy;
 
         const tileId = world.getTile(wx, wy);
-        if (tileId == null) continue;
+        if (tileId == null){console.out('tile = null'); continue;}
 
         const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
@@ -144,9 +143,9 @@ export class Renderer {
 
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
       }
-        /*ctx.fillStyle = "#000";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    }*/
+    }
 
  
 
