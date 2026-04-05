@@ -109,8 +109,8 @@ export class Renderer {
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize);
 
     // ── Tiles ──
-    for (let wy = startY; wy < endY; wy++) {
-  for (let wx = startX; wx < endX; wx++) {
+   for (let wy = 0; wy < tilesHigh; wy++) {
+  for (let wx = 0; wx < tilesHigh; wx++) {
 
     const tileId = world.getTile(wx, wy);
     if (tileId == null) continue;
@@ -128,8 +128,6 @@ export class Renderer {
       this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
     ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
-
-    
   }
 }
 
