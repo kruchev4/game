@@ -1,4 +1,4 @@
-please just make me a drop in replacement for me for this whole file, I am now getting bracket errors:  import { Camera }     from "./Camera.js";
+import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
 import { TileFactory } from "./TileFactory.js";
 
