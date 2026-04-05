@@ -76,7 +76,18 @@ export class DeathScreen {
     ctx.fillStyle = `rgba(30, 0, 0, ${fadeAlpha * 0.82})`;
     ctx.fillRect(0, 0, W, H);
 
-    if (fadeAlpha < 0.5) return; // wait for fade before showing UI
+    if (fadeAlpha < 0.5) {
+      // Show a subtle "click to continue" during fade
+      const promptAlpha = Math.min(1, fadeAlpha * 3);
+      ctx.globalAlpha = promptAlpha;
+      ctx.fillStyle   = "rgba(180, 60, 60, 0.7)";
+      ctx.font        = `13px ${FONT_MONO}`;
+      ctx.textAlign   = "center";
+      ctx.fillText("— click to continue —", W / 2, H / 2 + 60);
+      ctx.globalAlpha = 1;
+      ctx.textAlign   = "left";
+      return;
+    }
 
     const uiAlpha  = Math.min(1, (fadeAlpha - 0.5) * 2);
     const cx       = W / 2;
@@ -188,8 +199,8 @@ export class DeathScreen {
   _handleClick(e) {
     if (!this.active) return;
 
-    // Only respond after fade-in
-    if (this._tick < 60) return;
+    // Only respond after brief fade-in
+    if (this._tick < 30) return;
 
     const rect   = this.canvas.getBoundingClientRect();
     const scaleX = this.canvas.width  / rect.width;
