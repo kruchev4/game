@@ -29,6 +29,8 @@ export class NPC {
     this.actionReady    = false;
     this.abilities      = classDef?.abilities    ?? [];
     this.preferredRange = classDef?.preferredRange ?? 1;
+    this.level          = classDef?.level         ?? 1;
+    this.xpValue        = classDef?.xpValue       ?? 20;
 
     // Cooldown state — populated by CombatSystem._tickCooldowns()
     // Structure: { abilityId -> { remaining: number, max: number } }
