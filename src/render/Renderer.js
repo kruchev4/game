@@ -120,7 +120,7 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
       };
 
-
+const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
 
 
@@ -131,7 +131,7 @@ ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
         const { sx, sy } = camera.worldToScreen(wx, wy);
 
         ctx.fillStyle = tile.color;
-        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+        
         ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
 
         ctx.strokeStyle = "rgba(0,0,0,0.25)";
