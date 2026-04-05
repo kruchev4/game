@@ -4,6 +4,7 @@ import { MovementSystem }      from "../systems/MovementSystem.js";
 import { ClickToMoveSystem }   from "../systems/ClickToMoveSystem.js";
 import { NPCMovementSystem }   from "../systems/NPCMovementSystem.js";
 import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
+import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
@@ -21,19 +22,17 @@ export class Engine {
     this.clickToMoveSystem   = null;
     this.npcMovementSystem   = null;
     this.npcPerceptionSystem = null;
+    this.npcAISystem         = null;
     this.combatSystem        = null;
 
     this.running = false;
 
-    // Data
-    this._abilities = null;
-    this._classes   = null;
-
-    // Targeting state
+    this._abilities     = null;
+    this._classes       = null;
     this._currentTarget = null;
 
-    // Test player class — will be set at character creation later
-    this._playerClassId = "ranger"; // swap to "fighter" to test melee
+    // Change to "fighter" to test melee
+    this._playerClassId = "ranger";
   }
 
   // ─────────────────────────────────────────────
@@ -81,7 +80,7 @@ export class Engine {
     this._spawnX = x;
     this._spawnY = y;
 
-    // Give player their class abilities
+    // Apply class stats
     const classDef = this._classes[this._playerClassId];
     if (classDef) {
       this.player.hp          = classDef.baseStats.hp;
@@ -93,34 +92,37 @@ export class Engine {
     }
   }
 
+  /**
+   * Spawn test NPCs on guaranteed walkable tiles near player spawn.
+   * Each NPC offset is passed through findNearestWalkable so they
+   * never land on mountains, water, or void.
+   */
   _spawnTestNPCs() {
-    const x = this._spawnX;
-    const y = this._spawnY;
+    const bx = this._spawnX;
+    const by = this._spawnY;
 
-    const goblinMeleeDef  = this._classes["goblinMelee"];
-    const goblinArcherDef = this._classes["goblinArcher"];
+    const spawn = (classId, offsetX, offsetY) => {
+      const classDef = this._classes[classId];
+      const { x, y } = findNearestWalkable(
+        this.world,
+        bx + offsetX,
+        by + offsetY
+      );
+      return new NPC({
+        id:         `${classId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        classId,
+        classDef,
+        x,
+        y,
+        roamCenter: { x, y },
+        roamRadius: classDef?.roamRadius ?? 6
+      });
+    };
 
-    const goblinWarrior = new NPC({
-      id:         "goblin_warrior_1",
-      classId:    "goblinMelee",
-      classDef:   goblinMeleeDef,
-      x:          x + 6,
-      y:          y,
-      roamCenter: { x: x + 6, y },
-      roamRadius: goblinMeleeDef?.roamRadius ?? 6
-    });
-
-    const goblinArcher = new NPC({
-      id:         "goblin_archer_1",
-      classId:    "goblinArcher",
-      classDef:   goblinArcherDef,
-      x:          x + 10,
-      y:          y - 3,
-      roamCenter: { x: x + 10, y: y - 3 },
-      roamRadius: goblinArcherDef?.roamRadius ?? 6
-    });
-
-    this.npcs     = [goblinWarrior, goblinArcher];
+    this.npcs     = [
+      spawn("goblinMelee",  6,  0),   // melee goblin — nearby
+      spawn("goblinArcher", 10, -3)   // ranged goblin — further back
+    ];
     this.entities = [this.player, ...this.npcs];
   }
 
@@ -143,7 +145,7 @@ export class Engine {
       world,
       movementSystem: this.movementSystem,
       npcs,
-      onTarget: (npc) => this._setTarget(npc)
+      onTarget:       (npc) => this._setTarget(npc)
     });
 
     this.combatSystem = new CombatSystem({
@@ -154,14 +156,22 @@ export class Engine {
       onEvent:   (e) => this._onCombatEvent(e)
     });
 
-    // Push player abilities and ability data into renderer for HUD
+    // AI system wired to combatSystem so it can queue actions
+    this.npcAISystem = new NPCAISystem({
+      player,
+      npcs,
+      abilities:    this._abilities,
+      combatSystem: this.combatSystem
+    });
+
+    // Push player abilities to renderer for HUD
     const classDef = this._classes[this._playerClassId];
     renderer.playerAbilities = (classDef?.abilities ?? [])
       .map(id => this._abilities[id])
       .filter(Boolean);
-    renderer.abilities = this._abilities;
+    renderer.abilities    = this._abilities;
+    renderer.currentTarget = null;
 
-    // Initial camera snap
     renderer.camera.centerOn(player.x, player.y, world);
   }
 
@@ -170,15 +180,13 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _bindInput() {
-    // Keybinds 1–4: fire ability in slot N against current target
+    // Keybinds 1–4
     window.addEventListener("keydown", (e) => {
-      const slot = parseInt(e.key) - 1; // "1" -> 0, "2" -> 1, etc.
-      if (slot >= 0 && slot <= 3) {
-        this._useAbilitySlot(slot);
-      }
+      const slot = parseInt(e.key) - 1;
+      if (slot >= 0 && slot <= 3) this._useAbilitySlot(slot);
     });
 
-    // Left click on ability bar slots
+    // Ability bar clicks
     this.renderer.canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
 
@@ -189,9 +197,7 @@ export class Engine {
       const py     = (e.clientY - rect.top)  * scaleY;
 
       const slot = this.renderer.getAbilitySlotAt(px, py);
-      if (slot >= 0) {
-        this._useAbilitySlot(slot);
-      }
+      if (slot >= 0) this._useAbilitySlot(slot);
     });
   }
 
@@ -200,13 +206,9 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _setTarget(npc) {
-    this._currentTarget = npc;
-    this.renderer.currentTarget = npc; // renderer reads this for HUD + highlight
-    if (npc) {
-      console.log(`[Target] ${npc.id} selected`);
-    } else {
-      console.log("[Target] cleared");
-    }
+    this._currentTarget          = npc;
+    this.renderer.currentTarget  = npc;
+    console.log(npc ? `[Target] ${npc.id}` : "[Target] cleared");
   }
 
   // ─────────────────────────────────────────────
@@ -214,7 +216,7 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _useAbilitySlot(slotIndex) {
-    const classDef = this._classes[this._playerClassId];
+    const classDef  = this._classes[this._playerClassId];
     if (!classDef) return;
 
     const abilityId = classDef.abilities[slotIndex];
@@ -222,7 +224,7 @@ export class Engine {
 
     const target = this._currentTarget;
     if (!target || target.dead) {
-      console.log("[Combat] No valid target selected");
+      console.log("[Combat] No valid target");
       return;
     }
 
@@ -238,48 +240,33 @@ export class Engine {
       case "engage":
         console.log(`[Combat] ${event.entity.id} entered combat`);
         break;
-
       case "disengage":
         console.log(`[Combat] ${event.entity.id} left combat`);
         break;
-
       case "hit":
         console.log(
-          `[Combat] ${event.attacker.id} hit ${event.target.id} ` +
-          `with ${event.ability.name} for ${event.damage} dmg ` +
+          `[Combat] ${event.attacker.id} → ${event.target.id} ` +
+          `[${event.ability.name}] ${event.damage} dmg ` +
           `(${event.target.hp}/${event.target.maxHp} HP)`
         );
         break;
-
       case "out_of_range":
         console.log(
-          `[Combat] ${event.ability.name} failed — ` +
-          `${event.target.id} out of range or LoS blocked`
+          `[Combat] ${event.ability.name} failed — out of range or LoS blocked`
         );
         break;
-
       case "kill":
-        console.log(`[Combat] ${event.target.id} killed by ${event.attacker.id}`);
-        // Remove dead entity from lists so it stops rendering and being targeted
+        console.log(`[Combat] ${event.target.id} died`);
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
-        // Clear target if it was the dead NPC
-        if (this._currentTarget?.id === event.target.id) {
-          this._setTarget(null);
-        }
+        if (this._currentTarget?.id === event.target.id) this._setTarget(null);
         break;
-
       case "combat_end":
-        console.log("[Combat] All enemies defeated — combat ended");
+        console.log("[Combat] All enemies down");
         break;
-
       case "effect_applied":
-        console.log(
-          `[Combat] ${event.effect.type} on ${event.entity.id} ` +
-          `for ${event.effect.duration} ticks`
-        );
+        console.log(`[Combat] ${event.effect.type} → ${event.entity.id}`);
         break;
-
       case "effect_expired":
         console.log(`[Combat] ${event.effect.type} expired on ${event.entity?.id}`);
         break;
@@ -299,17 +286,17 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
-    this.npcPerceptionSystem?.update();  // 1. awareness
-    this.npcMovementSystem?.update();    // 2. NPC movement
-    this.combatSystem?.update();         // 3. action timers + resolution
-    this.movementSystem?.update();       // 4. player movement
+    this.npcPerceptionSystem?.update();       // 1. awareness
+    this.npcMovementSystem?.update();         // 2. NPC movement (A*)
+    this.combatSystem?.update();              // 3. timers + resolution
+    this.npcAISystem?.update(this.world);     // 4. NPC decides actions
+    this.movementSystem?.update();            // 5. player movement
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
     }
 
     this.renderer.render(this.world, this.entities);
-
     requestAnimationFrame(() => this.loop());
   }
 }
