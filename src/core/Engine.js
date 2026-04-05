@@ -125,7 +125,6 @@ export class Engine {
 
     // Update test class fallback to match
     this._playerClassId = classId;
-    }
   }
 
   /**
