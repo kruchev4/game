@@ -7,6 +7,7 @@ import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
 import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
 import { CombatLog }           from "../ui/CombatLog.js";
+import { DeathScreen }         from "../ui/DeathScreen.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 export class Engine {
@@ -32,12 +33,15 @@ export class Engine {
     this._classes       = null;
     this._currentTarget = null;
     this.combatLog      = null;
+    this._deathScreen   = null;
 
     // Save system — set by main.js before loadWorld()
-    this.saveSlot     = null;   // 1-based slot number
+    this.saveSlot     = null;
     this.saveProvider = null;
 
-    // Change to "fighter" to test melee
+    // Called by main.js — fires when player quits to title after death
+    this.onQuitToTitle = null;
+
     this._playerClassId = "ranger";
   }
 
@@ -333,11 +337,17 @@ export class Engine {
         break;
       case "kill": {
         const killer = event.attacker.id === "player" ? "You" : this._npcLabel(event.attacker);
-        const victim = event.target.id  === "player" ? "you" : this._npcLabel(event.target);
+        const victim = this._npcLabel(event.target);
         log?.push({ text: `${killer} killed ${victim}!`, type: "kill" });
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
+        break;
+      }
+      case "player_death": {
+        const killerName = this._npcLabel(event.attacker);
+        log?.push({ text: `You were slain by ${killerName}!`, type: "damage_in" });
+        this._onPlayerDeath(killerName);
         break;
       }
       case "combat_end":
@@ -365,6 +375,91 @@ export class Engine {
       .replace(/_/g, " ")
       .trim()
       .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // ─────────────────────────────────────────────
+  // DEATH & RESPAWN
+  // ─────────────────────────────────────────────
+
+  _onPlayerDeath(killerName) {
+    // Pause the world — stop combat and movement from ticking
+    this._playerDead = true;
+
+    // Calculate penalties
+    const goldLost = Math.floor((this.player.gold ?? 0) * 0.25);
+    const xpLost   = Math.floor((this.player.xp   ?? 0) * 0.20);
+
+    // Apply penalties immediately
+    this.player.gold = Math.max(0, (this.player.gold ?? 0) - goldLost);
+    this.player.xp   = Math.max(0, (this.player.xp   ?? 0) - xpLost);
+
+    // Show death screen on top of the frozen game canvas
+    const deathScreen = new DeathScreen({
+      canvas:     this.renderer.canvas,
+      killerName,
+      goldLost,
+      xpLost
+    });
+
+    deathScreen.onRespawn = () => {
+      this._respawn();
+    };
+
+    deathScreen.onQuit = () => {
+      this.running = false;
+      this.onQuitToTitle?.();
+    };
+
+    this._deathScreen = deathScreen;
+    deathScreen.show();
+  }
+
+  _respawn() {
+    const p = this.player;
+
+    // Restore to full HP and resource
+    p.hp       = p.maxHp;
+    p.resource = p.maxResource;
+    p.dead     = false;
+    p.inCombat = false;
+
+    // Move to world center (nearest walkable)
+    const cx = Math.floor(this.world.width  / 2);
+    const cy = Math.floor(this.world.height / 2);
+    const { x, y } = findNearestWalkable(this.world, cx, cy);
+    p.x = x;
+    p.y = y;
+
+    // Reset all NPCs back to roaming — fresh start
+    for (const npc of this.npcs) {
+      npc.state      = "roaming";
+      npc.chaseSteps = 0;
+      npc._cooldown  = 0;
+      npc.inCombat   = false;
+      npc._queuedAction = null;
+    }
+
+    // Clear combat state entirely
+    this.combatSystem.combatants.clear();
+    this.combatSystem._actionTimers.clear();
+    this.combatSystem._cooldowns.clear();
+    this.combatSystem._effects.clear();
+    this.combatSystem._playerAction = null;
+
+    // Clear target
+    this._setTarget(null);
+    this.movementSystem?.clearTarget();
+
+    // Snap camera to respawn point
+    this.renderer.camera.centerOn(x, y, this.world);
+
+    // Resume world
+    this._playerDead = false;
+
+    this.combatLog?.push({ text: "You have been returned to the land of the living.", type: "system" });
+
+    // Auto-save after respawn (penalties saved)
+    this.saveToSlot();
   }
 
   // ─────────────────────────────────────────────
@@ -447,13 +542,16 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
-    this.npcPerceptionSystem?.update();       // 1. awareness
-    this.npcMovementSystem?.update();         // 2. NPC movement (A*)
-    this.combatSystem?.update();              // 3. timers + resolution
-    this.npcAISystem?.update(this.world);     // 4. NPC decides actions
-    this.movementSystem?.update();            // 5. player movement
-    this.combatLog?.update();                 // 6. age log messages
-    this._tickPlayerResource();               // 7. mana regen / rage decay
+    if (!this._playerDead) {
+      this.npcPerceptionSystem?.update();       // 1. awareness
+      this.npcMovementSystem?.update();         // 2. NPC movement (A*)
+      this.combatSystem?.update();              // 3. timers + resolution
+      this.npcAISystem?.update(this.world);     // 4. NPC decides actions
+      this.movementSystem?.update();            // 5. player movement
+      this._tickPlayerResource();               // 7. mana regen / rage decay
+    }
+
+    this.combatLog?.update();                   // 6. always age log messages
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
