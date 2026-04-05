@@ -57,7 +57,15 @@ export class Engine {
   // WORLD LOADING
   // ─────────────────────────────────────────────
 
-  async loadWorld(worldId) {
+  /**
+   * @param {string} worldId
+   * @param {{ name: string, classId: string, stats: object }} [character]
+   *   If omitted, falls back to this._playerClassId for testing.
+   */
+  async loadWorld(worldId, character = null) {
+    // Store character data before loading (data load reads classes)
+    this._characterData = character;
+
     await Promise.all([
       this._loadData(),
       this._loadWorldFromProvider(worldId)
@@ -82,23 +90,37 @@ export class Engine {
     this._spawnX = x;
     this._spawnY = y;
 
-    // Apply class stats
-    const classDef = this._classes[this._playerClassId];
+    // Use confirmed character data if available, else fall back to test class
+    const char     = this._characterData;
+    const classId  = char?.classId ?? this._playerClassId;
+    const classDef = this._classes[classId];
+
     if (classDef) {
-      this.player.hp          = classDef.baseStats.hp;
-      this.player.maxHp       = classDef.baseStats.hp;
+      this.player.name        = char?.name ?? "Hero";
+      this.player.classId     = classId;
+      this.player.abilities   = classDef.abilities ?? [];
       this.player.actionSpeed = classDef.actionSpeed;
       this.player.actionTimer = classDef.actionSpeed;
-      this.player.classId     = this._playerClassId;
-      this.player.abilities   = classDef.abilities ?? [];
 
-      // Resource (mana, rage, etc.)
+      // If rolled stats provided, use them; otherwise use class base stats
+      const stats = char?.stats ?? classDef.baseStats;
+      this.player.hp    = classDef.baseStats.hp; // HP always from class
+      this.player.maxHp = classDef.baseStats.hp;
+
+      // Store rolled stats for future use (skills, checks, etc.)
+      this.player.stats = stats;
+
+      // Resource
       const res = classDef.resource ?? null;
       if (res) {
         this.player.resourceDef  = res;
         this.player.maxResource  = res.max;
         this.player.resource     = res.startAt ?? res.max;
       }
+    }
+
+    // Update test class fallback to match
+    this._playerClassId = classId;
     }
   }
 
