@@ -31,6 +31,11 @@ export const TILES = {
   36: { name:"Blight Deep",     color:"#050707", walkable:false },
 };
 
+export const TILES = {
+  0: { name: "Grass", color: "#4caf50", walkable: true },
+  // ...others later
+};
+
 export function getTileDef(id) {
-  return TILES[id] ?? { name:"Unknown", color:"#ff00ff", walkable:false };
+  return TILES[id] ?? { name: "Unknown", color: "#ff00ff", walkable: false };
 }
