@@ -234,6 +234,12 @@ export class CombatSystem {
       if (!this.combatants.has(npc.id)) continue;
       if (!npc._queuedAction) continue;
 
+      // Never attack a dead player
+      if (this.player.dead) {
+        npc._queuedAction = null;
+        continue;
+      }
+
       const timer = this._actionTimers.get(npc.id) ?? 1;
       if (timer > 0) continue;
 
@@ -257,9 +263,12 @@ export class CombatSystem {
 
   /**
    * Core resolution: validate range + LoS, roll damage, apply effects.
-   * Returns true if the action actually fired (hit or miss due to range).
+   * Returns true if the action actually fired.
    */
   _resolveAction(attacker, target, ability) {
+    // Never attack a dead target
+    if (target.dead) return false;
+
     if (!inRange(this.world, attacker, target, ability)) {
       this.onEvent({ type: "out_of_range", attacker, target, ability });
       return false;
@@ -273,9 +282,15 @@ export class CombatSystem {
     this.onEvent({ type: "hit", attacker, target, ability, damage });
 
     if (target.hp <= 0) {
-      this.onEvent({ type: "kill", attacker, target });
-      this._disengage(target);
       target.dead = true;
+      this._disengage(target);
+
+      if (target.id === this.player.id) {
+        // Player died — emit special event so Engine can handle it
+        this.onEvent({ type: "player_death", attacker, target });
+      } else {
+        this.onEvent({ type: "kill", attacker, target });
+      }
     }
 
     return true;
