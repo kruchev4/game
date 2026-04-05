@@ -63,11 +63,14 @@ export class NPCMovementSystem {
     const distToPlayer =
       Math.abs(px - npc.x) + Math.abs(py - npc.y);
 
-    // Ranged NPCs stop at their preferred range, melee NPCs stop at 1
-    const stopRange = npc.preferredRange ?? 1;
+    // Melee NPCs always close to adjacency (1).
+    // Ranged NPCs stop at their preferred range — but never less than 1.
+    // A preferredRange of 1 means melee, so treat that the same as melee.
+    const isRanged  = (npc.preferredRange ?? 1) > 1;
+    const stopRange = isRanged ? (npc.preferredRange ?? 4) : 1;
 
     if (distToPlayer <= stopRange) {
-      // Close enough — hold position, let AI system handle attacking
+      // In position — hold and let AI queue attack
       npc._cooldown = 15;
       this._paths.delete(npc.id);
       return;
@@ -103,17 +106,19 @@ export class NPCMovementSystem {
 
     const next = path.shift();
 
-    // Leash check
-    const leashDist =
-      Math.abs(next.x - npc.roamCenter.x) +
-      Math.abs(next.y - npc.roamCenter.y);
+    // Leash check — only applies if NOT in active combat
+    // In combat, NPCs chase indefinitely until dead
+    if (!npc.inCombat) {
+      const leashDist =
+        Math.abs(next.x - npc.roamCenter.x) +
+        Math.abs(next.y - npc.roamCenter.y);
 
-    if (leashDist > npc.roamRadius * 2) {
-      // Too far from home — give up chase, return to roaming
-      npc.state = "roaming";
-      this._paths.delete(npc.id);
-      npc._cooldown = 30;
-      return;
+      if (leashDist > npc.roamRadius * 2) {
+        npc.state = "roaming";
+        this._paths.delete(npc.id);
+        npc._cooldown = 30;
+        return;
+      }
     }
 
     if (!isWalkable(this.world.getTile(next.x, next.y))) {
