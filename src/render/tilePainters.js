@@ -79,7 +79,7 @@ function flower(ctx, s, seed) {
   }
 }
 
-function vignette(ctx, s, strength = 0.03) {
+function vignette(ctx, s, strength = 0.00) {
   ctx.fillStyle = `rgba(0,0,0,${strength})`;
   ctx.fillRect(0, 0, s, 1);
   ctx.fillRect(0, s - 1, s, 1);
