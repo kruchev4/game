@@ -167,7 +167,7 @@ export class Renderer {
     }
 
     // ── A* path polyline ──
-    /*const player = entities.find(e => e.type === "player");
+    const player = entities.find(e => e.type === "player");
 
     if (player?.movePath?.length) {
       ctx.strokeStyle = "rgba(255, 60, 60, 0.55)";
@@ -200,17 +200,17 @@ export class Renderer {
         ctx.fill();
       }
       ctx.lineWidth = 1;
-    }*/
+    }
 
     // ── Move target marker ──
-    /*if (player?.moveTarget) {
+    if (player?.moveTarget) {
       const { sx, sy } = camera.worldToScreen(
         player.moveTarget.x, player.moveTarget.y
       );
       ctx.fillStyle = "rgba(255, 59, 59, 0.75)";
       ctx.beginPath();
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
-      ctx.fill();*/
+      ctx.fill();
     
 
     // ── Entities ──
