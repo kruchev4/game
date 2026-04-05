@@ -27,7 +27,7 @@ export class TileFactory {
   const ctx = c.getContext("2d");
   const def = getTileDef(tileId);
 
-  // ✅ Stable seed (NOT world position)
+  
   const seed =
     ((tileId * 73856093) ^
       ((n.n ?? 0) * 19349663) ^
@@ -40,6 +40,7 @@ export class TileFactory {
 
   this.cache.set(key, c);
   return c;
+  }
 }
 
 // deterministic hash for stable variation
