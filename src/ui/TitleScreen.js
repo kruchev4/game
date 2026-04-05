@@ -310,8 +310,8 @@ export class TitleScreen {
 
   async _handleRegion(id) {
     if (id === "new") {
-      this.hide();
-      // Find the first empty slot to save into; fall back to slot 0 if all full
+      this.active = false;
+      this.canvas.removeEventListener("pointerdown", this._onClick);
       const slotIndex = this.slots.findIndex(s => s === null);
       this.onNew?.(slotIndex >= 0 ? slotIndex : 0);
       return;
@@ -336,7 +336,8 @@ export class TitleScreen {
       const idx  = parseInt(id.replace("load_", ""));
       const data = this.slots[idx];
       if (data) {
-        this.hide();
+        this.active = false;
+        this.canvas.removeEventListener("pointerdown", this._onClick);
         this.onLoad?.(idx, data);
       }
       return;
