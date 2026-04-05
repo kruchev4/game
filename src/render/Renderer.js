@@ -127,7 +127,7 @@ export class Renderer {
         const wy = startY + sy;
 
         const tileId = world.getTile(wx, wy);
-        if (tileId == null){console.out('tile = null'); continue;}
+        if (tileId == null) continue;
 
         const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
@@ -138,11 +138,11 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
         };
 
-        const tileCanvas =
+        /*const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
-      }
+      }*/
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
