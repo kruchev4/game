@@ -140,8 +140,7 @@ export class Renderer {
     }
   }
 
-  // ... entities, NPCs, UI, etc
-}
+ 
 
 
     // ── NPC perception rings ──
