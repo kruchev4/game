@@ -5,13 +5,16 @@ export class TileFactory {
   constructor({ tileSize = 16 } = {}) {
     this.tileSize = tileSize;
     this.cache = new Map(); // key: `${id}|${x}|${y}|${mask}`
+    this.painters = PAINTERS;
   }
 
   // neighborMask optional: bitmask for autotiling/edges later
   getTileCanvas(tileId, wx, wy, neighbors = null) {
+  console.count("TILE VARIANT PAINT");
   console.count("PAINT TILE");
   const n = neighbors || {};
- key = `${tileId}|${neighbors.n}|${neighbors.e}|${neighbors.s}|${neighbors.w}
+  key = `${tileId}|${neighbors.n}|${neighbors.e}|${neighbors.s}|${neighbors.w}
+  const painter = this.painters[tileId] ?? this.painters.__default;
 
 
   const cached = this.cache.get(key);
