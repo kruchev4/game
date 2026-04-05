@@ -6,23 +6,16 @@ export const PAINTERS = {
   },
 
   // Tile 0: Grass
-  0: (ctx, s, def, seed) => {
-    // base
-    fill(ctx, s, def.color || "#4caf50");
+  0: (ctx, s, def, seed, neighbors) => {
+  fill(ctx, s, def.color || "#4caf50");
 
-    // subtle noise (keep counts low so it doesn't shimmer visually)
-    dots(ctx, s, seed,     "#3f8f45", 22); // shadow specks
-    dots(ctx, s, seed+11,  "#6bdc6f", 12); // highlight specks
+  dots(ctx, s, seed,     "#3f8f45", 18);
+  dots(ctx, s, seed + 11,"#6bdc6f", 10);
+  tufts(ctx, s, seed+23,"#2e7d32", 3);
 
-    // a few tiny tufts (clusters)
-    tufts(ctx, s, seed+23, "#2e7d32", 4);
-
-    // optional: rare flower pixel (very low chance)
-    flower(ctx, s, seed+99);
-
-    // tile separation: 1px vignette (keeps map readable)
-    vignette(ctx, s, 0.10);
-  },
+  // ✅ THIS LINE IS THE EDGE BLENDING
+  if (neighbors) grassEdgeBlend(ctx, s, neighbors);
+},
 };
 
 /* -------- helpers -------- */
