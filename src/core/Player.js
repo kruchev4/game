@@ -70,33 +70,30 @@ export class Player extends Entity {
    */
   toSaveData() {
     return {
-      gold:       this.gold,
-      xp:         this.xp,
-      level:      this.level,
-      bag:        this.bag,
-      equipment:  this.equipment,
-      quickSlots: this.quickSlots,
+      gold:          this.gold,
+      xp:            this.xp,
+      level:         this.level,
+      bag:           this.bag,
+      equipment:     this.equipment,
+      quickSlots:    this.quickSlots,
+      learnedSkills: this.learnedSkills ?? {},
+      abilities:     this.abilities ?? [],
     };
   }
 
-  /**
-   * Restore inventory state from save data.
-   * Called by Engine._spawnPlayer() after loading.
-   */
   fromSaveData(data) {
     if (!data) return;
-    this.gold       = data.gold       ?? 50;
-    this.xp         = data.xp         ?? 0;
-    this.level      = data.level      ?? 1;
-    this.bag        = data.bag        ?? new Array(BAG_SIZE).fill(null);
-    this.equipment  = data.equipment  ?? this.equipment;
-    this.quickSlots = data.quickSlots ?? new Array(QUICK_SLOTS).fill(null);
+    this.gold          = data.gold          ?? 50;
+    this.xp            = data.xp            ?? 0;
+    this.level         = data.level         ?? 1;
+    this.bag           = data.bag           ?? new Array(BAG_SIZE).fill(null);
+    this.equipment     = data.equipment     ?? this.equipment;
+    this.quickSlots    = data.quickSlots    ?? new Array(QUICK_SLOTS).fill(null);
+    this.learnedSkills = data.learnedSkills ?? {};
+    if (data.abilities?.length) this.abilities = data.abilities;
 
-    // Ensure bag is always exactly BAG_SIZE
     while (this.bag.length < BAG_SIZE) this.bag.push(null);
     this.bag = this.bag.slice(0, BAG_SIZE);
-
-    // Ensure quickSlots is always exactly QUICK_SLOTS
     while (this.quickSlots.length < QUICK_SLOTS) this.quickSlots.push(null);
     this.quickSlots = this.quickSlots.slice(0, QUICK_SLOTS);
   }
