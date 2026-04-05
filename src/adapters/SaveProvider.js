@@ -160,10 +160,6 @@ export class SaveProvider {
       }
     }
   }
-        console.warn("[SaveProvider] Supabase save failed:", e.message);
-      }
-    }
-  }
 
   /**
    * Delete a save slot (1-based).
