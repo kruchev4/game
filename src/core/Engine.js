@@ -6,8 +6,11 @@ import { NPCMovementSystem }   from "../systems/NPCMovementSystem.js";
 import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
 import { NPCAISystem }         from "../systems/NPCAISystem.js";
 import { CombatSystem }        from "../systems/CombatSystem.js";
+import { LootSystem }          from "../systems/LootSystem.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
+import { LootWindow }          from "../ui/LootWindow.js";
+import { InventoryWindow }     from "../ui/InventoryWindow.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 export class Engine {
@@ -29,17 +32,23 @@ export class Engine {
 
     this.running = false;
 
-    this._abilities     = null;
-    this._classes       = null;
+    this._abilities   = null;
+    this._classes     = null;
+    this._lootTables  = null;
+    this._itemDefs    = null;
+
     this._currentTarget = null;
     this.combatLog      = null;
     this._deathScreen   = null;
 
-    // Save system — set by main.js before loadWorld()
+    this.lootSystem      = null;
+    this._inventoryWindow = null;
+    this._lootWindow      = null;
+
+    // Save system
     this.saveSlot     = null;
     this.saveProvider = null;
 
-    // Called by main.js — fires when player quits to title after death
     this.onQuitToTitle = null;
 
     // Fallback class for testing only — overridden by character data
@@ -51,15 +60,21 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes] = await Promise.all([
+    const [abilitiesRes, classesRes, itemsRes, lootRes] = await Promise.all([
       fetch("./src/data/abilities.json"),
-      fetch("./src/data/classes.json")
+      fetch("./src/data/classes.json"),
+      fetch("./src/data/items.json"),
+      fetch("./src/data/loot.json")
     ]);
     if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
     if (!classesRes.ok)   throw new Error("Failed to load classes.json");
+    if (!itemsRes.ok)     throw new Error("Failed to load items.json");
+    if (!lootRes.ok)      throw new Error("Failed to load loot.json");
 
-    this._abilities = await abilitiesRes.json();
-    this._classes   = await classesRes.json();
+    this._abilities  = await abilitiesRes.json();
+    this._classes    = await classesRes.json();
+    this._itemDefs   = await itemsRes.json();
+    this._lootTables = await lootRes.json();
   }
 
   // ─────────────────────────────────────────────
@@ -118,6 +133,9 @@ export class Engine {
 
       // Store rolled stats for future use (skills, checks, etc.)
       this.player.stats = stats;
+
+      // Restore inventory from save data
+      this.player.fromSaveData(char);
 
       // Resource
       const res = classDef.resource ?? null;
@@ -204,17 +222,43 @@ export class Engine {
       combatSystem: this.combatSystem
     });
 
-    // Push player abilities to renderer for HUD
+    // Loot system
+    this.lootSystem = new LootSystem({
+      player,
+      lootTables: this._lootTables,
+      itemDefs:   this._itemDefs,
+      onCorpseSpawn:  (corpse) => {
+        this.entities.push(corpse);
+      },
+      onCorpseRemove: (corpse) => {
+        this.entities = this.entities.filter(e => e.id !== corpse.id);
+        if (this._lootWindow?.corpse?.id === corpse.id) {
+          this._lootWindow.hide();
+          this._lootWindow = null;
+        }
+      },
+      onEvent: (e) => this._onLootEvent(e)
+    });
+
+    // Push player abilities and item defs to renderer for HUD
     const classDef = this._classes[this._playerClassId];
     renderer.playerAbilities = (classDef?.abilities ?? [])
       .map(id => this._abilities[id])
       .filter(Boolean);
     renderer.abilities     = this._abilities;
+    renderer.itemDefs      = this._itemDefs;
     renderer.currentTarget = null;
-    renderer.player        = player; // needed for cooldown ring reads
+    renderer.player        = player;
 
-    this.combatLog         = new CombatLog();
-    renderer.combatLog     = this.combatLog;
+    this.combatLog     = new CombatLog();
+    renderer.combatLog = this.combatLog;
+
+    // Inventory window (created once, shown/hidden)
+    this._inventoryWindow = new InventoryWindow({
+      player,
+      lootSystem: this.lootSystem,
+      itemDefs:   this._itemDefs
+    });
 
     renderer.camera.centerOn(player.x, player.y, world);
   }
@@ -224,13 +268,21 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _bindInput() {
-    // Keybinds 1–4
     window.addEventListener("keydown", (e) => {
+      const key = e.key.toLowerCase();
+
+      // Ability slots 1-4
       const slot = parseInt(e.key) - 1;
-      if (slot >= 0 && slot <= 3) this._useAbilitySlot(slot);
+      if (slot >= 0 && slot <= 3) { this._useAbilitySlot(slot); return; }
+
+      // Quick slots 5-8
+      if (slot >= 4 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 4); return; }
+
+      // Inventory toggle
+      if (key === "i") { this._inventoryWindow?.toggle(); return; }
     });
 
-    // Ability bar clicks
+    // Canvas click — ability bar, corpse clicks, bag icon
     this.renderer.canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
 
@@ -240,8 +292,29 @@ export class Engine {
       const px     = (e.clientX - rect.left) * scaleX;
       const py     = (e.clientY - rect.top)  * scaleY;
 
-      const slot = this.renderer.getAbilitySlotAt(px, py);
-      if (slot >= 0) this._useAbilitySlot(slot);
+      // Ability bar slot click
+      const abilitySlot = this.renderer.getAbilitySlotAt(px, py);
+      if (abilitySlot >= 0) { this._useAbilitySlot(abilitySlot); return; }
+
+      // Quick slot click
+      const quickSlot = this.renderer.getQuickSlotAt(px, py);
+      if (quickSlot >= 0) { this.lootSystem?.useQuickSlot(quickSlot); return; }
+
+      // Bag icon click
+      if (this.renderer.getBagIconHit(px, py)) {
+        this._inventoryWindow?.toggle();
+        return;
+      }
+
+      // Corpse click — world tile check
+      const worldTile = this.renderer.camera.screenToWorld(px, py);
+      const corpse = this.lootSystem?.corpses.find(
+        c => c.x === worldTile.x && c.y === worldTile.y
+      );
+      if (corpse) {
+        this._openLootWindow(corpse);
+        return;
+      }
     });
   }
 
@@ -343,6 +416,8 @@ export class Engine {
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
+        // Spawn loot corpse
+        this.lootSystem?.onNPCKilled(event.target);
         break;
       }
       case "player_death": {
@@ -376,6 +451,46 @@ export class Engine {
       .replace(/_/g, " ")
       .trim()
       .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // ─────────────────────────────────────────────
+  // LOOT
+  // ─────────────────────────────────────────────
+
+  _openLootWindow(corpse) {
+    this._lootWindow?.hide();
+    this._lootWindow = new LootWindow({
+      corpse,
+      lootSystem: this.lootSystem,
+      itemDefs:   this._itemDefs
+    });
+    this._lootWindow.onClose = () => { this._lootWindow = null; };
+    this._lootWindow.show();
+  }
+
+  _onLootEvent(event) {
+    const log = this.combatLog;
+    switch (event.type) {
+      case "loot_gold":
+        log?.push({ text: `You loot ${event.amount} gold.`, type: "system" });
+        break;
+      case "item_used":
+        if (event.healed)   log?.push({ text: `${event.item.name}: restored ${event.healed} HP.`, type: "system" });
+        if (event.restored) log?.push({ text: `${event.item.name}: restored ${event.restored} resource.`, type: "system" });
+        this._inventoryWindow?.refresh();
+        break;
+      case "item_equipped":
+        log?.push({ text: `Equipped: ${event.item.name}`, type: "system" });
+        this._inventoryWindow?.refresh();
+        break;
+      case "item_unequipped":
+        log?.push({ text: `Unequipped ${event.slot}.`, type: "system" });
+        this._inventoryWindow?.refresh();
+        break;
+      case "bag_full":
+        log?.push({ text: "Bag is full!", type: "miss" });
+        break;
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -500,8 +615,13 @@ export class Engine {
         x:       this.player.x,
         y:       this.player.y
       },
-      gold:      this.player.gold      ?? 0,
-      inventory: this.player.inventory ?? []
+      gold:       this.player.gold      ?? 0,
+      xp:         this.player.xp        ?? 0,
+      level:      this.player.level     ?? 1,
+      bag:        this.player.bag       ?? [],
+      equipment:  this.player.equipment ?? {},
+      quickSlots: this.player.quickSlots ?? [],
+      inventory:  []  // legacy field, kept for compatibility
     };
   }
 
@@ -549,6 +669,7 @@ export class Engine {
       this.combatSystem?.update();              // 3. timers + resolution
       this.npcAISystem?.update(this.world);     // 4. NPC decides actions
       this.movementSystem?.update();            // 5. player movement
+      this.lootSystem?.update();                // 6. tick corpses
       this._tickPlayerResource();               // 7. mana regen / rage decay
     }
 
