@@ -136,10 +136,12 @@ export class Renderer {
           w: world.getTile(wx - 1, wy)
         };
 
-        const tileCanvas =
+        /*const tileCanvas =
           this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
-        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
+        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);*/
+        ctx.fillStyle = "#00ff00"; // bright green test
+        ctx.fillRect(px, py, tileSize, tileSize);
        
       }
     }
