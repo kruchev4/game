@@ -57,9 +57,9 @@ async function start() {
 
     // ── After new character creation: pick a slot to save into ───────────
     function showSaveSlotPickerForNew(character) {
-      const picker = new SlotPicker({ canvas, slots, saveProvider });
+      const picker = new SlotPicker({ canvas, slots, saveProvider, mode: "save" });
 
-      picker.onLoad = async (slotIndex, _existing) => {
+      picker.onSelect = async (slotIndex, _existing) => {
         await saveProvider.save(slotIndex + 1, {
           name:      character.name,
           raceId:    character.raceId,
@@ -90,9 +90,9 @@ async function start() {
 
     // ── Slot picker in load mode ─────────────────────────────────────────
     function showLoadPicker() {
-      const picker = new SlotPicker({ canvas, slots, saveProvider });
+      const picker = new SlotPicker({ canvas, slots, saveProvider, mode: "load" });
 
-      picker.onLoad = async (slotIndex, saveData) => {
+      picker.onSelect = async (slotIndex, saveData) => {
         const character = {
           name:    saveData.name,
           raceId:  saveData.raceId,
