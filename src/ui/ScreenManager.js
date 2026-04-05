@@ -92,7 +92,7 @@ export class ScreenManager {
   }
 
   _setContent(html) {
-    // Remove any existing content except particles
+    // Remove all children EXCEPT the particle canvas
     [...this._overlay.children].forEach(c => {
       if (c.id !== "roe-particles") c.remove();
     });
@@ -101,6 +101,12 @@ export class ScreenManager {
     wrap.innerHTML = html;
     this._overlay.appendChild(wrap);
     return wrap;
+  }
+
+  _restartParticles() {
+    // Cancel existing RAF before starting a new one
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+    this._startParticles();
   }
 
   // ─────────────────────────────────────────────
@@ -251,6 +257,7 @@ export class ScreenManager {
 
   _showCreation() {
     console.log("[ScreenManager] Starting character creation, slot:", this._newSlot);
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     this._step    = 1;
     this._name    = "";
     this._raceId  = null;
@@ -258,6 +265,7 @@ export class ScreenManager {
     this._stats   = null;
     this._rerolls = MAX_REROLLS;
     this._renderStep();
+    this._startParticles();
   }
 
   _renderStep() {
@@ -278,6 +286,7 @@ export class ScreenManager {
     `);
 
     const content = wrap.querySelector("#cc-step-content");
+    console.log("[ScreenManager] Step content element:", content, "Overlay children:", this._overlay.children.length);
 
     switch (this._step) {
       case 1: this._renderNameRace(content);  break;
@@ -331,7 +340,11 @@ export class ScreenManager {
       });
     });
 
-    container.querySelector("#btn-back1").addEventListener("click", () => this._showCharSelect());
+    container.querySelector("#btn-back1").addEventListener("click", () => {
+      if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+      this._showCharSelect();
+      this._startParticles();
+    });
     container.querySelector("#btn-next1").addEventListener("click", () => { this._step = 2; this._renderStep(); });
   }
 
