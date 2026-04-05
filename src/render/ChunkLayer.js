@@ -94,6 +94,7 @@ export class ChunkLayer {
   }
 
   _buildChunkCanvas(cx, cy) {
+    console.count("CHUNK BUILD");
     const world = this.world;
     const ts = this.tileSize;
     const cs = this.chunkSize;
