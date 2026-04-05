@@ -101,6 +101,7 @@ export class Renderer {
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
+    console.log("render called");
     const { ctx, tileSize, camera } = this;
 
   // clear background
