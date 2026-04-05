@@ -78,7 +78,7 @@
     "perceptionRadius": 5,
     "roamRadius": 6,
     "level": 1,
-    "xpValue": 20
+    "xpValue": 40
   },
 
   "goblinArcher": {
@@ -102,6 +102,6 @@
     "perceptionRadius": 7,
     "roamRadius": 6,
     "level": 1,
-    "xpValue": 25
+    "xpValue": 50
   }
 }
