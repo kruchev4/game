@@ -145,7 +145,7 @@ export class Renderer {
         ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
       
        
-    }}}
+    }}
   
 
  
