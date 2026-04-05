@@ -303,6 +303,45 @@ export class Renderer {
     ctx.fillText(initial, portX + portraitSize / 2, portY + portraitSize / 2 + 6);
     ctx.textAlign = "left";
 
+    // ── XP ring sweep around portrait ──
+    // Color shifts from dark gold → bright gold as XP fills
+    // Resets each level with a flash on level up
+    const xpPct    = Math.min(1, (player.xp ?? 0) / Math.max(1,
+      100 * Math.pow(player.level ?? 1, 1.5)));
+    const ringCx   = portX + portraitSize / 2;
+    const ringCy   = portY + portraitSize / 2;
+    const ringR    = portraitSize / 2 + 3;
+
+    // Track
+    ctx.strokeStyle = "rgba(60,40,10,0.6)";
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    ctx.arc(ringCx, ringCy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Fill arc — clockwise from 12 o'clock
+    if (xpPct > 0) {
+      const startA  = -Math.PI / 2;
+      const endA    = startA + Math.PI * 2 * xpPct;
+      // Color: interpolate dark gold → bright gold based on fill
+      const r = Math.round(150 + 70 * xpPct);
+      const g = Math.round(80  + 80 * xpPct);
+      ctx.strokeStyle = `rgba(${r}, ${g}, 20, 0.9)`;
+      ctx.lineWidth   = 2.5;
+      ctx.lineCap     = "round";
+      ctx.beginPath();
+      ctx.arc(ringCx, ringCy, ringR, startA, endA, false);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+
+    // Level number below portrait
+    ctx.fillStyle = "rgba(200,160,50,0.8)";
+    ctx.font      = `bold 9px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(`Lv ${player.level ?? 1}`, portX + portraitSize / 2, portY + portraitSize + 11);
+    ctx.textAlign = "left";
+
     // ── Bars area ──
     const barsX = portX + portraitSize + paddingX;
     const barsW = width - portraitSize - paddingX * 3;
