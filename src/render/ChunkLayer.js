@@ -61,8 +61,9 @@ export class ChunkLayer {
         // convert world tile coords -> screen pixels
         const px = Math.floor((chunkWorldX - camera.x) * ts);
         const py = Math.floor((chunkWorldY - camera.y) * ts);
-
+        this._applyChunkBreakup(ctx, startX, startY);
         ctx.drawImage(chunkCanvas, px, py);
+        
       }
     }
   }
@@ -92,6 +93,101 @@ export class ChunkLayer {
     this.cache.set(key, c);
     return c;
   }
+  _applyChunkBreakup(ctx, chunkWorldX, chunkWorldY) {
+  const ts = this.tileSize;
+  const cs = this.chunkSize;
+
+  // Only do this if you actually have a world
+  if (!this.world) return;
+
+  // Seed per chunk so it’s stable and doesn’t shimmer
+  const seed = hash2(chunkWorldX, chunkWorldY, 1337);
+
+  // 1) Very subtle low-frequency tint wash (breaks uniformity)
+  // Keep alpha extremely low so it’s “felt”, not “seen”.
+  this._tintWash(ctx, seed);
+
+  // 2) Sparse clumps (multi-tile), only on grass (tileId 0 by default)
+  this._grassClumps(ctx, chunkWorldX, chunkWorldY, seed, ts, cs);
+}
+
+_tintWash(ctx, seed) {
+  // Two faint passes: a cool shadow wash + a warm sun wash
+  // Very low alpha to avoid “dirty” look.
+  const coolA = 0.035;
+  const warmA = 0.025;
+
+  // Cool
+  ctx.fillStyle = `rgba(0, 0, 0, ${coolA})`;
+  this._bigBlotches(ctx, seed ^ 0xA53A, 6);
+
+  // Warm
+  ctx.fillStyle = `rgba(255, 255, 255, ${warmA})`;
+  this._bigBlotches(ctx, seed ^ 0xC0FF, 5);
+}
+
+_bigBlotches(ctx, seed, count) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+
+  let z = seed >>> 0;
+  for (let i = 0; i < count; i++) {
+    z = (z + 0x9e3779b9) >>> 0;
+    const x = (rand(z) * w) | 0;
+    const y = (rand(z ^ 0xB5297A4D) * h) | 0;
+
+    // radius in pixels, fairly large for low-frequency variation
+    const r = 30 + ((rand(z ^ 0x1234567) * 80) | 0);
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+_grassClumps(ctx, chunkWorldX, chunkWorldY, seed, ts, cs) {
+  // Clumps are multi-tile patches. We only draw them where the underlying
+  // world tile is grass (tileId 0) to avoid painting over roads/water/etc.
+
+  const clumpCount = 6; // keep low
+  let z = seed ^ 0x51ED;
+
+  for (let i = 0; i < clumpCount; i++) {
+    z = (z + 0x9e3779b9) >>> 0;
+
+    // pick a clump center in chunk tile coords
+    const tx = (rand(z) * cs) | 0;
+    const ty = (rand(z ^ 0xC31C) * cs) | 0;
+
+    const wx = chunkWorldX + tx;
+    const wy = chunkWorldY + ty;
+
+    // only place clumps on grass
+    if (this.world.getTile(wx, wy) !== 0) continue;
+
+    // clump size in tiles (multi-tile look)
+    const radiusTiles = 1 + ((rand(z ^ 0xDEAD) * 3) | 0); // 1..3
+    const px = tx * ts;
+    const py = ty * ts;
+
+    // clump color (two tones)
+    const dark = "rgba(25, 80, 30, 0.20)";
+    const light = "rgba(90, 200, 110, 0.10)";
+
+    // draw as a few overlapping circles for organic shape
+    ctx.fillStyle = dark;
+    this._tileCircle(ctx, px, py, radiusTiles * ts);
+
+    ctx.fillStyle = light;
+    this._tileCircle(ctx, px + (ts * 0.4), py + (ts * 0.2), (radiusTiles * ts) * 0.85);
+  }
+}
+
+_tileCircle(ctx, px, py, r) {
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fill();
+}
 
   _buildChunkCanvas(cx, cy) {
     console.count("CHUNK BUILD");
