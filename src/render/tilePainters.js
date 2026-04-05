@@ -11,7 +11,7 @@ export const PAINTERS = {
 },}
 
   // Tile 0: Grass
- /* 0: (ctx, s, def, seed, neighbors) => {
+ 0: (ctx, s, def, seed, neighbors) => {
   fill(ctx, s, def.color || "#4caf50");
 
   dots(ctx, s, seed,     "#3f8f45", 18);
@@ -140,4 +140,4 @@ function weaken(rgba, factor) {
   if (!m) return rgba;
   const a = Math.max(0, Math.min(1, Number(m[4]) * factor));
   return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
-}*/
+}
