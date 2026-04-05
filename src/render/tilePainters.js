@@ -5,22 +5,27 @@ export const PAINTERS = {
     ctx.fillRect(0, 0, s, s);
   },
 
-
-
   // Tile 0: Grass
- 0: (ctx, s, def, seed, neighbors) => {
-  fill(ctx, s, def.color || "#4caf50");
+  0: (ctx, s, def, seed) => {
+    // base
+    fill(ctx, s, def.color || "#4caf50");
 
-  dots(ctx, s, seed,     "#3f8f45", 18);
-  dots(ctx, s, seed + 11,"#6bdc6f", 10);
-  tufts(ctx, s, seed+23,"#2e7d32", 3);
+    // subtle noise (keep counts low so it doesn't shimmer visually)
+    dots(ctx, s, seed,     "#3f8f45", 22); // shadow specks
+    dots(ctx, s, seed+11,  "#6bdc6f", 12); // highlight specks
 
-  // ✅ THIS LINE IS THE EDGE BLENDING
-  if (neighbors) grassEdgeBlend(ctx, s, neighbors);
-},
+    // a few tiny tufts (clusters)
+    tufts(ctx, s, seed+23, "#2e7d32", 4);
+
+    // optional: rare flower pixel (very low chance)
+    flower(ctx, s, seed+99);
+
+    // tile separation: 1px vignette (keeps map readable)
+    vignette(ctx, s, 0.10);
+  },
 };
 
-
+/* -------- helpers -------- */
 
 function fill(ctx, s, color) {
   ctx.fillStyle = color;
@@ -74,67 +79,10 @@ function flower(ctx, s, seed) {
   }
 }
 
-function vignette(ctx, s, strength = 0.00) {
+function vignette(ctx, s, strength = 0.10) {
   ctx.fillStyle = `rgba(0,0,0,${strength})`;
   ctx.fillRect(0, 0, s, 1);
   ctx.fillRect(0, s - 1, s, 1);
   ctx.fillRect(0, 0, 1, s);
   ctx.fillRect(s - 1, 0, 1, s);
-}
-function grassEdgeBlend(ctx, s, nb) {
-  const edgeN = grassEdgeColor(nb.n);
-  const edgeE = grassEdgeColor(nb.e);
-  const edgeS = grassEdgeColor(nb.s);
-  const edgeW = grassEdgeColor(nb.w);
-
-  featherEdge(ctx, s, "N", edgeN);
-  featherEdge(ctx, s, "E", edgeE);
-  featherEdge(ctx, s, "S", edgeS);
-  featherEdge(ctx, s, "W", edgeW);
-}
-
-function grassEdgeColor(tileId) {
-  if (tileId === 0) return null;
-
-  if ([3,4,35,36].includes(tileId))
-    return "rgba(255,255,255,0.18)"; // water
-
-  if (tileId === 6)
-    return "rgba(180,120,60,0.18)"; // sand
-
-  if ([1,33].includes(tileId))
-    return "rgba(0,0,0,0.16)"; // forest
-
-  if ([2,9,34].includes(tileId))
-    return "rgba(0,0,0,0.22)"; // mountain
-
-  if ([8,32,30].includes(tileId))
-    return "rgba(60,30,30,0.18)"; // blight
-
-  return "rgba(0,0,0,0.12)";
-}
-
-function featherEdge(ctx, s, dir, rgba) {
-  if (!rgba) return;
-
-  if (dir === "N") {
-    ctx.fillStyle = rgba; ctx.fillRect(0, 0, s, 1);
-    ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(0, 1, s, 1);
-  } else if (dir === "S") {
-    ctx.fillStyle = rgba; ctx.fillRect(0, s-1, s, 1);
-    ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(0, s-2, s, 1);
-  } else if (dir === "W") {
-    ctx.fillStyle = rgba; ctx.fillRect(0, 0, 1, s);
-    ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(1, 0, 1, s);
-  } else if (dir === "E") {
-    ctx.fillStyle = rgba; ctx.fillRect(s-1, 0, 1, s);
-    ctx.fillStyle = weaken(rgba, 0.5); ctx.fillRect(s-2, 0, 1, s);
-  }
-}
-
-function weaken(rgba, factor) {
-  const m = rgba.match(/rgba\((\d+),(\d+),(\d+),([0-9.]+)\)/);
-  if (!m) return rgba;
-  const a = Math.max(0, Math.min(1, Number(m[4]) * factor));
-  return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
 }
