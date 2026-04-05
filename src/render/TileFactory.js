@@ -8,7 +8,7 @@ export class TileFactory {
   }
 
   // neighbors: { n,e,s,w } tileIds
-  getTileCanvas(tileId, wx, wy, neighbors) {
+  /*getTileCanvas(tileId, wx, wy, neighbors) {
     const sig = neighbors
       ? `${neighbors.n},${neighbors.e},${neighbors.s},${neighbors.w}`
       : "x,x,x,x";
@@ -30,7 +30,20 @@ export class TileFactory {
 
     this.cache.set(key, c);
     return c;
-  }
+  }*/
+
+  getTileCanvas(tileId, wx, wy) {
+  const c = document.createElement("canvas");
+  c.width = this.tileSize;
+  c.height = this.tileSize;
+  const ctx = c.getContext("2d");
+
+  ctx.fillStyle = "#00ff00";
+  ctx.fillRect(0, 0, this.tileSize, this.tileSize);
+
+  return c;
+}
+
 
   clear() {
     this.cache.clear();
