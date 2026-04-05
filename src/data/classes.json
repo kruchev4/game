@@ -16,7 +16,17 @@
     "actionSpeed": 60,
     "abilities": ["slash"],
     "preferredRange": 1,
-    "color": "#e8c84a"
+    "color": "#e8c84a",
+    "resource": {
+      "type": "rage",
+      "label": "Rage",
+      "color": "#cc2222",
+      "max": 100,
+      "startAt": 0,
+      "regenPerTick": 0,
+      "buildOnHitDealt": 15,
+      "buildOnHitTaken": 10
+    }
   },
 
   "ranger": {
@@ -36,7 +46,15 @@
     "actionSpeed": 70,
     "abilities": ["shoot", "frostArrow", "multishot"],
     "preferredRange": 6,
-    "color": "#6abf5e"
+    "color": "#6abf5e",
+    "resource": {
+      "type": "mana",
+      "label": "Mana",
+      "color": "#3366ff",
+      "max": 80,
+      "startAt": 80,
+      "regenPerTick": 0.05
+    }
   },
 
   "goblinMelee": {
