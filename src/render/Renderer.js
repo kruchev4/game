@@ -101,45 +101,47 @@ export class Renderer {
   // ── Main render ───────────────────────────────────────────────────────────
 
   render(world, entities = []) {
-  const { ctx, tileSize, camera } = this;
+    const { ctx, tileSize, camera } = this;
 
   // clear background
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
-  const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
+    const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 1;
+    const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 1;
 
   // ✅ world-space origin for this frame
-  const startX = camera.tileX;
-  const startY = camera.tileY;
+    const startX = camera.tileX;
+    const startY = camera.tileY;
 
   // ── Tiles ──
-  for (let sy = 0; sy < tilesHigh; sy++) {
-    for (let sx = 0; sx < tilesWide; sx++) {
+    for (let sy = 0; sy < tilesHigh; sy++) {
+      for (let sx = 0; sx < tilesWide; sx++) {
 
       // ✅ world tile coordinates
-      const wx = startX + sx;
-      const wy = startY + sy;
+        const wx = startX + sx;
+        const wy = startY + sy;
 
-      const tileId = world.getTile(wx, wy);
-      if (tileId == null) continue;
+        const tileId = world.getTile(wx, wy);
+        if (tileId == null) continue;
 
-      const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
+        const { sx: px, sy: py } = camera.worldToScreen(wx, wy);
 
-      const neighbors = {
-        n: world.getTile(wx, wy - 1),
-        e: world.getTile(wx + 1, wy),
-        s: world.getTile(wx, wy + 1),
-        w: world.getTile(wx - 1, wy)
-      };
+        const neighbors = {
+          n: world.getTile(wx, wy - 1),
+          e: world.getTile(wx + 1, wy),
+          s: world.getTile(wx, wy + 1),
+          w: world.getTile(wx - 1, wy)
+        };
 
-      const tileCanvas =
-        this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+        /*const tileCanvas =
+          this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
 
-      ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);
+        ctx.drawImage(tileCanvas, px, py, tileSize, tileSize);*/
+        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy);
+        ctx.drawImage(tileCanvas, sx, sy, tileSize, tileSize);
+      }
     }
-  }
 
  
 
