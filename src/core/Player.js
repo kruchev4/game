@@ -62,6 +62,11 @@ export class Player extends Entity {
     // ── Movement (written by MovementSystem) ──
     this.moveTarget = null;
     this.movePath   = null;
+    // ── Animation State ──
+    this.animState = "idle";   // "idle" | "walk" | "attack"
+    this.animFrame = 0;
+    this.animTime  = 0;
+    this.facing    = "south"; // authoritative facing for render + combat
   }
 
   /**
