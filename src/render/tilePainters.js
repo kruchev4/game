@@ -25,7 +25,7 @@ export const PAINTERS = {
     // tile separation: 1px vignette (keeps map readable)
     vignette(ctx, s, 0.00);
   },
-};
+
 // Tile 1: Forest (dense, darker, no hard edges)
   1: (ctx, s, def, seed, neighbors) => {
     const r = makeRand(seed);
