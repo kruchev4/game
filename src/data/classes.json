@@ -3,7 +3,7 @@
     "id": "fighter",
     "name": "Fighter",
     "description": "A heavily armoured melee warrior. Excels in close quarters.",
-    "icon": "🧝",
+    "icon": "\ud83e\udddd",
     "role": "melee-dps",
     "baseStats": {
       "hp": 80,
@@ -15,7 +15,9 @@
       "cha": 8
     },
     "actionSpeed": 60,
-    "abilities": ["slash"],
+    "abilities": [
+      "slash"
+    ],
     "preferredRange": 1,
     "color": "#e8c84a",
     "resource": {
@@ -29,12 +31,11 @@
       "buildOnHitTaken": 10
     }
   },
-
   "ranger": {
     "id": "ranger",
     "name": "Ranger",
     "description": "A nimble archer who excels at range. Vulnerable up close.",
-    "icon": "🏹",
+    "icon": "\ud83c\udff9",
     "role": "ranged-dps",
     "baseStats": {
       "hp": 55,
@@ -46,7 +47,11 @@
       "cha": 10
     },
     "actionSpeed": 70,
-    "abilities": ["shoot", "frostArrow", "multishot"],
+    "abilities": [
+      "shoot",
+      "frostArrow",
+      "multishot"
+    ],
     "preferredRange": 6,
     "color": "#6abf5e",
     "resource": {
@@ -58,12 +63,11 @@
       "regenPerTick": 0.05
     }
   },
-
   "goblinMelee": {
     "id": "goblinMelee",
     "name": "Goblin Warrior",
     "description": "A scrappy melee goblin. Rushes the player on sight.",
-    "icon": "👺",
+    "icon": "\ud83d\udc7a",
     "role": "npc-melee",
     "baseStats": {
       "hp": 30,
@@ -75,7 +79,9 @@
       "cha": 4
     },
     "actionSpeed": 70,
-    "abilities": ["goblinStab"],
+    "abilities": [
+      "goblinStab"
+    ],
     "preferredRange": 1,
     "color": "#cc3333",
     "perceptionRadius": 5,
@@ -83,12 +89,11 @@
     "level": 1,
     "xpValue": 20
   },
-
   "goblinArcher": {
     "id": "goblinArcher",
     "name": "Goblin Archer",
     "description": "Hangs back and slings rocks. Will try to maintain distance.",
-    "icon": "🏹",
+    "icon": "\ud83c\udff9",
     "role": "npc-ranged",
     "baseStats": {
       "hp": 22,
@@ -100,12 +105,144 @@
       "cha": 4
     },
     "actionSpeed": 90,
-    "abilities": ["goblinSling"],
+    "abilities": [
+      "goblinSling"
+    ],
     "preferredRange": 4,
     "color": "#b05a20",
     "perceptionRadius": 7,
     "roamRadius": 6,
     "level": 1,
     "xpValue": 25
+  },
+  "zombie": {
+    "id": "zombie",
+    "name": "Zombie",
+    "icon": "\ud83e\udddf",
+    "description": "A shambling undead. Slow but relentless.",
+    "role": "npc-melee",
+    "baseStats": {
+      "hp": 35,
+      "str": 12,
+      "dex": 6,
+      "int": 3,
+      "con": 14,
+      "wis": 4,
+      "cha": 2
+    },
+    "actionSpeed": 90,
+    "abilities": [
+      "goblinStab"
+    ],
+    "preferredRange": 1,
+    "color": "#4a7a4a",
+    "perceptionRadius": 4,
+    "roamRadius": 4,
+    "level": 3,
+    "xpValue": 30
+  },
+  "skeleton": {
+    "id": "skeleton",
+    "name": "Skeleton",
+    "icon": "\ud83d\udc80",
+    "description": "Reanimated bones. Fast and aggressive.",
+    "role": "npc-melee",
+    "baseStats": {
+      "hp": 25,
+      "str": 10,
+      "dex": 14,
+      "int": 4,
+      "con": 8,
+      "wis": 4,
+      "cha": 2
+    },
+    "actionSpeed": 65,
+    "abilities": [
+      "goblinStab"
+    ],
+    "preferredRange": 1,
+    "color": "#ccccaa",
+    "perceptionRadius": 5,
+    "roamRadius": 5,
+    "level": 3,
+    "xpValue": 28
+  },
+  "wraith": {
+    "id": "wraith",
+    "name": "Wraith",
+    "icon": "\ud83d\udc7b",
+    "description": "A spectral horror. Drains life on contact.",
+    "role": "npc-ranged",
+    "baseStats": {
+      "hp": 28,
+      "str": 8,
+      "dex": 16,
+      "int": 12,
+      "con": 8,
+      "wis": 10,
+      "cha": 6
+    },
+    "actionSpeed": 75,
+    "abilities": [
+      "goblinSling"
+    ],
+    "preferredRange": 3,
+    "color": "#8888cc",
+    "perceptionRadius": 6,
+    "roamRadius": 5,
+    "level": 4,
+    "xpValue": 40
+  },
+  "necromancer": {
+    "id": "necromancer",
+    "name": "Necromancer",
+    "icon": "\ud83e\uddd9",
+    "description": "A dark mage who commands the dead.",
+    "role": "npc-ranged",
+    "baseStats": {
+      "hp": 22,
+      "str": 6,
+      "dex": 10,
+      "int": 18,
+      "con": 8,
+      "wis": 14,
+      "cha": 10
+    },
+    "actionSpeed": 80,
+    "abilities": [
+      "goblinSling"
+    ],
+    "preferredRange": 5,
+    "color": "#aa44aa",
+    "perceptionRadius": 7,
+    "roamRadius": 4,
+    "level": 5,
+    "xpValue": 60
+  },
+  "lich": {
+    "id": "lich",
+    "name": "Lich",
+    "icon": "\ud83d\udc80",
+    "description": "An ancient undead sorcerer of immense power. Boss.",
+    "role": "npc-boss",
+    "baseStats": {
+      "hp": 200,
+      "str": 14,
+      "dex": 10,
+      "int": 22,
+      "con": 18,
+      "wis": 16,
+      "cha": 12
+    },
+    "actionSpeed": 70,
+    "abilities": [
+      "goblinSling"
+    ],
+    "preferredRange": 4,
+    "color": "#cc44cc",
+    "perceptionRadius": 8,
+    "roamRadius": 3,
+    "level": 8,
+    "xpValue": 300
   }
 }
