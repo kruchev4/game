@@ -67,29 +67,49 @@ export class Renderer {
   drawEntity(entity) {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
-    if (entity.type === "corpse") {
-      this._drawCorpse(entity, sx, sy);
-      return;
-    }
-    // ── Friendly NPC (town) ──
-    if (entity.type === "friendly_npc") {
-      this._drawFriendlyNPC(entity, sx, sy);
-      return;
-    }
+
+    if (entity.type === "corpse") { this._drawCorpse(entity, sx, sy); return; }
+    if (entity.type === "friendly_npc") { this._drawFriendlyNPC(entity, sx, sy); return; }
+
+    const cx = sx + tileSize / 2;
+    const cy = sy + tileSize / 2;
+
     if (entity.type === "npc") {
-      ctx.fillStyle = entity === this.currentTarget
-        ? "#ffaa00"
-        : entity.state === "alert"
-          ? "#ff5555"
-          : "#cc3333";
-    } else {
-      ctx.fillStyle = "#ffd700";
+      const icon = entity.icon ?? "👾";
+
+      if (entity.state === "alert") {
+        ctx.strokeStyle = entity === this.currentTarget ? "rgba(255,200,0,0.8)" : "rgba(255,60,60,0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, tileSize / 2 - 1, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+      if (entity === this.currentTarget) {
+        ctx.fillStyle = "rgba(255,180,0,0.25)";
+        ctx.fillRect(sx, sy, tileSize, tileSize);
+      }
+
+      ctx.font = `${Math.round(tileSize * 0.85)}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(icon, cx, cy);
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "left";
+
+    } else if (entity.type === "player") {
+      const icon = entity.icon ?? "🧙";
+
+      ctx.fillStyle = "rgba(255,220,80,0.15)";
+      ctx.fillRect(sx, sy, tileSize, tileSize);
+
+      ctx.font = `${Math.round(tileSize * 0.85)}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(icon, cx, cy);
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "left";
     }
-    ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
-    ctx.strokeStyle = entity === this.currentTarget ? "#ffffff" : "#000000";
-    ctx.lineWidth   = entity === this.currentTarget ? 2 : 1;
-    ctx.strokeRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
-    ctx.lineWidth = 1;
   }
   // ── Friendly NPC ─────────────────────────────────────────────────────────
   _drawFriendlyNPC(npc, sx, sy) {
