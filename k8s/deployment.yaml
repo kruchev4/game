@@ -16,7 +16,7 @@ spec:
         - name: gitlab-registry-auth
       containers:
         - name: realm-of-echoes
-          image: registry.gitlab.internal.garflak.com/development/realm_of_echoes:b56c9c09
+          image: registry.gitlab.internal.garflak.com/development/realm_of_echoes:1421dfe5
           ports:
             - containerPort: 80
 ---
