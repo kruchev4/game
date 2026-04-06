@@ -236,6 +236,7 @@ export class Engine {
     if (classDef) {
       this.player.name        = char?.name ?? "Hero";
       this.player.classId     = classId;
+      this.player.icon        = classDef.icon ?? "🧙";
       this.player.abilities   = classDef.abilities ?? [];
       this.player.actionSpeed = classDef.actionSpeed;
       this.player.actionTimer = classDef.actionSpeed;
