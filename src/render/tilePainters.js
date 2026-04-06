@@ -50,7 +50,7 @@ export const PAINTERS = {
     ctx.fillRect(fx, fy, 2, 2);
   }
 },
-}
+
   /*0: (ctx, s, def, seed) => {
     // base
     fill(ctx, s, def.color || "#4caf50");
@@ -131,3 +131,15 @@ function vignette(ctx, s, strength = 0.10) {
   ctx.fillRect(0, 0, 1, s);
   ctx.fillRect(s - 1, 0, 1, s);
 }
+function makeRand(seed) {
+  // fast deterministic PRNG from a 32-bit seed
+  let x = seed >>> 0;
+  return function () {
+    // xorshift32
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17; x >>>= 0;
+    x ^= x << 5;  x >>>= 0;
+    return x / 4294967296;
+  };
+}
+
