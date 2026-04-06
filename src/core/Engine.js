@@ -63,6 +63,8 @@ export class Engine {
     this._currentWorldId  = null;
     this._returnStack     = []; // [{ worldId, x, y }] — stack for nested transitions
     this._respawnPoint    = null; // { worldId, x, y } — set by inn
+    this._autoSaveTick    = 0;     // frames since last autosave
+    this._autoSaveInterval = 18000; // ~5 min at 60fps
 
     // Save system
     this.saveSlot     = null;
@@ -517,6 +519,13 @@ export class Engine {
 
       // Inventory toggle
       if (key === "i") { this._inventoryWindow?.toggle(); return; }
+
+      // Manual save — F5
+      if (e.key === "F5") {
+        e.preventDefault();
+        this.saveToSlot();
+        return;
+      }
     });
 
     // Scroll wheel zoom — each notch zooms ±1 step
@@ -847,8 +856,10 @@ export class Engine {
     };
 
     deathScreen.onQuit = () => {
-      this.running = false;
-      this.onQuitToTitle?.();
+      this.saveToSlot().finally(() => {
+        this.running = false;
+        this.onQuitToTitle?.();
+      });
     };
 
     this._deathScreen = deathScreen;
@@ -992,6 +1003,13 @@ export class Engine {
       this.spawnSystem?.update();                 // 7. respawns + random encounters
       this.townSystem?.update();                  // 8. town NPC wander + exit check
       this._tickPlayerResource();                 // 9. mana regen / rage decay
+
+      // Periodic autosave
+      this._autoSaveTick++;
+      if (this._autoSaveTick >= this._autoSaveInterval) {
+        this._autoSaveTick = 0;
+        this.saveToSlot();
+      }
     }
 
     this.combatLog?.update();                   // 6. always age log messages
