@@ -70,6 +70,7 @@ export class Renderer {
 
     if (entity.type === "corpse") { this._drawCorpse(entity, sx, sy); return; }
     if (entity.type === "friendly_npc") { this._drawFriendlyNPC(entity, sx, sy); return; }
+    if (entity.type === "remote_player") { this._drawRemotePlayer(entity, sx, sy); return; }
 
     const cx = sx + tileSize / 2;
     const cy = sy + tileSize / 2;
@@ -121,6 +122,43 @@ export class Renderer {
     }
   }
   // ── Friendly NPC ─────────────────────────────────────────────────────────
+  _drawRemotePlayer(entity, sx, sy) {
+    const { ctx, tileSize } = this;
+    const cx = sx + tileSize / 2;
+    const cy = sy + tileSize / 2;
+
+    // Blue tint backing to distinguish from local player
+    ctx.fillStyle = "rgba(40,80,180,0.35)";
+    ctx.fillRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
+
+    // Icon
+    ctx.globalAlpha = 1;
+    ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(entity.icon ?? "🧙", cx, cy + 1);
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+
+    // Name tag above
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    const nameW = ctx.measureText(entity.name ?? "").width + 6;
+    ctx.fillRect(cx - nameW/2, sy - 14, nameW, 12);
+    ctx.fillStyle = "#88ccff";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(entity.name ?? "", cx, sy - 4);
+    ctx.textAlign = "left";
+
+    // HP bar below name
+    const barW = tileSize;
+    const hpPct = Math.max(0, (entity.hp ?? 0) / (entity.maxHp ?? 1));
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(sx, sy - 18, barW, 3);
+    ctx.fillStyle = hpPct > 0.5 ? "#44cc44" : hpPct > 0.25 ? "#ccaa22" : "#cc3333";
+    ctx.fillRect(sx, sy - 18, barW * hpPct, 3);
+  }
+
   _drawFriendlyNPC(npc, sx, sy) {
     const { ctx, tileSize } = this;
     // Green background tile
