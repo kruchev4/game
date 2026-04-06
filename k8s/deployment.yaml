@@ -55,3 +55,13 @@ spec:
                 name: realm-of-echoes-svc
                 port:
                   number: 80
+    - host: echoes.garflak.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: realm-of-echoes-svc
+                port:
+                  number: 80
