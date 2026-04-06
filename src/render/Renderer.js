@@ -54,6 +54,7 @@ export class Renderer {
     this.combatLog       = null;
     // Set by Engine when in a town
     this.currentWorld    = null;
+    this._lastWorld      = null;
     this.resize();
     window.addEventListener("resize", () => this.resize());
   }
@@ -115,17 +116,23 @@ export class Renderer {
     const { ctx, tileSize, camera } = this;
     // Store world ref for overlay drawing
     this.currentWorld = world;
-    // clear background
+      // clear background
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
     const tilesWide = Math.ceil(ctx.canvas.width  / tileSize) + 2;
     const tilesHigh = Math.ceil(ctx.canvas.height / tileSize) + 2;
     const startX = Math.floor(camera.x);
     const startY = Math.floor(camera.y);
-    // ── Tiles ──
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // ── Tiles — ChunkLayer (fast cached) ──
+    if (this._lastWorld !== world) {
+      this._lastWorld = world;
+      this.chunkLayer.setWorld(world);
+    }
     this.chunkLayer.draw(ctx, camera);
-    // ── Town overlays — drawn on top of tiles, below entities ──
+
+    // ── Town overlays ──
     this._drawTownOverlays(world, camera, tileSize);
     // ── NPC perception rings ──
     for (const entity of entities) {
