@@ -139,6 +139,66 @@ export const PAINTERS = {
   },
 
 /* -------- helpers -------- */
+function makeRand(seed) {
+  let x = (seed >>> 0) || 1;
+  return function () {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17; x >>>= 0;
+    x ^= x << 5;  x >>>= 0;
+    return x / 4294967296;
+  };
+}
+
+function drawRoad(ctx, s, seed, neighbors, style) {
+  const r = makeRand(seed);
+
+  // Base fill
+  ctx.fillStyle = style.fill;
+  ctx.fillRect(0, 0, s, s);
+
+  // Determine connections to same road tileId
+  // neighbors is {n,e,s,w}; we detect connection if neighbor is same tileId as this road.
+  // We can’t see "this tileId" directly here, so we infer by checking neighbor equals style marker?
+  // Instead, ChunkLayer/TileFactory passes the tileId as seed mix; for simplicity we treat
+  // "connected" if neighbor is one of road IDs (27-31). This avoids broken connections.
+  const isRoad = (t) => (t === 27 || t === 28 || t === 29 || t === 30 || t === 31);
+
+  const N = isRoad(neighbors?.n);
+  const E = isRoad(neighbors?.e);
+  const S = isRoad(neighbors?.s);
+  const W = isRoad(neighbors?.w);
+
+  // Road body: a plus-shape with arms that extend to connected sides
+  const mid = (s / 2) | 0;
+  const halfW = 3; // road half-width in pixels
+
+  ctx.fillStyle = style.track;
+
+  // center
+  ctx.fillRect(mid - halfW, mid - halfW, halfW * 2 + 1, halfW * 2 + 1);
+
+  // arms
+  if (N) ctx.fillRect(mid - halfW, 0, halfW * 2 + 1, mid);
+  if (S) ctx.fillRect(mid - halfW, mid, halfW * 2 + 1, s - mid);
+  if (W) ctx.fillRect(0, mid - halfW, mid, halfW * 2 + 1);
+  if (E) ctx.fillRect(mid, mid - halfW, s - mid, halfW * 2 + 1);
+
+  // subtle edge feather to reduce “square stamp”
+  ctx.strokeStyle = style.edge;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(1, 1, s - 2, s - 2);
+
+  // runic accents (rare tiny marks)
+  if (style.runes) {
+    ctx.fillStyle = "rgba(140,100,255,0.22)";
+    for (let i = 0; i < 2; i++) {
+      const x = 4 + ((r() * (s - 8)) | 0);
+      const y = 4 + ((r() * (s - 8)) | 0);
+      ctx.fillRect(x, y, 1, 3);
+      ctx.fillRect(x + 1, y + 1, 1, 2);
+    }
+  }
+}    
 
 function fill(ctx, s, color) {
   ctx.fillStyle = color;
