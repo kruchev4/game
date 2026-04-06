@@ -136,7 +136,7 @@ export const PAINTERS = {
       edge: "rgba(0,0,0,0.25)",
       runes: true
     });
-  },
+  },}
 
 /* -------- helpers -------- */
 function makeRand(seed) {
