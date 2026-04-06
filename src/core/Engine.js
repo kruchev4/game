@@ -365,6 +365,8 @@ export class Engine {
 
     console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
   }
+
+  _initTownSystem() {
     this.townSystem = new TownSystem({
       townData: this.world,
       world:    this.world,
