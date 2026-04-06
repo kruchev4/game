@@ -474,6 +474,9 @@ export class Engine {
 
     renderer.camera.centerOn(player.x, player.y, world);
 
+    // Prime the chunk layer with the world so first render has tiles
+    renderer.chunkLayer?.setWorld(world);
+
     // Sync ability bar now that renderer and skills are ready
     if (this._pendingSyncAbilityBar) {
       this._pendingSyncAbilityBar = false;
