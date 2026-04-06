@@ -188,6 +188,20 @@ _tileCircle(ctx, px, py, r) {
   ctx.arc(px, py, r, 0, Math.PI * 2);
   ctx.fill();
 }
+  // ---- helpers (must be OUTSIDE the class) ----
+function rand(seed) {
+  let x = seed | 0;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  return (x >>> 0) / 4294967296;
+}
+
+function hash2(x, y, salt = 0) {
+  let n = (x * 374761393) ^ (y * 668265263) ^ (salt * 2147483647);
+  n = (n ^ (n >> 13)) * 1274126177;
+  return (n ^ (n >> 16)) >>> 0;
+}
 
   _buildChunkCanvas(cx, cy) {
     
