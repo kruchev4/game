@@ -398,7 +398,19 @@ export class Engine {
       world,
       movementSystem: this.movementSystem,
       npcs,
-      onTarget:       (npc) => this._setTarget(npc)
+      onTarget:       (npc) => this._setTarget(npc),
+      isBlocked:      (wx, wy) => {
+        // Town NPC click
+        if (this.townSystem?.npcs.some(n => n.x === wx && n.y === wy)) return true;
+        // Corpse click
+        if (this.lootSystem?.corpses.some(c => c.x === wx && c.y === wy)) return true;
+        // Town marker on overworld
+        if (!this.townSystem && this.world?.type !== "town") {
+          const towns = this.world?.towns ?? [];
+          if (towns.some(t => Math.abs(t.x - wx) <= 1 && Math.abs(t.y - wy) <= 1)) return true;
+        }
+        return false;
+      }
     });
 
     this.combatSystem = new CombatSystem({
@@ -542,7 +554,14 @@ export class Engine {
       // Convert screen to world tile — used by all remaining checks
       const worldTile = this.renderer.camera.screenToWorld(px, py);
 
-      // Town portal click — check world town positions
+      // Town NPC click — must be before move/corpse so NPCs intercept the click
+      if (this.townSystem) {
+        const hit = this.townSystem.handleClick(worldTile.x, worldTile.y);
+        console.log(`[Engine] Town click at ${worldTile.x},${worldTile.y} — hit: ${hit}, NPCs: ${this.townSystem.npcs.length}`);
+        if (hit) return;
+      }
+
+      // Town portal click — overworld only
       if (!this.townSystem && this.world?.type !== "town") {
         const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
         const clickedTown = towns.find(t =>
