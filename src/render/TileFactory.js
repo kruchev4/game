@@ -64,7 +64,7 @@ softenEdge(ctx, side, strength = 0.10) {
   if (side === "w") ctx.fillRect(0, 0, feather, s);
   if (side === "e") ctx.fillRect(s - feather, 0, feather, s);
 }
-
+}
 
 // deterministic hash for stable variation
 function hash2(x, y, salt = 0) {
