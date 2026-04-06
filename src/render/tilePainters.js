@@ -6,52 +6,9 @@ export const PAINTERS = {
   },
 
   // Tile 0: Grass
-  // Tile 0: Grass (old-style, tuned)
-0: (ctx, s, def, seed /*, neighbors */) => {
-  // Deterministic random from seed
-  const r = makeRand(seed);
 
-  // 1) Varied base color (3-way)
-  const base1 = "#4e8a3a";
-  const base2 = "#3d7530";
-  const base3 = "#2e6828";
 
-  const h = r();
-  ctx.fillStyle = h > 0.66 ? base1 : h > 0.33 ? base2 : base3;
-  ctx.fillRect(0, 0, s, s);
-
-  // 2) Subtle texture specks (tiny, non-grid)
-  // (This replaces the old grid seam; seams look bad when tiled.)
-  const specks = 6 + ((r() * 6) | 0);
-  ctx.fillStyle = "rgba(20,40,20,0.10)";
-  for (let i = 0; i < specks; i++) {
-    const x = (r() * s) | 0;
-    const y = (r() * s) | 0;
-    ctx.fillRect(x, y, 1, 1);
-  }
-
-  // 3) Grass tufts (2–5), simple pixel clusters
-  const tuftCount = 2 + ((r() * 4) | 0);
-  for (let i = 0; i < tuftCount; i++) {
-    const tx = 2 + ((r() * (s - 4)) | 0);
-    const ty = 2 + ((r() * (s - 4)) | 0);
-
-    ctx.fillStyle = "rgba(90,160,60,0.35)";
-    ctx.fillRect(tx, ty, 2, 3);
-    ctx.fillRect(tx + 1, ty - 1, 1, 2);
-  }
-
-  // 4) Rare flowers (very sparse, 2x2)
-  if (r() > 0.985) {
-    const chance = r();
-    ctx.fillStyle = chance > 0.66 ? "#f1c40f" : chance > 0.33 ? "#e74c3c" : "#ffffff";
-    const fx = 3 + ((r() * (s - 6)) | 0);
-    const fy = 3 + ((r() * (s - 6)) | 0);
-    ctx.fillRect(fx, fy, 2, 2);
-  }
-},
-
-  /*0: (ctx, s, def, seed) => {
+  0: (ctx, s, def, seed) => {
     // base
     fill(ctx, s, def.color || "#4caf50");
 
@@ -67,7 +24,7 @@ export const PAINTERS = {
 
     // tile separation: 1px vignette (keeps map readable)
     vignette(ctx, s, 0.00);
-  },*/
+  },
 };
 
 /* -------- helpers -------- */
