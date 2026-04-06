@@ -10,6 +10,7 @@ import { LootSystem }          from "../systems/LootSystem.js";
 import { XPSystem }            from "../systems/XPSystem.js";
 import { SpawnSystem }         from "../systems/SpawnSystem.js";
 import { TownSystem }          from "../systems/TownSystem.js";
+import { MultiplayerSystem }   from "../systems/MultiplayerSystem.js";
 import { TownWorldProvider }   from "../adapters/TownWorldProvider.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
@@ -54,6 +55,7 @@ export class Engine {
     this.xpSystem         = null;
     this.spawnSystem      = null;
     this.townSystem       = null;
+    this.multiplayerSystem = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
     this._levelUpWindow   = null;
@@ -584,6 +586,9 @@ export class Engine {
       this._pendingSyncAbilityBar = false;
       this._syncAbilityBar();
     }
+
+    // Start multiplayer presence
+    this._initMultiplayer();
   }
 
   // ─────────────────────────────────────────────
@@ -888,8 +893,46 @@ export class Engine {
   }
 
   // ─────────────────────────────────────────────
-  // XP & LEVELING
+  // MULTIPLAYER
   // ─────────────────────────────────────────────
+
+  _initMultiplayer() {
+    // Leave any existing session first
+    this.multiplayerSystem?.leave();
+
+    const token = localStorage.getItem("roe2_player_token") ?? this.player.id;
+
+    this.multiplayerSystem = new MultiplayerSystem({
+      player:      this.player,
+      worldId:     this._currentWorldId,
+      playerToken: token,
+
+      onPlayerJoin: (remote) => {
+        // Add remote player to entities so renderer draws them
+        if (!this.entities.find(e => e.id === remote.id)) {
+          this.entities.push(remote);
+        }
+        this.combatLog?.push({ text: `${remote.name} joined the world.`, type: "system" });
+      },
+
+      onPlayerLeave: (token) => {
+        const id = `remote_${token}`;
+        const remote = this.entities.find(e => e.id === id);
+        if (remote) {
+          this.entities = this.entities.filter(e => e.id !== id);
+          this.combatLog?.push({ text: `${remote.name} left the world.`, type: "system" });
+        }
+      },
+
+      onPlayerUpdate: (remote) => {
+        // Entity is updated in-place by MultiplayerSystem — no action needed
+      }
+    });
+
+    this.multiplayerSystem.join().catch(e =>
+      console.warn("[Engine] Multiplayer join failed:", e.message)
+    );
+  }
 
   _onXPEvent(event) {
     const log = this.combatLog;
@@ -1105,7 +1148,8 @@ export class Engine {
       this.lootSystem?.update();                  // 6. tick corpses
       this.spawnSystem?.update();                 // 7. respawns + random encounters
       this.townSystem?.update();                  // 8. town NPC wander + exit check
-      this._tickPlayerResource();                 // 9. mana regen / rage decay
+      this.multiplayerSystem?.update();           // 9. broadcast position
+      this._tickPlayerResource();                 // 10. mana regen / rage decay
 
       // Periodic autosave
       this._autoSaveTick++;
