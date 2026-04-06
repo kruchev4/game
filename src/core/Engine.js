@@ -9,11 +9,16 @@ import { CombatSystem }        from "../systems/CombatSystem.js";
 import { LootSystem }          from "../systems/LootSystem.js";
 import { XPSystem }            from "../systems/XPSystem.js";
 import { SpawnSystem }         from "../systems/SpawnSystem.js";
+import { TownSystem }          from "../systems/TownSystem.js";
+import { TownWorldProvider }   from "../adapters/TownWorldProvider.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
 import { LootWindow }          from "../ui/LootWindow.js";
 import { InventoryWindow }     from "../ui/InventoryWindow.js";
 import { LevelUpWindow }       from "../ui/LevelUpWindow.js";
+import { InnWindow }           from "../ui/InnWindow.js";
+import { ShopWindow }          from "../ui/ShopWindow.js";
+import { TownNPCWindow }       from "../ui/TownNPCWindow.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
 export class Engine {
@@ -48,9 +53,16 @@ export class Engine {
     this.lootSystem       = null;
     this.xpSystem         = null;
     this.spawnSystem      = null;
+    this.townSystem       = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
     this._levelUpWindow   = null;
+    this._townNPCWindow   = null;
+
+    // World transition state
+    this._currentWorldId  = null;
+    this._returnStack     = []; // [{ worldId, x, y }] — stack for nested transitions
+    this._respawnPoint    = null; // { worldId, x, y } — set by inn
 
     // Save system
     this.saveSlot     = null;
@@ -73,21 +85,25 @@ export class Engine {
       fetch("./src/data/items.json"),
       fetch("./src/data/loot.json"),
       fetch("./src/data/skills.json"),
-      fetch("./src/data/spawnGroups.json")
+      fetch("./src/data/spawnGroups.json").catch(() => null)
     ]);
     if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
     if (!classesRes.ok)   throw new Error("Failed to load classes.json");
     if (!itemsRes.ok)     throw new Error("Failed to load items.json");
     if (!lootRes.ok)      throw new Error("Failed to load loot.json");
     if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
-    if (!spawnRes.ok)     throw new Error("Failed to load spawnGroups.json");
 
     this._abilities  = await abilitiesRes.json();
     this._classes    = await classesRes.json();
     this._itemDefs   = await itemsRes.json();
     this._lootTables = await lootRes.json();
     this._skills     = await skillsRes.json();
-    this._spawnData  = await spawnRes.json();
+    this._spawnData  = spawnRes?.ok ? await spawnRes.json()
+                     : { spawnGroups: [], randomEncounters: { enabled: false } };
+
+    if (!spawnRes?.ok) {
+      console.warn("[Engine] spawnGroups.json not found — no world spawns loaded");
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -100,8 +116,8 @@ export class Engine {
    *   If omitted, falls back to this._playerClassId for testing.
    */
   async loadWorld(worldId, character = null) {
-    // Store character data before loading (data load reads classes)
-    this._characterData = character;
+    this._characterData  = character;
+    this._currentWorldId = worldId;
 
     await Promise.all([
       this._loadData(),
@@ -109,15 +125,92 @@ export class Engine {
     ]);
 
     this._spawnPlayer();
-    this._buildSystems();   // build systems first so onSpawn can add to entities
+    this._buildSystems();
     this._initSpawnSystem();
     this._bindInput();
   }
 
+  /**
+   * Transition to a new world (town, dungeon, or back to overworld).
+   * @param {object} opts
+   * @param {string}  opts.targetWorld  - world/town id to load
+   * @param {number}  opts.targetX      - player spawn X in target world
+   * @param {number}  opts.targetY      - player spawn Y in target world
+   * @param {string}  [opts.returnWorld]- world to return to on exit
+   * @param {number}  [opts.returnX]    - return position X
+   * @param {number}  [opts.returnY]    - return position Y
+   */
+  async transition({ targetWorld, targetX, targetY, returnWorld, returnX, returnY }) {
+    // Save return position if provided
+    if (returnWorld) {
+      this._returnStack.push({ worldId: returnWorld, x: returnX, y: returnY });
+    }
+
+    // Close any open windows
+    this._lootWindow?.hide();
+    this._townNPCWindow?.hide();
+    this._inventoryWindow?.hide();
+    this.townSystem = null;
+
+    // Save current game state before leaving
+    await this._autoSave();
+
+    // Determine provider — towns use TownWorldProvider, overworld uses original
+    const isTown = targetWorld.startsWith("town_");
+    if (isTown) {
+      const provider = new TownWorldProvider();
+      this.world = await provider.load(targetWorld);
+    } else {
+      this.world = await this.worldProvider.load(targetWorld);
+    }
+
+    this._currentWorldId = targetWorld;
+
+    // Move player to target position
+    const { x, y } = findNearestWalkable(this.world, targetX, targetY);
+    this.player.x = x;
+    this.player.y = y;
+    this.player.moveTarget = null;
+    this.player.movePath   = null;
+
+    // Reset systems for new world
+    this.npcs     = [];
+    this.entities = [this.player];
+
+    this._buildSystems();
+
+    if (isTown) {
+      this._initTownSystem();
+    } else {
+      this._initSpawnSystem();
+    }
+
+    // Re-center camera
+    this.renderer.camera.centerOn(x, y, this.world);
+  }
+
+  /** Return to the previous world (pop from return stack) */
+  async _exitTown(exit) {
+    let returnDest = this._returnStack.pop();
+
+    // Fall back to exit data if stack is empty
+    if (!returnDest) {
+      returnDest = {
+        worldId: exit.targetWorld ?? "overworld_C",
+        x:       exit.targetX    ?? 120,
+        y:       exit.targetY    ?? 88
+      };
+    }
+
+    await this.transition({
+      targetWorld: returnDest.worldId,
+      targetX:     returnDest.x,
+      targetY:     returnDest.y
+    });
+  }
+
   async _loadWorldFromProvider(worldId) {
     this.world = await this.worldProvider.load(worldId);
-    this.renderer.chunkLayer.setWorld(this.world);
-    this.renderer
   }
 
   _spawnPlayer() {
@@ -183,7 +276,72 @@ export class Engine {
    * Called after _buildSystems so the NPC perception/movement systems
    * already have references — we add NPCs to this.npcs after the fact.
    */
-  _initSpawnSystem() {
+  _initTownSystem() {
+    this.townSystem = new TownSystem({
+      townData: this.world,
+      world:    this.world,
+      player:   this.player,
+      onInteract: (npc) => this._onNPCInteract(npc),
+      onExit:     (exit) => this._exitTown(exit)
+    });
+
+    // Add friendly NPCs to entities for rendering
+    for (const npc of this.townSystem.npcs) {
+      this.entities.push(npc);
+    }
+  }
+
+  _onNPCInteract(npc) {
+    // Close any existing NPC window
+    this._townNPCWindow?.hide();
+
+    if (npc.role === "inn") {
+      const win = new InnWindow({
+        npc,
+        player:   this.player,
+        townData: this.world
+      });
+      win.onRest = () => {
+        // Restore HP and resource
+        this.player.hp       = this.player.maxHp;
+        this.player.resource = this.player.maxResource;
+
+        // Set respawn point to this town
+        this._respawnPoint = {
+          worldId: this.world.id,
+          x:       this.world.entryPoint?.x ?? this.player.x,
+          y:       this.world.entryPoint?.y ?? this.player.y
+        };
+
+        this.combatLog?.push({ text: `Rested at ${npc.innName}. Respawn point set.`, type: "system" });
+      };
+      win.show();
+
+    } else if (npc.role === "shop") {
+      const win = new ShopWindow({
+        npc,
+        player:     this.player,
+        townData:   this.world,
+        itemDefs:   this._itemDefs,
+        lootSystem: this.lootSystem
+      });
+      win.show();
+
+    } else {
+      const win = new TownNPCWindow({ npc });
+      this._townNPCWindow = win;
+      win.show();
+    }
+  }
+
+  async _autoSave() {
+    if (!this.saveProvider || !this.saveSlot) return;
+    try {
+      await this.saveProvider.save(this.saveSlot, this.getSaveData());
+    } catch (e) {
+      console.warn("[Engine] Auto-save failed:", e.message);
+    }
+  }
     this.spawnSystem = new SpawnSystem({
       world:     this.world,
       spawnData: this._spawnData,
@@ -362,6 +520,28 @@ export class Engine {
       if (this.renderer.getBagIconHit(px, py)) {
         this._inventoryWindow?.toggle();
         return;
+      }
+
+      // Town portal click — check world town positions
+      if (!this.townSystem && this.world?.type !== "town") {
+        const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
+        const clickedTown = towns.find(t =>
+          Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
+        );
+        if (clickedTown) {
+          const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
+          this.transition({
+            targetWorld:  townId,
+            targetX:      20,
+            targetY:      27,
+            returnWorld:  this._currentWorldId,
+            returnX:      clickedTown.x,
+            returnY:      clickedTown.y
+          }).catch(err => {
+            console.warn(`[Engine] Town ${townId} not found:`, err.message);
+          });
+          return;
+        }
       }
 
       // Corpse click — world tile check
@@ -637,7 +817,43 @@ export class Engine {
     deathScreen.show();
   }
 
-  _respawn() {
+  async _respawn() {
+    const p = this.player;
+
+    p.hp       = p.maxHp;
+    p.resource = p.maxResource;
+    p.dead     = false;
+    p.inCombat = false;
+    p.moveTarget = null;
+    p.movePath   = null;
+
+    // Respawn at inn if set, otherwise world spawn
+    if (this._respawnPoint && this._respawnPoint.worldId !== this._currentWorldId) {
+      await this.transition({
+        targetWorld: this._respawnPoint.worldId,
+        targetX:     this._respawnPoint.x,
+        targetY:     this._respawnPoint.y
+      });
+    } else {
+      const rx = this._respawnPoint?.x ?? this._spawnX;
+      const ry = this._respawnPoint?.y ?? this._spawnY;
+      const { x, y } = findNearestWalkable(this.world, rx, ry);
+      p.x = x;
+      p.y = y;
+    }
+
+    this._playerDead = false;
+    this._deathScreen = null;
+
+    // Reset all NPCs
+    for (const npc of this.npcs) {
+      npc.state    = "roaming";
+      npc.inCombat = false;
+    }
+    this.combatSystem?.reset?.();
+    this.renderer.camera.centerOn(p.x, p.y, this.world);
+    this.combatLog?.push({ text: "You have returned.", type: "system" });
+  }
     const p = this.player;
 
     // Restore to full HP and resource
@@ -780,7 +996,8 @@ export class Engine {
       this.movementSystem?.update();            // 5. player movement
       this.lootSystem?.update();                // 6. tick corpses
       this.spawnSystem?.update();               // 7. respawns + random encounters
-      this._tickPlayerResource();               // 8. mana regen / rage decay
+      this.townSystem?.update();                // 8. town NPC wander + exit check
+      this._tickPlayerResource();               // 9. mana regen / rage decay
     }
 
     this.combatLog?.update();                   // 6. always age log messages
