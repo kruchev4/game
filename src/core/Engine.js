@@ -856,53 +856,6 @@ export class Engine {
     this.renderer.camera.centerOn(p.x, p.y, this.world);
     this.combatLog?.push({ text: "You have returned.", type: "system" });
   }
-    const p = this.player;
-
-    // Restore to full HP and resource
-    p.hp       = p.maxHp;
-    p.resource = p.maxResource;
-    p.dead     = false;
-    p.inCombat = false;
-
-    // Move to world center (nearest walkable)
-    const cx = Math.floor(this.world.width  / 2);
-    const cy = Math.floor(this.world.height / 2);
-    const { x, y } = findNearestWalkable(this.world, cx, cy);
-    p.x = x;
-    p.y = y;
-
-    // Reset all NPCs back to roaming — fresh start
-    for (const npc of this.npcs) {
-      npc.state      = "roaming";
-      npc.chaseSteps = 0;
-      npc._cooldown  = 0;
-      npc.inCombat   = false;
-      npc._queuedAction = null;
-    }
-
-    // Clear combat state entirely
-    this.combatSystem.combatants.clear();
-    this.combatSystem._actionTimers.clear();
-    this.combatSystem._cooldowns.clear();
-    this.combatSystem._effects.clear();
-    this.combatSystem._playerAction = null;
-
-    // Clear target
-    this._setTarget(null);
-    this.movementSystem?.clearTarget();
-
-    // Snap camera to respawn point
-    this.renderer.camera.centerOn(x, y, this.world);
-
-    // Resume world
-    this._playerDead = false;
-
-    this.combatLog?.push({ text: "You have been returned to the land of the living.", type: "system" });
-
-    // Auto-save after respawn (penalties saved)
-    this.saveToSlot();
-  }
-
   // ─────────────────────────────────────────────
   // RESOURCE
   // ─────────────────────────────────────────────
