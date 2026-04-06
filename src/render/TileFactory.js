@@ -58,21 +58,11 @@ softenEdge(ctx, side, strength = 0.10) {
   g.addColorStop(1, "rgba(0,0,0,0)");
 
   ctx.fillStyle = g;
+
   if (side === "n") ctx.fillRect(0, 0, s, feather);
   if (side === "s") ctx.fillRect(0, s - feather, s, feather);
   if (side === "w") ctx.fillRect(0, 0, feather, s);
   if (side === "e") ctx.fillRect(s - feather, 0, feather, s);
-}
-
-  grad.addColorStop(0, `rgba(0,0,0,${strength})`);
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-
-  ctx.fillStyle = grad;
-
-  if (side === "n") ctx.fillRect(0, 0, s, 6);
-  if (side === "s") ctx.fillRect(0, s - 6, s, 6);
-  if (side === "w") ctx.fillRect(0, 0, 6, s);
-  if (side === "e") ctx.fillRect(s - 6, 0, 6, s);
 }
 
 
