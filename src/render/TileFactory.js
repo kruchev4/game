@@ -41,7 +41,7 @@ if (tileId === 0 && neighbors) {
 
   this.cache.set(key, c);
   return c;
-  }
+  
 }
 function softenEdge(ctx, side, strength = 0.10) {
   const s = ctx.canvas.width;
