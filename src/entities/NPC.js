@@ -37,7 +37,8 @@ export class NPC {
     this.abilityCooldowns = {};
 
     // ── Rendering ──
-    this.color = classDef?.color ?? "#cc3333";
+    this.color          = classDef?.color  ?? "#cc3333";
+    this.icon           = classDef?.icon   ?? "👾";
 
     // ── Runtime flags ──
     this.inCombat      = false;
