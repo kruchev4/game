@@ -72,7 +72,7 @@ export class SaveProvider {
         try {
           const { data, error } = await this._supabase
             .from("player_saves")
-            .select("data, char_name")
+            .select("*")
             .eq("player_token", this._playerToken);
 
           if (!error && data) {
@@ -131,24 +131,32 @@ export class SaveProvider {
 
     if (this._useSupabase) {
       try {
-        // Find existing row for this player that has this slot number in its data
-        const { data: rows } = await this._supabase
+        // Select all columns — avoids issues if column names differ from expected
+        const { data: rows, error: selError } = await this._supabase
           .from("player_saves")
-          .select("uuid, data")
+          .select("*")
           .eq("player_token", this._playerToken);
 
-        const existing = (rows ?? []).find(r => r.data?.slot === slot);
+        if (selError) {
+          console.warn("[SaveProvider] Select failed:", selError.message);
+        }
 
-        if (existing?.uuid) {
-          // Update by uuid — no filter on jsonb needed
+        // Find the row matching this slot by checking the data JSON
+        const existing = (rows ?? []).find(r =>
+          r.data?.slot === slot || r.slot === slot
+        );
+
+        // Use whichever id column exists
+        const rowId = existing?.id;
+
+        if (rowId) {
           const { error } = await this._supabase
             .from("player_saves")
             .update({ char_name: payload.name, data: payload })
-            .eq("uuid", existing.uuid);
+            .eq("id", rowId);
 
           if (error) console.warn("[SaveProvider] Update failed:", error.message);
         } else {
-          // Insert new row
           const { error } = await this._supabase
             .from("player_saves")
             .insert({ player_token: this._playerToken, char_name: payload.name, data: payload });
@@ -171,18 +179,22 @@ export class SaveProvider {
 
     if (this._useSupabase) {
       try {
-        // Load all rows for player, find the one matching this slot, delete by uuid
         const { data: rows } = await this._supabase
           .from("player_saves")
-          .select("uuid, data")
+          .select("*")
           .eq("player_token", this._playerToken);
 
-        const target = (rows ?? []).find(r => r.data?.slot === slot);
-        if (target?.uuid) {
+        const target = (rows ?? []).find(r =>
+          r.data?.slot === slot || r.slot === slot
+        );
+        const rowId = target?.id;
+        const idCol = "id";
+
+        if (rowId) {
           await this._supabase
             .from("player_saves")
             .delete()
-            .eq("uuid", target.uuid);
+            .eq(idCol, rowId);
         }
       } catch (e) {
         console.warn("[SaveProvider] Supabase delete failed:", e.message);
