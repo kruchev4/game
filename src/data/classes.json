@@ -3,6 +3,7 @@
     "id": "fighter",
     "name": "Fighter",
     "description": "A heavily armoured melee warrior. Excels in close quarters.",
+    "icon": "🧝",
     "role": "melee-dps",
     "baseStats": {
       "hp": 80,
@@ -33,6 +34,7 @@
     "id": "ranger",
     "name": "Ranger",
     "description": "A nimble archer who excels at range. Vulnerable up close.",
+    "icon": "🏹",
     "role": "ranged-dps",
     "baseStats": {
       "hp": 55,
@@ -61,6 +63,7 @@
     "id": "goblinMelee",
     "name": "Goblin Warrior",
     "description": "A scrappy melee goblin. Rushes the player on sight.",
+    "icon": "👺",
     "role": "npc-melee",
     "baseStats": {
       "hp": 30,
@@ -78,13 +81,14 @@
     "perceptionRadius": 5,
     "roamRadius": 6,
     "level": 1,
-    "xpValue": 40
+    "xpValue": 20
   },
 
   "goblinArcher": {
     "id": "goblinArcher",
     "name": "Goblin Archer",
     "description": "Hangs back and slings rocks. Will try to maintain distance.",
+    "icon": "🏹",
     "role": "npc-ranged",
     "baseStats": {
       "hp": 22,
@@ -102,6 +106,6 @@
     "perceptionRadius": 7,
     "roamRadius": 6,
     "level": 1,
-    "xpValue": 50
+    "xpValue": 25
   }
 }
