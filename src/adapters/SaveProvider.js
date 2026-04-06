@@ -121,6 +121,8 @@ export class SaveProvider {
 
         if (selError) console.warn("[SaveProvider] Select failed:", selError.message);
 
+        console.log("[SaveProvider] Rows from Supabase:", rows?.length, rows?.map(r => ({ id: r.id, dataType: typeof r.data, slot: parseData(r.data)?.slot })));
+
         // Parse data column — may be string or object
         const existing = (rows ?? []).find(r => parseData(r.data)?.slot === slot);
 
