@@ -8,14 +8,15 @@ export class TileFactory {
     this.painters = PAINTERS;
   }
 
- getTileCanvas(tileId, wx, wy, neighbors = null) {
+ getTileCanvas(tileId, wx, wy, neighbors = null, variant = 0) {
   // Optional debug (turn off once confirmed)
   // console.count("TILE VARIANT PAINT");
 
   const n = neighbors || {};
 
   
-  const key = `${tileId}|${n.n ?? "x"}|${n.e ?? "x"}|${n.s ?? "x"}|${n.w ?? "x"}`;
+  const key = `${tileId}|v${variant}|${n.n ?? "x"}|${n.e ?? "x"}|${n.s ?? "x"}|${n.w ?? "x"}`;
+
 
   const cached = this.cache.get(key);
   if (cached) return cached;
@@ -29,11 +30,12 @@ export class TileFactory {
 
   
   const seed =
-    ((tileId * 73856093) ^
-      ((n.n ?? 0) * 19349663) ^
-      ((n.e ?? 0) * 83492791) ^
-      ((n.s ?? 0) * 29765729) ^
-      ((n.w ?? 0) * 104395301)) >>> 0;
+  ((tileId * 73856093) ^
+    ((variant + 1) * 83492791) ^
+    ((n.n ?? 0) * 19349663) ^
+    ((n.e ?? 0) * 29765729) ^
+    ((n.s ?? 0) * 104395301) ^
+    ((n.w ?? 0) * 668265263)) >>> 0;
 
   const painter = (this.painters?.[tileId] ?? PAINTERS[tileId] ?? PAINTERS.__default);
   painter(ctx, this.tileSize, def, seed, n);
