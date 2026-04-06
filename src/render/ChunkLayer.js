@@ -224,8 +224,8 @@ _tileCircle(ctx, px, py, r) {
           w: world.getTile(wx - 1, wy)
         };
 
-        // TileFactory should return a cached tile variant canvas (fast)
-        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors);
+        const variant = (hash2(wx, wy, tileId) & 3); // 0..3
+        const tileCanvas = this.tileFactory.getTileCanvas(tileId, wx, wy, neighbors, variant);
 
         ctx.drawImage(tileCanvas, x * ts, y * ts, ts, ts);
       }
