@@ -230,7 +230,7 @@ _tileCircle(ctx, px, py, r) {
         ctx.drawImage(tileCanvas, x * ts, y * ts, ts, ts);
       }
     }
-    this._applyChunkBreakup(ctx, startX, startY);
+    
     return c;
   }
 }
