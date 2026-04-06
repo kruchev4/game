@@ -6,7 +6,316 @@ export const PAINTERS = {
   },
 
   // Tile 0: Grass
-
+  // ── PAINTERS entries to add ──────────────────────────────────────────────────
+ 
+  // Tile 3: Deep Water
+  3: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1a3f6b");
+    // animated shimmer bands (deterministic — no Date.now so chunk-safe)
+    ctx.fillStyle = "rgba(30,80,140,0.30)";
+    ctx.fillRect(0, ((r() * s) | 0) % s, s, 2);
+    ctx.fillRect(0, ((r() * s) | 0) % s, s, 1);
+    ctx.fillStyle = "rgba(80,140,200,0.12)";
+    for (let i = 0; i < 6; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 3, 1);
+    }
+    vignette(ctx, s, 0.10);
+  },
+ 
+  // Tile 4: Shallow Water / Path
+  4: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#2a6080");
+    ctx.fillStyle = "rgba(100,180,210,0.18)";
+    for (let i = 0; i < 8; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 2, 1);
+    }
+    vignette(ctx, s, 0.06);
+  },
+ 
+  // Tile 5: Town marker (overworld)
+  5: (ctx, s, def, seed) => {
+    fill(ctx, s, def.color || "#c9a227");
+    ctx.fillStyle = "rgba(255,220,80,0.25)";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillRect(0, s - 2, s, 2);
+    ctx.fillRect(s - 2, 0, 2, s);
+  },
+ 
+  // Tile 6: Danger zone
+  6: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#6b1a1a");
+    ctx.fillStyle = "rgba(160,30,30,0.20)";
+    for (let i = 0; i < 10; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    vignette(ctx, s, 0.12);
+  },
+ 
+  // Tile 7: Sand
+  7: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#c8a870");
+    ctx.fillStyle = "rgba(200,160,80,0.18)";
+    for (let i = 0; i < 8; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 1);
+    }
+    ctx.fillStyle = "rgba(180,130,50,0.12)";
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 1, 1);
+    }
+  },
+ 
+  // Tile 8: Dungeon Wall
+  8: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#151520");
+    // Stone block pattern
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(0, 0, s/2 - 1, s/2 - 1);
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 1, s/2 - 1);
+    // Dark mortar
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    ctx.fillRect(0, (s/2) | 0, s, 1);
+    ctx.fillRect((s/2) | 0, 0, 1, s);
+    // Occasional crack
+    if (r() > 0.65) {
+      ctx.strokeStyle = "rgba(0,0,0,0.40)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo((r() * s * 0.4 + 2) | 0, (r() * 6 + 2) | 0);
+      ctx.lineTo((r() * s * 0.6 + s * 0.2) | 0, (r() * 10 + 6) | 0);
+      ctx.stroke();
+    }
+  },
+ 
+  // Tile 9: Dungeon Floor
+  9: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#262018");
+    // Subtle stone texture
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    if (r() > 0.8) ctx.fillRect(2, 2, s - 4, 1);
+    if (r() > 0.9) ctx.fillRect(2, s - 4, s - 4, 1);
+    // Very faint grout lines
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.fillRect(0, (s/2) | 0, s, 1);
+    ctx.fillRect((s/2) | 0, 0, 1, s);
+  },
+ 
+  // Tile 10: Stairs Up
+  10: (ctx, s, def, seed) => {
+    fill(ctx, s, "#262018");
+    ctx.fillStyle = "rgba(96,128,160,0.55)";
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(4 + i*3, s - 8 - i*4, s - 8 - i*6, 3);
+    }
+    ctx.fillStyle = "rgba(150,190,230,0.8)";
+    ctx.font = `${(s * 0.5) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("⬆", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  },
+ 
+  // Tile 11: Stairs Down
+  11: (ctx, s, def, seed) => {
+    fill(ctx, s, "#262018");
+    ctx.fillStyle = "rgba(64,80,96,0.55)";
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(4 + i*3, 4 + i*4, s - 8 - i*6, 3);
+    }
+    ctx.fillStyle = "rgba(100,130,160,0.8)";
+    ctx.font = `${(s * 0.5) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("⬇", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  },
+ 
+  // Tile 12: Door
+  12: (ctx, s, def, seed) => {
+    // Floor base
+    fill(ctx, s, "#262018");
+    // Door frame (dark wood)
+    ctx.fillStyle = "#5a3010";
+    ctx.fillRect(4, 2, s - 8, s - 4);
+    // Door face (lighter)
+    ctx.fillStyle = "#7a4a20";
+    ctx.fillRect(6, 4, s - 12, s - 8);
+    // Handle
+    ctx.fillStyle = "#c9a227";
+    ctx.fillRect((s/2) | 0, (s/2) | 0, 3, 3);
+    // Frame border
+    ctx.strokeStyle = "#3a2008"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(4, 2, s - 8, s - 4);
+    ctx.lineWidth = 1;
+  },
+ 
+  // Tile 13: Chest
+  13: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, "#262018");
+    // Body
+    ctx.fillStyle = "#6b3a10";
+    ctx.fillRect(5, 8, s - 10, s - 14);
+    // Lid highlight
+    ctx.fillStyle = "#8b5a20";
+    ctx.fillRect(5, 8, s - 10, (s - 14) / 2);
+    // Lid top
+    ctx.fillStyle = "#5a2a08";
+    ctx.fillRect(5, 6, s - 10, 4);
+    // Lock
+    ctx.fillStyle = "#c9a227";
+    ctx.fillRect((s/2) | 0 - 2, (s/2) | 0 - 1, 4, 4);
+    // Gold glow (deterministic pulse using seed)
+    const pulse = 0.06 + (r() * 0.04);
+    ctx.fillStyle = `rgba(201,162,39,${pulse})`;
+    ctx.fillRect(3, 5, s - 6, s - 8);
+  },
+ 
+  // Tile 14: Portal
+  14: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, "#1a0830");
+    // Radial glow
+    ctx.fillStyle = "rgba(120,40,220,0.35)";
+    ctx.beginPath();
+    ctx.arc(s/2, s/2, s/2 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(180,100,255,0.20)";
+    ctx.beginPath();
+    ctx.arc(s/2, s/2, s/3, 0, Math.PI * 2);
+    ctx.fill();
+    // Swirl icon
+    ctx.fillStyle = "rgba(200,150,255,0.85)";
+    ctx.font = `${(s * 0.55) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🌀", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    vignette(ctx, s, 0.15);
+  },
+ 
+  // Tile 15: Jungle
+  15: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#0f3b1f");
+    ctx.fillStyle = "rgba(0,60,20,0.35)";
+    ctx.beginPath();
+    ctx.arc((r() * s/2 + s/4) | 0, (r() * s/2 + s/4) | 0, (s * 0.38) | 0, 0, Math.PI * 2);
+    ctx.fill();
+    dots(ctx, s, seed + 5, "rgba(20,80,30,0.3)", 8);
+  },
+ 
+  // Tile 16: Volcano
+  16: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#7a1a0a");
+    ctx.fillStyle = "rgba(255,80,0,0.25)";
+    for (let i = 0; i < 5; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 2);
+    }
+    vignette(ctx, s, 0.15);
+  },
+ 
+  // Tile 17: Eldritch
+  17: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#32134d");
+    ctx.fillStyle = "rgba(120,40,220,0.18)";
+    ctx.fillRect(0, 0, s, s);
+    dots(ctx, s, seed + 3, "rgba(180,100,255,0.20)", 8);
+    vignette(ctx, s, 0.12);
+  },
+ 
+  // Tile 18: Obsidian
+  18: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1a1a1a");
+    // Glassy facets
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(1, 1, s/2 - 2, s/2 - 2);
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 2, s/2 - 2);
+    vignette(ctx, s, 0.08);
+  },
+ 
+  // Tile 19: Blight
+  19: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#3a2a1a");
+    dots(ctx, s, seed + 7, "rgba(80,40,0,0.30)", 10);
+    ctx.fillStyle = "rgba(100,60,20,0.15)";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+  },
+ 
+  // Tile 20: Town Floor (cobblestone)
+  20: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#6a6058");
+    // Cobble grid offset by row
+    const stW = (s / 3) | 0;
+    const stH = (s / 2.5) | 0;
+    for (let row = 0; row < 3; row++) {
+      for (let col = -1; col < 4; col++) {
+        const sx = col * stW + (row % 2 === 0 ? 0 : (stW/2) | 0);
+        const sy = row * stH;
+        if (sx >= s || sy >= s) continue;
+        const sv = r();
+        ctx.fillStyle = sv > 0.5 ? "#757060" : "#656050";
+        ctx.fillRect(sx + 1, sy + 1, stW - 2, stH - 2);
+      }
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(0, 0, s, 1); ctx.fillRect(0, 0, 1, s);
+  },
+ 
+  // Tile 21: Town Wall
+  21: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1e1810");
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(1, 1, s/2 - 2, s/2 - 2);
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 2, s/2 - 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, s - 1, s - 1);
+    ctx.beginPath();
+    ctx.moveTo(0, s/2); ctx.lineTo(s, s/2);
+    ctx.moveTo(s/2, 0); ctx.lineTo(s/2, s/2);
+    ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(0, 0, s, 2);
+  },
+ 
+  // Tile 22: Inn
+  22: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "🏨", "#7a5030"); },
+  // Tile 23: Shop
+  23: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "⚒", "#1a3a5a"); },
+  // Tile 24: Temple
+  24: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "✝", "#4a2a6a"); },
+  // Tile 25: Tavern
+  25: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "🍺", "#3a2808"); },
+  // Tile 26: Vendor
+  26: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "💰", "#1a3a1a"); },
+  // Tile 32: Town Exit
+  32: (ctx, s, def, seed) => {
+    fill(ctx, s, "#2a5a2a");
+    ctx.fillStyle = "#3a7a3a";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+    ctx.fillStyle = "rgba(100,220,100,0.7)";
+    ctx.font = `${(s * 0.55) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🌍", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    vignette(ctx, s, 0.08);
+  },
 
   0: (ctx, s, def, seed) => {
     // base
@@ -258,6 +567,27 @@ function flower(ctx, s, seed) {
     ctx.fillStyle = (chance > 0.993) ? "#ffffff" : "#ffb7d5";
     ctx.fillRect(x, y, 1, 1);
   }
+}
+function drawTownService(ctx, s, seed, icon, color) {
+  const r = makeRand(seed);
+  // Cobble base
+  fill(ctx, s, color + "30");
+  ctx.fillStyle = "#6a6058";
+  ctx.fillRect(0, 0, s, s);
+  // Coloured tint
+  ctx.fillStyle = color + "40";
+  ctx.fillRect(0, 0, s, s);
+  // Icon
+  ctx.globalAlpha = 0.88;
+  ctx.font = `${(s * 0.52) | 0}px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(icon, s/2, s/2);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  // Border
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
+  ctx.strokeRect(1, 1, s - 2, s - 2);
+  ctx.globalAlpha = 1; ctx.lineWidth = 1;
 }
 
 function vignette(ctx, s, strength = 0.10) {
