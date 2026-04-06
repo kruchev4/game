@@ -138,16 +138,7 @@ export const PAINTERS = {
     });
   },}
 
-/* -------- helpers -------- */
-function makeRand(seed) {
-  let x = (seed >>> 0) || 1;
-  return function () {
-    x ^= x << 13; x >>>= 0;
-    x ^= x >> 17; x >>>= 0;
-    x ^= x << 5;  x >>>= 0;
-    return x / 4294967296;
-  };
-}
+
 
 function drawRoad(ctx, s, seed, neighbors, style) {
   const r = makeRand(seed);
