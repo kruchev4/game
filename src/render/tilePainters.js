@@ -26,6 +26,117 @@ export const PAINTERS = {
     vignette(ctx, s, 0.00);
   },
 };
+// Tile 1: Forest (dense, darker, no hard edges)
+  1: (ctx, s, def, seed, neighbors) => {
+    const r = makeRand(seed);
+
+    // base
+    ctx.fillStyle = def.color || "#2e7d32";
+    ctx.fillRect(0, 0, s, s);
+
+    // subtle canopy specks (kept away from edges)
+    ctx.fillStyle = "rgba(10,20,10,0.14)";
+    for (let i = 0; i < 12; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    // darker “leaf clusters” (small blobs)
+    for (let k = 0; k < 3; k++) {
+      const cx = 3 + ((r() * (s - 6)) | 0);
+      const cy = 3 + ((r() * (s - 6)) | 0);
+      ctx.fillStyle = "rgba(0,0,0,0.12)";
+      ctx.fillRect(cx, cy, 2, 2);
+      ctx.fillRect(cx + 1, cy, 2, 1);
+    }
+
+    // optional: tiny highlight flecks
+    ctx.fillStyle = "rgba(120,200,120,0.10)";
+    for (let i = 0; i < 6; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
+    }
+  },
+
+  // Tile 2: Mountain (rock texture, interior-only detail)
+  2: (ctx, s, def, seed, neighbors) => {
+    const r = makeRand(seed);
+
+    // base
+    ctx.fillStyle = def.color || "#7b7b7b";
+    ctx.fillRect(0, 0, s, s);
+
+    // rock specks
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    for (let i = 0; i < 16; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    // light specks
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    for (let i = 0; i < 10; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    // subtle ridge line (diagonal) — stays inside tile
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(3, 5);
+    ctx.lineTo(s - 4, s - 6);
+    ctx.stroke();
+  },
+
+  // Road Dirt (27) – autotile connections
+  27: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#8b6a44",
+      track: "rgba(60,40,25,0.35)",
+      edge: "rgba(0,0,0,0.15)"
+    });
+  },
+
+  // Road Stone (28)
+  28: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#7c7f86",
+      track: "rgba(30,30,40,0.30)",
+      edge: "rgba(0,0,0,0.18)"
+    });
+  },
+
+  // Road Obsidian (29)
+  29: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#1b1b22",
+      track: "rgba(120,120,160,0.18)",
+      edge: "rgba(0,0,0,0.25)"
+    });
+  },
+
+  // Road Blight (30)
+  30: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#3a2f2f",
+      track: "rgba(10,0,0,0.22)",
+      edge: "rgba(0,0,0,0.22)"
+    });
+  },
+
+  // Road Runic (31)
+  31: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#0f0f18",
+      track: "rgba(130,90,255,0.18)",
+      edge: "rgba(0,0,0,0.25)",
+      runes: true
+    });
+  },
 
 /* -------- helpers -------- */
 
