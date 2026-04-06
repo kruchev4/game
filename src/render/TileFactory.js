@@ -7,26 +7,7 @@ export class TileFactory {
     this.cache = new Map(); // key: `${id}|${x}|${y}|${mask}`
     this.painters = PAINTERS;
   }
-function softenEdge(ctx, side, strength = 0.10) {
-  const s = ctx.canvas.width;
-  const feather = 5;
 
-  let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-  if (side === "n") { x0 = 0; y0 = 0; x1 = 0; y1 = feather; }
-  if (side === "s") { x0 = 0; y0 = s; x1 = 0; y1 = s - feather; }
-  if (side === "w") { x0 = 0; y0 = 0; x1 = feather; y1 = 0; }
-  if (side === "e") { x0 = s; y0 = 0; x1 = s - feather; y1 = 0; }
-
-  const g = ctx.createLinearGradient(x0, y0, x1, y1);
-  g.addColorStop(0, `rgba(0,0,0,${strength})`);
-  g.addColorStop(1, "rgba(0,0,0,0)");
-
-  ctx.fillStyle = g;
-  if (side === "n") ctx.fillRect(0, 0, s, feather);
-  if (side === "s") ctx.fillRect(0, s - feather, s, feather);
-  if (side === "w") ctx.fillRect(0, 0, feather, s);
-  if (side === "e") ctx.fillRect(s - feather, 0, feather, s);
-}
   
 
  getTileCanvas(tileId, wx, wy, neighbors = null, variant = 0) {
@@ -88,4 +69,24 @@ function hash2(x, y, salt = 0) {
   let n = (x * 374761393) ^ (y * 668265263) ^ (salt * 2147483647);
   n = (n ^ (n >> 13)) * 1274126177;
   return (n ^ (n >> 16)) >>> 0;
+}
+function softenEdge(ctx, side, strength = 0.10) {
+  const s = ctx.canvas.width;
+  const feather = 5;
+
+  let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  if (side === "n") { x0 = 0; y0 = 0; x1 = 0; y1 = feather; }
+  if (side === "s") { x0 = 0; y0 = s; x1 = 0; y1 = s - feather; }
+  if (side === "w") { x0 = 0; y0 = 0; x1 = feather; y1 = 0; }
+  if (side === "e") { x0 = s; y0 = 0; x1 = s - feather; y1 = 0; }
+
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, `rgba(0,0,0,${strength})`);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+
+  ctx.fillStyle = g;
+  if (side === "n") ctx.fillRect(0, 0, s, feather);
+  if (side === "s") ctx.fillRect(0, s - feather, s, feather);
+  if (side === "w") ctx.fillRect(0, 0, feather, s);
+  if (side === "e") ctx.fillRect(s - feather, 0, feather, s);
 }
