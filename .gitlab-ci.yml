@@ -1,0 +1,51 @@
+# realm_of_echoes/.gitlab-ci.yml
+stages:
+  - build
+  - deploy
+
+variables:
+  REGISTRY: "registry.gitlab.internal.garflak.com"
+  IMAGE_NAME: "development/realm_of_echoes"
+
+build-image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/ssl/certs
+    - cat "${FREEIPA_CA_CERT}" >> /kaniko/ssl/certs/ca-certificates.crt
+
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+      --destination "${REGISTRY}/${IMAGE_NAME}:latest"
+  tags:
+    - docker
+    - linux
+
+update-manifest:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - apk add --no-cache git ca-certificates
+    - cp "${FREEIPA_CA_CERT}" /usr/local/share/ca-certificates/freeipa.crt
+    - update-ca-certificates
+    - git config --global user.name "ci-gitops-bot"
+    - git config --global user.email "ci-gitops-bot@internal.garflak.com"
+    - git remote set-url origin https://oauth2:${GITLAB_ACCESS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git
+    - git checkout $CI_COMMIT_BRANCH
+    - git pull origin $CI_COMMIT_BRANCH --rebase
+    - |
+      sed -i "s|image: .*|image: ${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}|g" k8s/deployment.yaml
+    - git add k8s/deployment.yaml
+    - |
+      git commit -m "chore: update image tag to ${CI_COMMIT_SHORT_SHA} [skip ci]" || echo "No changes to commit"
+    - git push origin $CI_COMMIT_BRANCH
+  needs: ["build-image"]
+  tags:
+    - linux
