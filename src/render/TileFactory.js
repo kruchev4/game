@@ -1,4 +1,4 @@
-import { getTileDef } from "../data/tiles.js";
+import { Tiles } from "../data/tiles.js";
 import { PAINTERS } from "./tilePainters.js";
 
 export class TileFactory {
