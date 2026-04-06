@@ -342,6 +342,8 @@ export class Engine {
       console.warn("[Engine] Auto-save failed:", e.message);
     }
   }
+
+  _initSpawnSystem() {
     this.spawnSystem = new SpawnSystem({
       world:     this.world,
       spawnData: this._spawnData,
