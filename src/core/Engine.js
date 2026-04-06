@@ -527,6 +527,9 @@ export class Engine {
         return;
       }
 
+      // Convert screen to world tile — used by all remaining checks
+      const worldTile = this.renderer.camera.screenToWorld(px, py);
+
       // Town portal click — check world town positions
       if (!this.townSystem && this.world?.type !== "town") {
         const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
@@ -549,8 +552,7 @@ export class Engine {
         }
       }
 
-      // Corpse click — world tile check
-      const worldTile = this.renderer.camera.screenToWorld(px, py);
+      // Corpse click
       const corpse = this.lootSystem?.corpses.find(
         c => c.x === worldTile.x && c.y === worldTile.y
       );
