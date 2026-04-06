@@ -42,10 +42,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - echoes.internal.garflak.com
+        - echoes.apps.internal.garflak.com
       secretName: realm-of-echoes-tls
   rules:
-    - host: echoes.internal.garflak.com
+    - host: echoes.apps.internal.garflak.com
       http:
         paths:
           - path: /
