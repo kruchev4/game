@@ -58,3 +58,12 @@ export const TILES = {
   33: { color: "#5a3a18", walkable: true,  type: "road_bridge"  },
   35: { color: "#7a6848", walkable: true,  type: "road_path"    },
 };
+
+/**
+ * getTileDef — used by TileFactory
+ * Returns the tile definition for a given tile ID.
+ * Falls back to tile 0 (grass) if not found.
+ */
+export function getTileDef(tileId) {
+  return TILES[tileId] ?? TILES[0];
+}
