@@ -77,36 +77,45 @@ export class Renderer {
     if (entity.type === "npc") {
       const icon = entity.icon ?? "👾";
 
+      // Dark backing so icon reads against any tile
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
+
       if (entity.state === "alert") {
-        ctx.strokeStyle = entity === this.currentTarget ? "rgba(255,200,0,0.8)" : "rgba(255,60,60,0.6)";
+        ctx.strokeStyle = entity === this.currentTarget ? "rgba(255,200,0,0.9)" : "rgba(255,60,60,0.8)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(cx, cy, tileSize / 2 - 1, 0, Math.PI * 2);
+        ctx.arc(cx, cy, tileSize / 2, 0, Math.PI * 2);
         ctx.stroke();
         ctx.lineWidth = 1;
       }
       if (entity === this.currentTarget) {
-        ctx.fillStyle = "rgba(255,180,0,0.25)";
-        ctx.fillRect(sx, sy, tileSize, tileSize);
+        ctx.strokeStyle = "rgba(255,200,0,0.9)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
+        ctx.lineWidth = 1;
       }
 
-      ctx.font = `${Math.round(tileSize * 0.85)}px monospace`;
+      ctx.globalAlpha = 1;
+      ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(icon, cx, cy);
+      ctx.fillText(icon, cx, cy + 1);
       ctx.textBaseline = "alphabetic";
       ctx.textAlign = "left";
 
     } else if (entity.type === "player") {
       const icon = entity.icon ?? "🧙";
 
-      ctx.fillStyle = "rgba(255,220,80,0.15)";
-      ctx.fillRect(sx, sy, tileSize, tileSize);
+      // Gold backing for player
+      ctx.fillStyle = "rgba(180,140,0,0.35)";
+      ctx.fillRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
 
-      ctx.font = `${Math.round(tileSize * 0.85)}px monospace`;
+      ctx.globalAlpha = 1;
+      ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(icon, cx, cy);
+      ctx.fillText(icon, cx, cy + 1);
       ctx.textBaseline = "alphabetic";
       ctx.textAlign = "left";
     }
