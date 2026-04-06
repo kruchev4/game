@@ -1,26 +1,27 @@
 /**
  * TownWorldProvider.js
  *
- * Loads town map JSON files from src/data/towns/.
- * Implements the same interface as SupabaseOverworldProvider
- * so Engine.loadWorld() works unchanged.
- *
- * Town JSON tiles are stored as an array of comma-separated strings
- * (one string per row). This provider parses them into a flat array
- * and exposes getTile(x, y).
+ * Loads town and dungeon map JSON files from src/data/towns/ and src/data/dungeons/.
+ * Implements the same interface as SupabaseOverworldProvider.
  */
 
 export class TownWorldProvider {
-  /**
-   * @param {string} basePath - base path to town JSON files (default ./src/data/towns/)
-   */
-  constructor(basePath = "./src/data/towns/") {
-    this.basePath = basePath;
+  constructor() {
+    this._paths = {
+      town:    "./src/data/towns/",
+      dungeon: "./src/data/dungeons/"
+    };
   }
 
-  async load(townId) {
-    const res = await fetch(`${this.basePath}${townId}.json`);
-    if (!res.ok) throw new Error(`[TownWorldProvider] Failed to load ${townId}: ${res.status}`);
+  async load(worldId) {
+    const prefix = worldId.startsWith("dungeon_") || !worldId.startsWith("town_")
+      && !worldId.startsWith("town_") ? "dungeon" : "town";
+    const isTown    = worldId.startsWith("town_");
+    const basePath  = isTown ? this._paths.town : this._paths.dungeon;
+    const filename  = isTown ? worldId : worldId; // e.g. crypt_of_bones
+
+    const res = await fetch(`${basePath}${filename}.json`);
+    if (!res.ok) throw new Error(`[TownWorldProvider] Failed to load ${filename}: ${res.status}`);
 
     const data = await res.json();
     return this._buildWorld(data);
@@ -29,43 +30,37 @@ export class TownWorldProvider {
   _buildWorld(data) {
     const width  = data.width;
     const height = data.height;
-
-    // Parse tiles from array of comma-separated row strings
     const tileArray = new Uint8Array(width * height);
 
     if (Array.isArray(data.tiles)) {
-      data.tiles.forEach((row, y) => {
-        const values = typeof row === "string"
-          ? row.split(",").map(Number)
-          : row;
-        values.forEach((tileId, x) => {
-          if (x < width && y < height) {
-            tileArray[y * width + x] = tileId;
-          }
-        });
+      data.tiles.forEach((val, i) => {
+        if (typeof val === "number") {
+          tileArray[i] = val;
+        }
       });
     }
 
     return {
-      id:       data.id,
-      type:     data.type ?? "town",
-      name:     data.name ?? data.id,
+      id:            data.id,
+      type:          data.type ?? "dungeon",
+      name:          data.name ?? data.id,
       width,
       height,
-      meta:     data.meta     ?? {},
-      exits:    data.exits    ?? [],
+      meta:          data.meta          ?? {},
+      exits:         data.exits         ?? [],
       friendlyNPCs:  data.friendlyNPCs  ?? [],
       shopInventory: data.shopInventory ?? [],
-      entryPoint:    data.entryPoint    ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) },
-      capitol:       data.entryPoint    ?? { x: Math.floor(width / 2), y: Math.floor(height / 2) },
+      spawnGroups:   data.spawnGroups   ?? [],
+      boss:          data.boss          ?? null,
+      rooms:         data.rooms         ?? [],
+      entryPoint:    data.entryPoint    ?? { x: Math.floor(width/2), y: Math.floor(height/2) },
+      capitol:       data.entryPoint    ?? { x: Math.floor(width/2), y: Math.floor(height/2) },
+      _raw:          data,
 
       getTile(x, y) {
         if (x < 0 || y < 0 || x >= width || y >= height) return null;
         return tileArray[y * width + x];
-      },
-
-      // Raw data passthrough for systems that need it
-      _raw: data
+      }
     };
   }
 }
