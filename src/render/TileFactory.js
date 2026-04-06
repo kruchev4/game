@@ -43,33 +43,6 @@ if (tileId === 0 && neighbors) {
   return c;
   }
 }
-function softenEdge(ctx, side, strength = 0.12) {
-  const s = ctx.canvas.width;
-  const grad = ctx.createLinearGradient(
-    side === "w" ? 0 : side === "e" ? s : 0,
-    side === "n" ? 0 : side === "s" ? s : 0,
-    side === "w" ? 6 : side === "e" ? s - 6 : 0,
-    side === "n" ? 6 : side === "s" ? s - 6 : 0
-  );
-
-  grad.addColorStop(0, `rgba(0,0,0,${strength})`);
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-
-  ctx.fillStyle = grad;
-
-  if (side === "n") ctx.fillRect(0, 0, s, 6);
-  if (side === "s") ctx.fillRect(0, s - 6, s, 6);
-  if (side === "w") ctx.fillRect(0, 0, 6, s);
-  if (side === "e") ctx.fillRect(s - 6, 0, 6, s);
-}
-
-
-// deterministic hash for stable variation
-function hash2(x, y, salt = 0) {
-  let n = (x * 374761393) ^ (y * 668265263) ^ (salt * 2147483647);
-  n = (n ^ (n >> 13)) * 1274126177;
-  return (n ^ (n >> 16)) >>> 0;
-}
 function softenEdge(ctx, side, strength = 0.10) {
   const s = ctx.canvas.width;
   const feather = 5;
@@ -90,3 +63,23 @@ function softenEdge(ctx, side, strength = 0.10) {
   if (side === "w") ctx.fillRect(0, 0, feather, s);
   if (side === "e") ctx.fillRect(s - feather, 0, feather, s);
 }
+
+  grad.addColorStop(0, `rgba(0,0,0,${strength})`);
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+
+  ctx.fillStyle = grad;
+
+  if (side === "n") ctx.fillRect(0, 0, s, 6);
+  if (side === "s") ctx.fillRect(0, s - 6, s, 6);
+  if (side === "w") ctx.fillRect(0, 0, 6, s);
+  if (side === "e") ctx.fillRect(s - 6, 0, 6, s);
+}
+
+
+// deterministic hash for stable variation
+function hash2(x, y, salt = 0) {
+  let n = (x * 374761393) ^ (y * 668265263) ^ (salt * 2147483647);
+  n = (n ^ (n >> 13)) * 1274126177;
+  return (n ^ (n >> 16)) >>> 0;
+}
+
