@@ -33,17 +33,17 @@ export class TileFactory {
   painter(ctx, this.tileSize, def, seed, n);
    // Soften grass edges ONLY when bordering non-grass to reduce grid read
 if (tileId === 0 && neighbors) {
-  if (neighbors.n !== 0) softenEdge(ctx, "n");
-  if (neighbors.e !== 0) softenEdge(ctx, "e");
-  if (neighbors.s !== 0) softenEdge(ctx, "s");
-  if (neighbors.w !== 0) softenEdge(ctx, "w");
+  if (neighbors.n !== 0) this.softenEdge(ctx, "n");
+  if (neighbors.e !== 0) this.softenEdge(ctx, "e");
+  if (neighbors.s !== 0) this.softenEdge(ctx, "s");
+  if (neighbors.w !== 0) this.softenEdge(ctx, "w");
 }
 
   this.cache.set(key, c);
   return c;
   
 }
-function softenEdge(ctx, side, strength = 0.10) {
+softenEdge(ctx, side, strength = 0.10) {
   const s = ctx.canvas.width;
   const feather = 5;
 
