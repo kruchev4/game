@@ -21,6 +21,30 @@
         e.preventDefault();
       }
     });
+
+    // Request fullscreen on first click — browsers require a user gesture
+    document.addEventListener("click", function goFullscreen() {
+      const el = document.documentElement;
+      if (!document.fullscreenElement) {
+        (el.requestFullscreen?.() ||
+         el.webkitRequestFullscreen?.() ||
+         el.mozRequestFullScreen?.())
+          ?.catch(() => {}); // silently ignore if denied
+      }
+      document.removeEventListener("click", goFullscreen);
+    }, { once: true });
+
+    // Re-enter fullscreen if user accidentally exits (e.g. hits Escape)
+    document.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement) {
+        // Small delay so Escape key for menus doesn't fight fullscreen
+        setTimeout(() => {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen?.().catch(() => {});
+          }
+        }, 1500);
+      }
+    });
   </script>
 </body>
 </html>
