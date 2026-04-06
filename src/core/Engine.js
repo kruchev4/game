@@ -157,9 +157,10 @@ export class Engine {
     // Save current game state before leaving
     await this._autoSave();
 
-    // Determine provider — towns use TownWorldProvider, overworld uses original
-    const isTown = targetWorld.startsWith("town_");
-    if (isTown) {
+    // Determine provider — towns/dungeons use TownWorldProvider, overworld uses original
+    const isTown    = targetWorld.startsWith("town_");
+    const isDungeon = !isTown && !targetWorld.startsWith("overworld_");
+    if (isTown || isDungeon) {
       const provider = new TownWorldProvider();
       this.world = await provider.load(targetWorld);
     } else {
@@ -187,6 +188,8 @@ export class Engine {
 
     if (isTown) {
       this._initTownSystem();
+    } else if (this.world.type === "dungeon") {
+      this._initDungeonSpawns();
     } else {
       this._initSpawnSystem();
     }
@@ -283,7 +286,85 @@ export class Engine {
    * Called after _buildSystems so the NPC perception/movement systems
    * already have references — we add NPCs to this.npcs after the fact.
    */
-  _initTownSystem() {
+  _initDungeonSpawns() {
+    const world = this.world;
+
+    // Reuse TownSystem for exit detection (dungeons have same exits[] format)
+    this.townSystem = new TownSystem({
+      townData: world,
+      world,
+      player:   this.player,
+      onInteract: () => {},
+      onExit:   (exit) => this._exitTown(exit)
+    });
+
+    if (!world.spawnGroups?.length) return;
+    for (const group of world.spawnGroups) {
+      for (const monDef of (group.monsters ?? [])) {
+        const classDef = this._classes[monDef.classId];
+        if (!classDef) {
+          console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
+          continue;
+        }
+
+        let pos;
+        try {
+          pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
+        } catch {
+          continue;
+        }
+
+        const npc = new NPC({
+          id:         `${monDef.classId}_${pos.x}_${pos.y}`,
+          classId:    monDef.classId,
+          classDef,
+          x:          pos.x,
+          y:          pos.y,
+          roamCenter: { x: pos.x, y: pos.y },
+          roamRadius: classDef.roamRadius ?? 3
+        });
+
+        this.npcs.push(npc);
+        this.entities.push(npc);
+        this.npcPerceptionSystem?.npcs.push(npc);
+        this.npcMovementSystem?.npcs.push(npc);
+        this.npcAISystem?.npcs.push(npc);
+        this.combatSystem?.npcs.push(npc);
+      }
+    }
+
+    // Spawn boss if defined
+    const boss = world.boss;
+    if (boss) {
+      const classDef = this._classes[boss.classId];
+      if (classDef) {
+        let pos;
+        try { pos = findNearestWalkable(world, boss.x, boss.y, 3); }
+        catch { pos = { x: boss.x, y: boss.y }; }
+
+        const bossNPC = new NPC({
+          id:         `boss_${boss.classId}`,
+          classId:    boss.classId,
+          classDef:   { ...classDef, icon: boss.icon ?? classDef.icon },
+          x:          pos.x,
+          y:          pos.y,
+          roamCenter: { x: pos.x, y: pos.y },
+          roamRadius: 2
+        });
+        bossNPC.isBoss = true;
+        bossNPC.name   = boss.name ?? classDef.name;
+
+        this.npcs.push(bossNPC);
+        this.entities.push(bossNPC);
+        this.npcPerceptionSystem?.npcs.push(bossNPC);
+        this.npcMovementSystem?.npcs.push(bossNPC);
+        this.npcAISystem?.npcs.push(bossNPC);
+        this.combatSystem?.npcs.push(bossNPC);
+      }
+    }
+
+    console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
+  }
     this.townSystem = new TownSystem({
       townData: this.world,
       world:    this.world,
@@ -588,6 +669,25 @@ export class Engine {
             returnY:      clickedTown.y
           }).catch(err => {
             console.warn(`[Engine] Town ${townId} not found:`, err.message);
+          });
+          return;
+        }
+
+        // Dungeon portal click
+        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
+        const clickedPortal = portals.find(p =>
+          Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
+        );
+        if (clickedPortal) {
+          this.transition({
+            targetWorld: clickedPortal.campaignId,
+            targetX:     15,
+            targetY:     36,
+            returnWorld: this._currentWorldId,
+            returnX:     clickedPortal.x,
+            returnY:     clickedPortal.y
+          }).catch(err => {
+            console.warn(`[Engine] Dungeon ${clickedPortal.campaignId} not found:`, err.message);
           });
           return;
         }
