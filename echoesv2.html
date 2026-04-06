@@ -2507,6 +2507,11 @@ if (window.GameState.currentWorldId && typeof window.transitionWorldEdge === "fu
 
   G.prevX = G.x; G.prevY = G.y;
   G.x = nx; G.y = ny;
+  // Apply tile effects (damage, debuffs etc.)
+if (typeof applyWorldTileEffects === 'function') {
+  applyWorldTileEffects(G, type);
+  if (G.hp <= 0) { triggerDeath(); return; }
+}
   window.GameState.player = G;
 
   // If you want type updated in town mode:
