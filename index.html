@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Realm of Echoes</title>
   <link rel="stylesheet" href="./src/styles/global.css" />
   <link rel="stylesheet" href="./src/styles/screens.css" />
@@ -10,5 +10,17 @@
 <body>
   <canvas id="game"></canvas>
   <script type="module" src="./src/main.js"></script>
+  <script>
+    // Block browser zoom (Ctrl+scroll and Ctrl+±/0)
+    window.addEventListener("wheel", e => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener("keydown", e => {
+      if (e.ctrlKey && ["=", "+", "-", "0"].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+  </script>
 </body>
 </html>
