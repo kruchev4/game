@@ -503,6 +503,14 @@ export class Engine {
       if (key === "i") { this._inventoryWindow?.toggle(); return; }
     });
 
+    // Scroll wheel zoom — each notch zooms ±1 step
+    this.renderer.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta     = e.deltaY > 0 ? -this.renderer.camera.zoomStep : this.renderer.camera.zoomStep;
+      const anchor    = this.renderer.camera.screenToWorld(e.offsetX, e.offsetY);
+      this.renderer.camera.zoom(delta, anchor.x, anchor.y, this.renderer);
+    }, { passive: false });
+
     // Canvas click — ability bar, corpse clicks, bag icon
     this.renderer.canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
