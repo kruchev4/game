@@ -173,9 +173,13 @@ export class Engine {
     this.player.moveTarget = null;
     this.player.movePath   = null;
 
-    // Reset systems for new world
+    // Reset systems for new world — clear all NPCs and combat state
     this.npcs     = [];
     this.entities = [this.player];
+    this._setTarget(null);
+    this.combatSystem?.combatants?.clear();
+    this.player.inCombat = false;
+    this.player.dead     = false;
 
     this._buildSystems();
 
@@ -957,15 +961,18 @@ export class Engine {
     if (!this.running) return;
 
     if (!this._playerDead) {
-      this.npcPerceptionSystem?.update();       // 1. awareness
-      this.npcMovementSystem?.update();         // 2. NPC movement (A*)
-      this.combatSystem?.update();              // 3. timers + resolution
-      this.npcAISystem?.update(this.world);     // 4. NPC decides actions
-      this.movementSystem?.update();            // 5. player movement
-      this.lootSystem?.update();                // 6. tick corpses
-      this.spawnSystem?.update();               // 7. respawns + random encounters
-      this.townSystem?.update();                // 8. town NPC wander + exit check
-      this._tickPlayerResource();               // 9. mana regen / rage decay
+      if (!this.townSystem) {
+        // Only run combat systems on the overworld/dungeons — not in towns
+        this.npcPerceptionSystem?.update();       // 1. awareness
+        this.npcMovementSystem?.update();         // 2. NPC movement (A*)
+        this.combatSystem?.update();              // 3. timers + resolution
+        this.npcAISystem?.update(this.world);     // 4. NPC decides actions
+      }
+      this.movementSystem?.update();              // 5. player movement (always)
+      this.lootSystem?.update();                  // 6. tick corpses
+      this.spawnSystem?.update();                 // 7. respawns + random encounters
+      this.townSystem?.update();                  // 8. town NPC wander + exit check
+      this._tickPlayerResource();                 // 9. mana regen / rage decay
     }
 
     this.combatLog?.update();                   // 6. always age log messages
