@@ -19,7 +19,8 @@ export class Player extends Entity {
     this.actionReady = false;
     this.classId     = null;
     this.abilities   = [];
-    this.stats       = {};     // rolled stats { STR, DEX, INT, CON, WIS, CHA }
+    this.stats       = {};
+    this.icon        = "🧙"; // overwritten by Engine._spawnPlayer from classDef     // rolled stats { STR, DEX, INT, CON, WIS, CHA }
     this.xp          = 0;
     this.level       = 1;
 
@@ -62,11 +63,6 @@ export class Player extends Entity {
     // ── Movement (written by MovementSystem) ──
     this.moveTarget = null;
     this.movePath   = null;
-    // ── Animation State ──
-    this.animState = "idle";   // "idle" | "walk" | "attack"
-    this.animFrame = 0;
-    this.animTime  = 0;
-    this.facing    = "south"; // authoritative facing for render + combat
   }
 
   /**
