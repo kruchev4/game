@@ -1,1127 +1,610 @@
-import { Player }              from "../core/Player.js";
-import { NPC }                 from "../entities/NPC.js";
-import { MovementSystem }      from "../systems/MovementSystem.js";
-import { ClickToMoveSystem }   from "../systems/ClickToMoveSystem.js";
-import { NPCMovementSystem }   from "../systems/NPCMovementSystem.js";
-import { NPCPerceptionSystem } from "../systems/NPCPerceptionSystem.js";
-import { NPCAISystem }         from "../systems/NPCAISystem.js";
-import { CombatSystem }        from "../systems/CombatSystem.js";
-import { LootSystem }          from "../systems/LootSystem.js";
-import { XPSystem }            from "../systems/XPSystem.js";
-import { SpawnSystem }         from "../systems/SpawnSystem.js";
-import { TownSystem }          from "../systems/TownSystem.js";
-import { TownWorldProvider }   from "../adapters/TownWorldProvider.js";
-import { CombatLog }           from "../ui/CombatLog.js";
-import { DeathScreen }         from "../ui/DeathScreen.js";
-import { LootWindow }          from "../ui/LootWindow.js";
-import { InventoryWindow }     from "../ui/InventoryWindow.js";
-import { LevelUpWindow }       from "../ui/LevelUpWindow.js";
-import { InnWindow }           from "../ui/InnWindow.js";
-import { ShopWindow }          from "../ui/ShopWindow.js";
-import { TownNPCWindow }       from "../ui/TownNPCWindow.js";
-import { findNearestWalkable } from "../world/findNearestWalkable.js";
+export const PAINTERS = {
+  // fallback: flat color (useful while tiles are unfinished)
+  __default: (ctx, s, def) => {
+    ctx.fillStyle = def.color || "#000";
+    ctx.fillRect(0, 0, s, s);
+  },
 
-export class Engine {
-  constructor({ worldProvider, renderer }) {
-    this.worldProvider = worldProvider;
-    this.renderer      = renderer;
-
-    this.world    = null;
-    this.player   = null;
-    this.npcs     = [];
-    this.entities = [];
-
-    this.movementSystem      = null;
-    this.clickToMoveSystem   = null;
-    this.npcMovementSystem   = null;
-    this.npcPerceptionSystem = null;
-    this.npcAISystem         = null;
-    this.combatSystem        = null;
-
-    this.running = false;
-
-    this._abilities   = null;
-    this._classes     = null;
-    this._lootTables  = null;
-    this._itemDefs    = null;
-    this._skills      = null;
-
-    this._currentTarget  = null;
-    this.combatLog       = null;
-    this._deathScreen    = null;
-
-    this.lootSystem       = null;
-    this.xpSystem         = null;
-    this.spawnSystem      = null;
-    this.townSystem       = null;
-    this._inventoryWindow = null;
-    this._lootWindow      = null;
-    this._levelUpWindow   = null;
-    this._townNPCWindow   = null;
-
-    // World transition state
-    this._currentWorldId  = null;
-    this._returnStack     = []; // [{ worldId, x, y }] — stack for nested transitions
-    this._respawnPoint    = null; // { worldId, x, y } — set by inn
-    this._autoSaveTick    = 0;     // frames since last autosave
-    this._autoSaveInterval = 18000; // ~5 min at 60fps
-
-    // Save system
-    this.saveSlot     = null;
-    this.saveProvider = null;
-
-    this.onQuitToTitle = null;
-
-    // Fallback class for testing only — overridden by character data
-    this._playerClassId = null;
-  }
-
-  // ─────────────────────────────────────────────
-  // DATA LOADING
-  // ─────────────────────────────────────────────
-
-  async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes, spawnRes] = await Promise.all([
-      fetch("./src/data/abilities.json"),
-      fetch("./src/data/classes.json"),
-      fetch("./src/data/items.json"),
-      fetch("./src/data/loot.json"),
-      fetch("./src/data/skills.json"),
-      fetch("./src/data/spawnGroups.json").catch(() => null)
-    ]);
-    if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
-    if (!classesRes.ok)   throw new Error("Failed to load classes.json");
-    if (!itemsRes.ok)     throw new Error("Failed to load items.json");
-    if (!lootRes.ok)      throw new Error("Failed to load loot.json");
-    if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
-
-    this._abilities  = await abilitiesRes.json();
-    this._classes    = await classesRes.json();
-    this._itemDefs   = await itemsRes.json();
-    this._lootTables = await lootRes.json();
-    this._skills     = await skillsRes.json();
-    this._spawnData  = spawnRes?.ok ? await spawnRes.json()
-                     : { spawnGroups: [], randomEncounters: { enabled: false } };
-
-    if (!spawnRes?.ok) {
-      console.warn("[Engine] spawnGroups.json not found — no world spawns loaded");
+  // Tile 0: Grass
+  // ── PAINTERS entries to add ──────────────────────────────────────────────────
+ 
+  // Tile 3: Deep Water
+  3: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1a3f6b");
+    // animated shimmer bands (deterministic — no Date.now so chunk-safe)
+    ctx.fillStyle = "rgba(30,80,140,0.30)";
+    ctx.fillRect(0, ((r() * s) | 0) % s, s, 2);
+    ctx.fillRect(0, ((r() * s) | 0) % s, s, 1);
+    ctx.fillStyle = "rgba(80,140,200,0.12)";
+    for (let i = 0; i < 6; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 3, 1);
     }
-  }
+    vignette(ctx, s, 0.10);
+  },
+ 
+  // Tile 4: Shallow Water / Path
+  4: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#2a6080");
+    ctx.fillStyle = "rgba(100,180,210,0.18)";
+    for (let i = 0; i < 8; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 2, 1);
+    }
+    vignette(ctx, s, 0.06);
+  },
+ 
+  // Tile 5: Town marker (overworld)
+  5: (ctx, s, def, seed) => {
+    fill(ctx, s, def.color || "#c9a227");
+    ctx.fillStyle = "rgba(255,220,80,0.25)";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillRect(0, s - 2, s, 2);
+    ctx.fillRect(s - 2, 0, 2, s);
+  },
+ 
+  // Tile 6: Danger zone
+  6: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#6b1a1a");
+    ctx.fillStyle = "rgba(160,30,30,0.20)";
+    for (let i = 0; i < 10; i++) {
+      const x = (r() * s) | 0;
+      const y = (r() * s) | 0;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    vignette(ctx, s, 0.12);
+  },
+ 
+  // Tile 7: Sand
+  7: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#c8a870");
+    ctx.fillStyle = "rgba(200,160,80,0.18)";
+    for (let i = 0; i < 8; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 1);
+    }
+    ctx.fillStyle = "rgba(180,130,50,0.12)";
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 1, 1);
+    }
+  },
+ 
+  // Tile 8: Dungeon Wall
+  8: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#151520");
+    // Stone block pattern
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(0, 0, s/2 - 1, s/2 - 1);
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 1, s/2 - 1);
+    // Dark mortar
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    ctx.fillRect(0, (s/2) | 0, s, 1);
+    ctx.fillRect((s/2) | 0, 0, 1, s);
+    // Occasional crack
+    if (r() > 0.65) {
+      ctx.strokeStyle = "rgba(0,0,0,0.40)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo((r() * s * 0.4 + 2) | 0, (r() * 6 + 2) | 0);
+      ctx.lineTo((r() * s * 0.6 + s * 0.2) | 0, (r() * 10 + 6) | 0);
+      ctx.stroke();
+    }
+  },
+ 
+  // Tile 9: Dungeon Floor
+  9: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#262018");
+    // Subtle stone texture
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    if (r() > 0.8) ctx.fillRect(2, 2, s - 4, 1);
+    if (r() > 0.9) ctx.fillRect(2, s - 4, s - 4, 1);
+    // Very faint grout lines
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.fillRect(0, (s/2) | 0, s, 1);
+    ctx.fillRect((s/2) | 0, 0, 1, s);
+  },
+ 
+  // Tile 10: Stairs Up
+  10: (ctx, s, def, seed) => {
+    fill(ctx, s, "#262018");
+    ctx.fillStyle = "rgba(96,128,160,0.55)";
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(4 + i*3, s - 8 - i*4, s - 8 - i*6, 3);
+    }
+    ctx.fillStyle = "rgba(150,190,230,0.8)";
+    ctx.font = `${(s * 0.5) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("⬆", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  },
+ 
+  // Tile 11: Stairs Down
+  11: (ctx, s, def, seed) => {
+    fill(ctx, s, "#262018");
+    ctx.fillStyle = "rgba(64,80,96,0.55)";
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(4 + i*3, 4 + i*4, s - 8 - i*6, 3);
+    }
+    ctx.fillStyle = "rgba(100,130,160,0.8)";
+    ctx.font = `${(s * 0.5) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("⬇", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  },
+ 
+  // Tile 12: Door
+  12: (ctx, s, def, seed) => {
+    // Floor base
+    fill(ctx, s, "#262018");
+    // Door frame (dark wood)
+    ctx.fillStyle = "#5a3010";
+    ctx.fillRect(4, 2, s - 8, s - 4);
+    // Door face (lighter)
+    ctx.fillStyle = "#7a4a20";
+    ctx.fillRect(6, 4, s - 12, s - 8);
+    // Handle
+    ctx.fillStyle = "#c9a227";
+    ctx.fillRect((s/2) | 0, (s/2) | 0, 3, 3);
+    // Frame border
+    ctx.strokeStyle = "#3a2008"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(4, 2, s - 8, s - 4);
+    ctx.lineWidth = 1;
+  },
+ 
+  // Tile 13: Chest
+  13: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, "#262018");
+    // Body
+    ctx.fillStyle = "#6b3a10";
+    ctx.fillRect(5, 8, s - 10, s - 14);
+    // Lid highlight
+    ctx.fillStyle = "#8b5a20";
+    ctx.fillRect(5, 8, s - 10, (s - 14) / 2);
+    // Lid top
+    ctx.fillStyle = "#5a2a08";
+    ctx.fillRect(5, 6, s - 10, 4);
+    // Lock
+    ctx.fillStyle = "#c9a227";
+    ctx.fillRect((s/2) | 0 - 2, (s/2) | 0 - 1, 4, 4);
+    // Gold glow (deterministic pulse using seed)
+    const pulse = 0.06 + (r() * 0.04);
+    ctx.fillStyle = `rgba(201,162,39,${pulse})`;
+    ctx.fillRect(3, 5, s - 6, s - 8);
+  },
+ 
+  // Tile 14: Portal
+  14: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, "#1a0830");
+    // Radial glow
+    ctx.fillStyle = "rgba(120,40,220,0.35)";
+    ctx.beginPath();
+    ctx.arc(s/2, s/2, s/2 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(180,100,255,0.20)";
+    ctx.beginPath();
+    ctx.arc(s/2, s/2, s/3, 0, Math.PI * 2);
+    ctx.fill();
+    // Swirl icon
+    ctx.fillStyle = "rgba(200,150,255,0.85)";
+    ctx.font = `${(s * 0.55) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🌀", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    vignette(ctx, s, 0.15);
+  },
+ 
+  // Tile 15: Jungle
+  15: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#0f3b1f");
+    ctx.fillStyle = "rgba(0,60,20,0.35)";
+    ctx.beginPath();
+    ctx.arc((r() * s/2 + s/4) | 0, (r() * s/2 + s/4) | 0, (s * 0.38) | 0, 0, Math.PI * 2);
+    ctx.fill();
+    dots(ctx, s, seed + 5, "rgba(20,80,30,0.3)", 8);
+  },
+ 
+  // Tile 16: Volcano
+  16: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#7a1a0a");
+    ctx.fillStyle = "rgba(255,80,0,0.25)";
+    for (let i = 0; i < 5; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 2);
+    }
+    vignette(ctx, s, 0.15);
+  },
+ 
+  // Tile 17: Eldritch
+  17: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#32134d");
+    ctx.fillStyle = "rgba(120,40,220,0.18)";
+    ctx.fillRect(0, 0, s, s);
+    dots(ctx, s, seed + 3, "rgba(180,100,255,0.20)", 8);
+    vignette(ctx, s, 0.12);
+  },
+ 
+  // Tile 18: Obsidian
+  18: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1a1a1a");
+    // Glassy facets
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(1, 1, s/2 - 2, s/2 - 2);
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 2, s/2 - 2);
+    vignette(ctx, s, 0.08);
+  },
+ 
+  // Tile 19: Blight
+  19: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#3a2a1a");
+    dots(ctx, s, seed + 7, "rgba(80,40,0,0.30)", 10);
+    ctx.fillStyle = "rgba(100,60,20,0.15)";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+  },
+ 
+  // Tile 20: Town Floor (cobblestone)
+  20: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#6a6058");
+    // Cobble grid offset by row
+    const stW = (s / 3) | 0;
+    const stH = (s / 2.5) | 0;
+    for (let row = 0; row < 3; row++) {
+      for (let col = -1; col < 4; col++) {
+        const sx = col * stW + (row % 2 === 0 ? 0 : (stW/2) | 0);
+        const sy = row * stH;
+        if (sx >= s || sy >= s) continue;
+        const sv = r();
+        ctx.fillStyle = sv > 0.5 ? "#757060" : "#656050";
+        ctx.fillRect(sx + 1, sy + 1, stW - 2, stH - 2);
+      }
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(0, 0, s, 1); ctx.fillRect(0, 0, 1, s);
+  },
+ 
+  // Tile 21: Town Wall
+  21: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#1e1810");
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(1, 1, s/2 - 2, s/2 - 2);
+    ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 2, s/2 - 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, s - 1, s - 1);
+    ctx.beginPath();
+    ctx.moveTo(0, s/2); ctx.lineTo(s, s/2);
+    ctx.moveTo(s/2, 0); ctx.lineTo(s/2, s/2);
+    ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(0, 0, s, 2);
+  },
+ 
+  // Tile 22: Inn
+  22: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "🏨", "#7a5030"); },
+  // Tile 23: Shop
+  23: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "⚒", "#1a3a5a"); },
+  // Tile 24: Temple
+  24: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "✝", "#4a2a6a"); },
+  // Tile 25: Tavern
+  25: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "🍺", "#3a2808"); },
+  // Tile 26: Vendor
+  26: (ctx, s, def, seed) => { drawTownService(ctx, s, seed, "💰", "#1a3a1a"); },
+  // Tile 32: Town Exit
+  32: (ctx, s, def, seed) => {
+    fill(ctx, s, "#2a5a2a");
+    ctx.fillStyle = "#3a7a3a";
+    ctx.fillRect(2, 2, s - 4, s - 4);
+    ctx.fillStyle = "rgba(100,220,100,0.7)";
+    ctx.font = `${(s * 0.55) | 0}px serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🌍", s/2, s/2);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    vignette(ctx, s, 0.08);
+  },
 
-  // ─────────────────────────────────────────────
-  // WORLD LOADING
-  // ─────────────────────────────────────────────
+  0: (ctx, s, def, seed) => {
+    // base
+    fill(ctx, s, def.color || "#4caf50");
 
-  /**
-   * @param {string} worldId
-   * @param {{ name: string, classId: string, stats: object }} [character]
-   *   If omitted, falls back to this._playerClassId for testing.
-   */
-  async loadWorld(worldId, character = null) {
-    this._characterData  = character;
-    this._currentWorldId = worldId;
+    // subtle noise (keep counts low so it doesn't shimmer visually)
+    dots(ctx, s, seed,     "#3f8f45", 22); // shadow specks
+    dots(ctx, s, seed+11,  "#6bdc6f", 12); // highlight specks
 
-    await Promise.all([
-      this._loadData(),
-      this._loadWorldFromProvider(worldId)
-    ]);
+    // a few tiny tufts (clusters)
+    tufts(ctx, s, seed+23, "#2e7d32", 4);
 
-    this._spawnPlayer();
-    this._buildSystems();
-    this._initSpawnSystem();
-    this._bindInput();
-  }
+    // optional: rare flower pixel (very low chance)
+    flower(ctx, s, seed+99);
 
-  /**
-   * Transition to a new world (town, dungeon, or back to overworld).
-   * @param {object} opts
-   * @param {string}  opts.targetWorld  - world/town id to load
-   * @param {number}  opts.targetX      - player spawn X in target world
-   * @param {number}  opts.targetY      - player spawn Y in target world
-   * @param {string}  [opts.returnWorld]- world to return to on exit
-   * @param {number}  [opts.returnX]    - return position X
-   * @param {number}  [opts.returnY]    - return position Y
-   */
-  async transition({ targetWorld, targetX, targetY, returnWorld, returnX, returnY }) {
-    // Save return position if provided
-    if (returnWorld) {
-      this._returnStack.push({ worldId: returnWorld, x: returnX, y: returnY });
+    // tile separation: 1px vignette (keeps map readable)
+    vignette(ctx, s, 0.00);
+  },
+
+// Tile 1: Forest (dense, darker, no hard edges)
+  1: (ctx, s, def, seed, neighbors) => {
+    const r = makeRand(seed);
+
+    // base
+    ctx.fillStyle = def.color || "#2e7d32";
+    ctx.fillRect(0, 0, s, s);
+
+    // subtle canopy specks (kept away from edges)
+    ctx.fillStyle = "rgba(10,20,10,0.14)";
+    for (let i = 0; i < 12; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
     }
 
-    // Close any open windows
-    this._lootWindow?.hide();
-    this._townNPCWindow?.hide();
-    this._inventoryWindow?.hide();
-    this.townSystem = null;
-
-    // Save current game state before leaving
-    await this._autoSave();
-
-    // Determine provider — towns/dungeons use TownWorldProvider, overworld uses original
-    const isTown    = targetWorld.startsWith("town_");
-    const isDungeon = !isTown && !targetWorld.startsWith("overworld_");
-    if (isTown || isDungeon) {
-      const provider = new TownWorldProvider();
-      this.world = await provider.load(targetWorld);
-    } else {
-      this.world = await this.worldProvider.load(targetWorld);
+    // darker “leaf clusters” (small blobs)
+    for (let k = 0; k < 3; k++) {
+      const cx = 3 + ((r() * (s - 6)) | 0);
+      const cy = 3 + ((r() * (s - 6)) | 0);
+      ctx.fillStyle = "rgba(0,0,0,0.12)";
+      ctx.fillRect(cx, cy, 2, 2);
+      ctx.fillRect(cx + 1, cy, 2, 1);
     }
 
-    this._currentWorldId = targetWorld;
+    // optional: tiny highlight flecks
+    ctx.fillStyle = "rgba(120,200,120,0.10)";
+    for (let i = 0; i < 6; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
+    }
+  },
 
-    // Move player to target position
-    const { x, y } = findNearestWalkable(this.world, targetX, targetY);
-    this.player.x = x;
-    this.player.y = y;
-    this.player.moveTarget = null;
-    this.player.movePath   = null;
+  // Tile 2: Mountain (rock texture, interior-only detail)
+  2: (ctx, s, def, seed, neighbors) => {
+    const r = makeRand(seed);
 
-    // Reset systems for new world — clear all NPCs and combat state
-    this.npcs     = [];
-    this.entities = [this.player];
-    this._setTarget(null);
-    this.combatSystem?.combatants?.clear();
-    this.player.inCombat = false;
-    this.player.dead     = false;
+    // base
+    ctx.fillStyle = def.color || "#7b7b7b";
+    ctx.fillRect(0, 0, s, s);
 
-    this._buildSystems();
-
-    if (isTown) {
-      this._initTownSystem();
-    } else if (this.world.type === "dungeon") {
-      this._initDungeonSpawns();
-    } else {
-      this._initSpawnSystem();
+    // rock specks
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    for (let i = 0; i < 16; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
     }
 
-    // Re-center camera
-    this.renderer.camera.centerOn(x, y, this.world);
-  }
-
-  /** Return to the previous world (pop from return stack) */
-  async _exitTown(exit) {
-    let returnDest = this._returnStack.pop();
-
-    // Fall back to exit data if stack is empty
-    if (!returnDest) {
-      returnDest = {
-        worldId: exit.targetWorld ?? "overworld_C",
-        x:       exit.targetX    ?? 120,
-        y:       exit.targetY    ?? 88
-      };
+    // light specks
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    for (let i = 0; i < 10; i++) {
+      const x = 2 + ((r() * (s - 4)) | 0);
+      const y = 2 + ((r() * (s - 4)) | 0);
+      ctx.fillRect(x, y, 1, 1);
     }
 
-    await this.transition({
-      targetWorld: returnDest.worldId,
-      targetX:     returnDest.x,
-      targetY:     returnDest.y
+    // subtle ridge line (diagonal) — stays inside tile
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(3, 5);
+    ctx.lineTo(s - 4, s - 6);
+    ctx.stroke();
+  },
+
+  // Road Dirt (27) – autotile connections
+  27: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#8b6a44",
+      track: "rgba(60,40,25,0.35)",
+      edge: "rgba(0,0,0,0.15)"
     });
-  }
+  },
 
-  async _loadWorldFromProvider(worldId) {
-    this.world = await this.worldProvider.load(worldId);
-  }
-
-  _spawnPlayer() {
-    const cx = Math.floor(this.world.width  / 2);
-    const cy = Math.floor(this.world.height / 2);
-    const { x, y } = findNearestWalkable(this.world, cx, cy);
-
-    this.player = new Player({ x, y });
-    this._spawnX = x;
-    this._spawnY = y;
-
-    // Use confirmed character data if available, else fall back to test class
-    const char     = this._characterData;
-    const classId  = char?.classId ?? this._playerClassId;
-    const classDef = this._classes[classId];
-
-    if (classDef) {
-      this.player.name        = char?.name ?? "Hero";
-      this.player.classId     = classId;
-      this.player.icon        = classDef.icon ?? "🧙";
-      this.player.abilities   = classDef.abilities ?? [];
-      this.player.actionSpeed = classDef.actionSpeed;
-      this.player.actionTimer = classDef.actionSpeed;
-
-      // If rolled stats provided, use them; otherwise use class base stats
-      const stats = char?.stats ?? classDef.baseStats;
-      this.player.hp    = classDef.baseStats.hp;
-      this.player.maxHp = classDef.baseStats.hp;
-
-      this.player.stats = stats;
-
-      // Restore inventory from save data
-      this.player.fromSaveData(char);
-
-      // Ensure learnedSkills is seeded from starting abilities so
-      // _rebuildAbilityBar doesn't filter them out on first skill pick.
-      // Starting abilities begin at rank 1 if not already in learnedSkills.
-      if (!this.player.learnedSkills) this.player.learnedSkills = {};
-      for (const abilityId of this.player.abilities) {
-        if (this.player.learnedSkills[abilityId] === undefined) {
-          this.player.learnedSkills[abilityId] = 1;
-        }
-      }
-
-      // Sync ability bar from restored learnedSkills / abilities
-      // (deferred until after _buildSystems sets up renderer)
-      this._pendingSyncAbilityBar = true;
-
-      // Resource
-      const res = classDef.resource ?? null;
-      if (res) {
-        this.player.resourceDef  = res;
-        this.player.maxResource  = res.max;
-        this.player.resource     = res.startAt ?? res.max;
-      }
-    }
-
-    // Update test class fallback to match
-    this._playerClassId = classId;
-  }
-
-  /**
-   * Initialise the spawn system and populate the world with NPCs.
-   * Called after _buildSystems so the NPC perception/movement systems
-   * already have references — we add NPCs to this.npcs after the fact.
-   */
-  _initDungeonSpawns() {
-    const world = this.world;
-
-    // Reuse TownSystem for exit detection (dungeons have same exits[] format)
-    this.townSystem = new TownSystem({
-      townData: world,
-      world,
-      player:   this.player,
-      onInteract: () => {},
-      onExit:   (exit) => this._exitTown(exit)
+  // Road Stone (28)
+  28: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#7c7f86",
+      track: "rgba(30,30,40,0.30)",
+      edge: "rgba(0,0,0,0.18)"
     });
+  },
 
-    if (!world.spawnGroups?.length) return;
-    for (const group of world.spawnGroups) {
-      for (const monDef of (group.monsters ?? [])) {
-        const classDef = this._classes[monDef.classId];
-        if (!classDef) {
-          console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
-          continue;
-        }
-
-        let pos;
-        try {
-          pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
-        } catch {
-          continue;
-        }
-
-        const npc = new NPC({
-          id:         `${monDef.classId}_${pos.x}_${pos.y}`,
-          classId:    monDef.classId,
-          classDef,
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: classDef.roamRadius ?? 3
-        });
-
-        this.npcs.push(npc);
-        this.entities.push(npc);
-        this.npcPerceptionSystem?.npcs.push(npc);
-        this.npcMovementSystem?.npcs.push(npc);
-        this.npcAISystem?.npcs.push(npc);
-        this.combatSystem?.npcs.push(npc);
-      }
-    }
-
-    // Spawn boss if defined
-    const boss = world.boss;
-    if (boss) {
-      const classDef = this._classes[boss.classId];
-      if (classDef) {
-        let pos;
-        try { pos = findNearestWalkable(world, boss.x, boss.y, 3); }
-        catch { pos = { x: boss.x, y: boss.y }; }
-
-        const bossNPC = new NPC({
-          id:         `boss_${boss.classId}`,
-          classId:    boss.classId,
-          classDef:   { ...classDef, icon: boss.icon ?? classDef.icon },
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: 2
-        });
-        bossNPC.isBoss = true;
-        bossNPC.name   = boss.name ?? classDef.name;
-
-        this.npcs.push(bossNPC);
-        this.entities.push(bossNPC);
-        this.npcPerceptionSystem?.npcs.push(bossNPC);
-        this.npcMovementSystem?.npcs.push(bossNPC);
-        this.npcAISystem?.npcs.push(bossNPC);
-        this.combatSystem?.npcs.push(bossNPC);
-      }
-    }
-
-    console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
-  }
-
-  _initTownSystem() {
-    this.townSystem = new TownSystem({
-      townData: this.world,
-      world:    this.world,
-      player:   this.player,
-      onInteract: (npc) => this._onNPCInteract(npc),
-      onExit:     (exit) => this._exitTown(exit)
+  // Road Obsidian (29)
+  29: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#1b1b22",
+      track: "rgba(120,120,160,0.18)",
+      edge: "rgba(0,0,0,0.25)"
     });
+  },
 
-    // Add friendly NPCs to entities for rendering
-    for (const npc of this.townSystem.npcs) {
-      this.entities.push(npc);
-    }
-  }
-
-  _onNPCInteract(npc) {
-    // Close any existing NPC window
-    this._townNPCWindow?.hide();
-
-    if (npc.role === "inn") {
-      const win = new InnWindow({
-        npc,
-        player:   this.player,
-        townData: this.world
-      });
-      win.onRest = () => {
-        // Restore HP and resource
-        this.player.hp       = this.player.maxHp;
-        this.player.resource = this.player.maxResource;
-
-        // Set respawn point to this town
-        this._respawnPoint = {
-          worldId: this.world.id,
-          x:       this.world.entryPoint?.x ?? this.player.x,
-          y:       this.world.entryPoint?.y ?? this.player.y
-        };
-
-        this.combatLog?.push({ text: `Rested at ${npc.innName}. Respawn point set.`, type: "system" });
-      };
-      win.show();
-
-    } else if (npc.role === "shop") {
-      const win = new ShopWindow({
-        npc,
-        player:     this.player,
-        townData:   this.world,
-        itemDefs:   this._itemDefs,
-        lootSystem: this.lootSystem
-      });
-      win.show();
-
-    } else {
-      const win = new TownNPCWindow({ npc });
-      this._townNPCWindow = win;
-      win.show();
-    }
-  }
-
-  async _autoSave() {
-    if (!this.saveProvider || !this.saveSlot) return;
-    try {
-      await this.saveProvider.save(this.saveSlot, this.getSaveData());
-    } catch (e) {
-      console.warn("[Engine] Auto-save failed:", e.message);
-    }
-  }
-
-  _initSpawnSystem() {
-    this.spawnSystem = new SpawnSystem({
-      world:     this.world,
-      spawnData: this._spawnData,
-      classes:   this._classes,
-      player:    this.player,
-      onSpawn:   (npc) => {
-        this.npcs.push(npc);
-        this.entities.push(npc);
-        // Also register with live systems
-        this.npcPerceptionSystem?.npcs.push(npc);
-        this.npcMovementSystem?.npcs.push(npc);
-        this.npcAISystem?.npcs.push(npc);
-        this.combatSystem?.npcs.push(npc);
-        this.lootSystem  // lootSystem reads this.npcs directly via Engine reference
-      },
-      onDespawn: (npc) => {
-        this.npcs     = this.npcs.filter(n => n.id !== npc.id);
-        this.entities = this.entities.filter(e => e.id !== npc.id);
-        this.npcPerceptionSystem.npcs = this.npcs;
-        this.npcMovementSystem.npcs   = this.npcs;
-        this.npcAISystem.npcs         = this.npcs;
-        this.combatSystem.npcs        = this.npcs;
-      }
+  // Road Blight (30)
+  30: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#3a2f2f",
+      track: "rgba(10,0,0,0.22)",
+      edge: "rgba(0,0,0,0.22)"
     });
+  },
 
-    this.spawnSystem.spawnAll();
-  }
-
-  // ─────────────────────────────────────────────
-  // SYSTEM WIRING
-  // ─────────────────────────────────────────────
-
-  _buildSystems() {
-    const { world, player, npcs, renderer } = this;
-
-    // Start with just the player — SpawnSystem adds NPCs via onSpawn
-    this.entities = [player];
-
-    this.npcPerceptionSystem = new NPCPerceptionSystem({ npcs, player });
-
-    this.npcMovementSystem = new NPCMovementSystem({ world, npcs, player });
-
-    this.movementSystem = new MovementSystem({ world, player });
-
-    this.clickToMoveSystem = new ClickToMoveSystem({
-      canvas:         renderer.canvas,
-      camera:         renderer.camera,
-      world,
-      movementSystem: this.movementSystem,
-      npcs,
-      onTarget:       (npc) => this._setTarget(npc),
-      isBlocked:      (wx, wy) => {
-        // Town NPC click
-        if (this.townSystem?.npcs.some(n => n.x === wx && n.y === wy)) return true;
-        // Corpse click
-        if (this.lootSystem?.corpses.some(c => c.x === wx && c.y === wy)) return true;
-        // Town marker on overworld
-        if (!this.townSystem && this.world?.type !== "town") {
-          const towns = this.world?.towns ?? [];
-          if (towns.some(t => Math.abs(t.x - wx) <= 1 && Math.abs(t.y - wy) <= 1)) return true;
-        }
-        return false;
-      }
+  // Road Runic (31)
+  31: (ctx, s, def, seed, n) => {
+    drawRoad(ctx, s, seed, n, {
+      fill: "#0f0f18",
+      track: "rgba(130,90,255,0.18)",
+      edge: "rgba(0,0,0,0.25)",
+      runes: true
     });
+  },}
 
-    this.combatSystem = new CombatSystem({
-      world,
-      player,
-      npcs,
-      abilities: this._abilities,
-      onEvent:   (e) => this._onCombatEvent(e)
-    });
 
-    // AI system wired to combatSystem so it can queue actions
-    this.npcAISystem = new NPCAISystem({
-      player,
-      npcs,
-      abilities:    this._abilities,
-      combatSystem: this.combatSystem
-    });
 
-    // Loot system
-    this.lootSystem = new LootSystem({
-      player,
-      lootTables: this._lootTables,
-      itemDefs:   this._itemDefs,
-      onCorpseSpawn:  (corpse) => {
-        this.entities.push(corpse);
-      },
-      onCorpseRemove: (corpse) => {
-        this.entities = this.entities.filter(e => e.id !== corpse.id);
-        if (this._lootWindow?.corpse?.id === corpse.id) {
-          this._lootWindow.hide();
-          this._lootWindow = null;
-        }
-      },
-      onEvent: (e) => this._onLootEvent(e)
-    });
+function drawRoad(ctx, s, seed, neighbors, style) {
+  const inset = 2;   // gap where terrain shows
+  const chamfer = 3; // size of corner cut
+  const mid = (s / 2) | 0;
+  const half = 3; // road half-width
 
-    // XP system
-    this.xpSystem = new XPSystem({
-      player,
-      skills:  this._skills,
-      onEvent: (e) => this._onXPEvent(e)
-    });
+  // Utility: is connected road
+  const isRoad = (t) =>
+    t === 27 || t === 28 || t === 29 || t === 30 || t === 31;
 
-    // Level-up window
-    const classSkills = this._skills[this._playerClassId] ?? [];
-    this._levelUpWindow = new LevelUpWindow({
-      player,
-      classSkills,
-      xpSystem: this.xpSystem
-    });
-    this._levelUpWindow.onConfirm = (skillId, replaceId, statDist) => {
-      this.xpSystem.applySkillPick(skillId, replaceId);
-      this.xpSystem.applyStatPoints(statDist);
-      // Refresh ability bar in renderer
-      this._syncAbilityBar();
-    };
+  const N = isRoad(neighbors?.n);
+  const E = isRoad(neighbors?.e);
+  const S = isRoad(neighbors?.s);
+  const W = isRoad(neighbors?.w);
 
-    // Push player abilities and item defs to renderer for HUD
-    const classDef = this._classes[this._playerClassId];
-    renderer.playerAbilities = (classDef?.abilities ?? [])
-      .map(id => this._abilities[id])
-      .filter(Boolean);
-    renderer.abilities     = this._abilities;
-    renderer.itemDefs      = this._itemDefs;
-    renderer.currentTarget = null;
-    renderer.player        = player;
+  // -------- road fill (polygon) --------
+  ctx.fillStyle = style.track;
+  ctx.beginPath();
 
-    this.combatLog     = new CombatLog();
-    renderer.combatLog = this.combatLog;
+  // Start top-left corner (chamfered)
+  ctx.moveTo(inset + chamfer, inset);
 
-    // Inventory window (created once, shown/hidden)
-    this._inventoryWindow = new InventoryWindow({
-      player,
-      lootSystem: this.lootSystem,
-      itemDefs:   this._itemDefs
-    });
+  // Top edge
+  ctx.lineTo(s - inset - chamfer, inset);
+  ctx.lineTo(s - inset, inset + chamfer);
 
-    renderer.camera.centerOn(player.x, player.y, world);
+  // Right edge
+  if (E) {
+    ctx.lineTo(s - inset, mid - half);
+    ctx.lineTo(s, mid - half);
+    ctx.lineTo(s, mid + half);
+    ctx.lineTo(s - inset, mid + half);
+  }
 
-    // Prime the chunk layer with the world so first render has tiles
-    renderer.chunkLayer?.setWorld(world);
+  ctx.lineTo(s - inset, s - inset - chamfer);
+  ctx.lineTo(s - inset - chamfer, s - inset);
 
-    // Sync ability bar now that renderer and skills are ready
-    if (this._pendingSyncAbilityBar) {
-      this._pendingSyncAbilityBar = false;
-      this._syncAbilityBar();
+  // Bottom edge
+  ctx.lineTo(inset + chamfer, s - inset);
+  ctx.lineTo(inset, s - inset - chamfer);
+
+  // Left edge
+  if (W) {
+    ctx.lineTo(inset, mid + half);
+    ctx.lineTo(0, mid + half);
+    ctx.lineTo(0, mid - half);
+    ctx.lineTo(inset, mid - half);
+  }
+
+  ctx.lineTo(inset, inset + chamfer);
+
+  // Top connection
+  if (N) {
+    ctx.lineTo(mid - half, inset);
+    ctx.lineTo(mid - half, 0);
+    ctx.lineTo(mid + half, 0);
+    ctx.lineTo(mid + half, inset);
+  }
+
+  ctx.closePath();
+  ctx.fill();
+
+  // -------- subtle inner edge (optional) --------
+  ctx.strokeStyle = style.edge;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}   
+
+function fill(ctx, s, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, s, s);
+}
+
+function rnd(seed) {
+  // xorshift32 -> 0..1
+  let x = seed | 0;
+  x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+  return (x >>> 0) / 4294967296;
+}
+
+function dots(ctx, s, seed, color, count) {
+  ctx.fillStyle = color;
+  let z = seed >>> 0;
+  for (let i = 0; i < count; i++) {
+    z = (z + 0x9e3779b9) >>> 0;
+    const x = (rnd(z) * s) | 0;
+    const y = (rnd(z ^ 0xB5297A4D) * s) | 0;
+    ctx.fillRect(x, y, 1, 1);
+  }
+}
+
+function tufts(ctx, s, seed, color, clusters) {
+  ctx.fillStyle = color;
+  let z = seed >>> 0;
+  for (let c = 0; c < clusters; c++) {
+    z = (z + 0x9e3779b9) >>> 0;
+    const cx = (rnd(z) * s) | 0;
+    const cy = (rnd(z ^ 0xA341316C) * s) | 0;
+    // 3–6 pixels per tuft
+    const pixels = 3 + ((rnd(z ^ 0xC8013EA4) * 4) | 0);
+    for (let i = 0; i < pixels; i++) {
+      const ox = (((rnd(z ^ (i * 17)) * 5) | 0) - 2);
+      const oy = (((rnd(z ^ (i * 31)) * 5) | 0) - 2);
+      const x = cx + ox, y = cy + oy;
+      if (x >= 0 && y >= 0 && x < s && y < s) ctx.fillRect(x, y, 1, 1);
     }
   }
+}
 
-  // ─────────────────────────────────────────────
-  // INPUT BINDING
-  // ─────────────────────────────────────────────
-
-  _bindInput() {
-    window.addEventListener("keydown", (e) => {
-      const key = e.key.toLowerCase();
-
-      // Ability slots 1-4
-      const slot = parseInt(e.key) - 1;
-      if (slot >= 0 && slot <= 3) { this._useAbilitySlot(slot); return; }
-
-      // Quick slots 5-8
-      if (slot >= 4 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 4); return; }
-
-      // Inventory toggle
-      if (key === "i") { this._inventoryWindow?.toggle(); return; }
-
-      // Manual save — F5
-      if (e.key === "F5") {
-        e.preventDefault();
-        this.saveToSlot();
-        return;
-      }
-    });
-
-    // Scroll wheel zoom — each notch zooms ±1 step
-    this.renderer.canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const delta     = e.deltaY > 0 ? -this.renderer.camera.zoomStep : this.renderer.camera.zoomStep;
-      const anchor    = this.renderer.camera.screenToWorld(e.offsetX, e.offsetY);
-      this.renderer.camera.zoom(delta, anchor.x, anchor.y, this.renderer);
-    }, { passive: false });
-
-    // Canvas click — ability bar, corpse clicks, bag icon
-    this.renderer.canvas.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return;
-
-      const rect   = this.renderer.canvas.getBoundingClientRect();
-      const scaleX = this.renderer.canvas.width  / rect.width;
-      const scaleY = this.renderer.canvas.height / rect.height;
-      const px     = (e.clientX - rect.left) * scaleX;
-      const py     = (e.clientY - rect.top)  * scaleY;
-
-      // Ability bar slot click
-      const abilitySlot = this.renderer.getAbilitySlotAt(px, py);
-      if (abilitySlot >= 0) { this._useAbilitySlot(abilitySlot); return; }
-
-      // Quick slot click
-      const quickSlot = this.renderer.getQuickSlotAt(px, py);
-      if (quickSlot >= 0) { this.lootSystem?.useQuickSlot(quickSlot); return; }
-
-      // Bag icon click
-      if (this.renderer.getBagIconHit(px, py)) {
-        this._inventoryWindow?.toggle();
-        return;
-      }
-
-      // Convert screen to world tile — used by all remaining checks
-      const worldTile = this.renderer.camera.screenToWorld(px, py);
-
-      // Town NPC click — must be before move/corpse so NPCs intercept the click
-      if (this.townSystem) {
-        const hit = this.townSystem.handleClick(worldTile.x, worldTile.y);
-        console.log(`[Engine] Town click at ${worldTile.x},${worldTile.y} — hit: ${hit}, NPCs: ${this.townSystem.npcs.length}`);
-        if (hit) return;
-      }
-
-      // Town portal click — overworld only
-      if (!this.townSystem && this.world?.type !== "town") {
-        const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
-        const clickedTown = towns.find(t =>
-          Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
-        );
-        if (clickedTown) {
-          const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
-          this.transition({
-            targetWorld:  townId,
-            targetX:      20,
-            targetY:      27,
-            returnWorld:  this._currentWorldId,
-            returnX:      clickedTown.x,
-            returnY:      clickedTown.y
-          }).catch(err => {
-            console.warn(`[Engine] Town ${townId} not found:`, err.message);
-          });
-          return;
-        }
-
-        // Dungeon portal click
-        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
-        const clickedPortal = portals.find(p =>
-          Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
-        );
-        if (clickedPortal) {
-          this.transition({
-            targetWorld: clickedPortal.campaignId,
-            targetX:     15,
-            targetY:     36,
-            returnWorld: this._currentWorldId,
-            returnX:     clickedPortal.x,
-            returnY:     clickedPortal.y
-          }).catch(err => {
-            console.warn(`[Engine] Dungeon ${clickedPortal.campaignId} not found:`, err.message);
-          });
-          return;
-        }
-      }
-
-      // Corpse click
-      const corpse = this.lootSystem?.corpses.find(
-        c => c.x === worldTile.x && c.y === worldTile.y
-      );
-      if (corpse) {
-        this._openLootWindow(corpse);
-        return;
-      }
-    });
+function flower(ctx, s, seed) {
+  // very rare 1px "flower" sparkle
+  const chance = rnd(seed);
+  if (chance > 0.985) {
+    const x = (rnd(seed ^ 0x1234) * s) | 0;
+    const y = (rnd(seed ^ 0xBEEF) * s) | 0;
+    ctx.fillStyle = (chance > 0.993) ? "#ffffff" : "#ffb7d5";
+    ctx.fillRect(x, y, 1, 1);
   }
+}
+function drawTownService(ctx, s, seed, icon, color) {
+  const r = makeRand(seed);
+  // Cobble base
+  fill(ctx, s, color + "30");
+  ctx.fillStyle = "#6a6058";
+  ctx.fillRect(0, 0, s, s);
+  // Coloured tint
+  ctx.fillStyle = color + "40";
+  ctx.fillRect(0, 0, s, s);
+  // Icon
+  ctx.globalAlpha = 0.88;
+  ctx.font = `${(s * 0.52) | 0}px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(icon, s/2, s/2);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  // Border
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5;
+  ctx.strokeRect(1, 1, s - 2, s - 2);
+  ctx.globalAlpha = 1; ctx.lineWidth = 1;
+}
 
-  // ─────────────────────────────────────────────
-  // TARGETING
-  // ─────────────────────────────────────────────
-
-  _setTarget(npc) {
-    this._currentTarget          = npc;
-    this.renderer.currentTarget  = npc;
-    console.log(npc ? `[Target] ${npc.id}` : "[Target] cleared");
-  }
-
-  // ─────────────────────────────────────────────
-  // ABILITY FIRING
-  // ─────────────────────────────────────────────
-
-  _useAbilitySlot(slotIndex) {
-    const classDef  = this._classes[this._playerClassId];
-    if (!classDef) return;
-
-    const abilityId = classDef.abilities[slotIndex];
-    if (!abilityId) return;
-
-    const target = this._currentTarget;
-    if (!target || target.dead) {
-      console.log("[Combat] No valid target");
-      return;
-    }
-
-    this.combatSystem.queuePlayerAction(abilityId, target.id);
-  }
-
-  // ─────────────────────────────────────────────
-  // COMBAT EVENTS
-  // ─────────────────────────────────────────────
-
-  _onCombatEvent(event) {
-    const log = this.combatLog;
-
-    switch (event.type) {
-      case "engage": {
-        const who = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
-        log?.push({ text: `${who} entered combat`, type: "system" });
-        break;
-      }
-      case "disengage": {
-        const who = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
-        log?.push({ text: `${who} left combat`, type: "system" });
-        break;
-      }
-      case "hit": {
-        const isPlayer = event.attacker.id === "player";
-        if (isPlayer) {
-          log?.push({
-            text: `${event.ability.name} hits ${this._npcLabel(event.target)} for ${event.damage}`,
-            type: "damage_out"
-          });
-          // Rage builds on damage dealt
-          const def = this.player.resourceDef;
-          if (def?.type === "rage" && def.buildOnHitDealt) {
-            this.player.resource = Math.min(
-              this.player.maxResource,
-              this.player.resource + def.buildOnHitDealt
-            );
-          }
-        } else {
-          log?.push({
-            text: `${this._npcLabel(event.attacker)} hits you for ${event.damage}`,
-            type: "damage_in"
-          });
-          // Rage builds on damage taken
-          const def = this.player.resourceDef;
-          if (def?.type === "rage" && def.buildOnHitTaken) {
-            this.player.resource = Math.min(
-              this.player.maxResource,
-              this.player.resource + def.buildOnHitTaken
-            );
-          }
-        }
-        break;
-      }
-      case "out_of_range":
-        log?.push({
-          text: `${event.ability.name} — out of range or LoS blocked`,
-          type: "miss"
-        });
-        break;
-      case "on_cooldown":
-        log?.push({
-          text: `${event.ability.name} is not ready yet`,
-          type: "miss"
-        });
-        break;
-      case "kill": {
-        const killer = event.attacker.id === "player" ? "You" : this._npcLabel(event.attacker);
-        const victim = this._npcLabel(event.target);
-        log?.push({ text: `${killer} killed ${victim}!`, type: "kill" });
-        this.entities = this.entities.filter(e => e.id !== event.target.id);
-        this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
-        if (this._currentTarget?.id === event.target.id) this._setTarget(null);
-        // Spawn loot corpse
-        this.lootSystem?.onNPCKilled(event.target);
-        // Award XP
-        if (event.attacker.id === "player") {
-          this.xpSystem?.awardKillXP(event.target);
-        }
-        // Notify spawn system for respawn tracking
-        this.spawnSystem?.onNPCDied(event.target);
-        break;
-      }
-      case "player_death": {
-        const killerName = this._npcLabel(event.attacker);
-        log?.push({ text: `You were slain by ${killerName}!`, type: "damage_in" });
-        this._onPlayerDeath(killerName);
-        break;
-      }
-      case "combat_end":
-        log?.push({ text: "All enemies defeated.", type: "system" });
-        break;
-      case "effect_applied":
-        log?.push({
-          text: `${event.effect.type} applied to ${event.entity.id === "player" ? "you" : this._npcLabel(event.entity)}`,
-          type: "effect"
-        });
-        break;
-      case "effect_expired":
-        log?.push({
-          text: `${event.effect.type} wore off`,
-          type: "effect"
-        });
-        break;
-    }
-  }
-
-  /** Format an NPC id into a readable label e.g. "Goblin Warrior" */
-  _npcLabel(entity) {
-    return (entity.classId ?? entity.id)
-      .replace(/([A-Z])/g, " $1")
-      .replace(/_/g, " ")
-      .trim()
-      .replace(/\b\w/g, c => c.toUpperCase());
-  }
-
-  // ─────────────────────────────────────────────
-  // LOOT
-  // ─────────────────────────────────────────────
-
-  _openLootWindow(corpse) {
-    this._lootWindow?.hide();
-    this._lootWindow = new LootWindow({
-      corpse,
-      lootSystem: this.lootSystem,
-      itemDefs:   this._itemDefs
-    });
-    this._lootWindow.onClose = () => { this._lootWindow = null; };
-    this._lootWindow.show();
-  }
-
-  _onLootEvent(event) {
-    const log = this.combatLog;
-    switch (event.type) {
-      case "loot_gold":
-        log?.push({ text: `You loot ${event.amount} gold.`, type: "system" });
-        break;
-      case "item_used":
-        if (event.healed)   log?.push({ text: `${event.item.name}: restored ${event.healed} HP.`, type: "system" });
-        if (event.restored) log?.push({ text: `${event.item.name}: restored ${event.restored} resource.`, type: "system" });
-        this._inventoryWindow?.refresh();
-        break;
-      case "item_equipped":
-        log?.push({ text: `Equipped: ${event.item.name}`, type: "system" });
-        this._inventoryWindow?.refresh();
-        break;
-      case "item_unequipped":
-        log?.push({ text: `Unequipped ${event.slot}.`, type: "system" });
-        this._inventoryWindow?.refresh();
-        break;
-      case "bag_full":
-        log?.push({ text: "Bag is full!", type: "miss" });
-        break;
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // XP & LEVELING
-  // ─────────────────────────────────────────────
-
-  _onXPEvent(event) {
-    const log = this.combatLog;
-    switch (event.type) {
-      case "xp_gained":
-        log?.push({ text: `+${event.amount} XP`, type: "system" });
-        break;
-      case "level_up":
-        log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
-        if (event.isSpecial) {
-          // Small delay so combat log shows first
-          setTimeout(() => {
-            this._levelUpWindow?.show(event.level);
-          }, 800);
-        }
-        break;
-      case "skill_learned":
-        log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
-        this._syncAbilityBar();
-        break;
-      case "skill_upgraded":
-        log?.push({ text: `${event.skillId} upgraded to Rank ${event.rank}!`, type: "system" });
-        this._syncAbilityBar();
-        break;
-      case "stats_updated":
-        // Renderer reads from player.stats directly — no action needed
-        break;
-    }
-  }
-
-  /** Sync renderer ability bar after skill changes */
-  _syncAbilityBar() {
-    const classSkills = this._skills?.[this._playerClassId] ?? [];
-    const skillMap    = Object.fromEntries(classSkills.map(s => [s.id, s]));
-
-    // Build ability defs from player's current abilities list
-    this.renderer.playerAbilities = (this.player.abilities ?? [])
-      .map(id => skillMap[id] ?? this._abilities?.[id])
-      .filter(Boolean);
-  }
-
-  // ─────────────────────────────────────────────
-  // ─────────────────────────────────────────────
-
-  _onPlayerDeath(killerName) {
-    // Pause the world — stop combat and movement from ticking
-    this._playerDead = true;
-
-    // Calculate penalties
-    const goldLost = Math.floor((this.player.gold ?? 0) * 0.25);
-    const xpLost   = Math.floor((this.player.xp   ?? 0) * 0.20);
-
-    // Apply penalties immediately
-    this.player.gold = Math.max(0, (this.player.gold ?? 0) - goldLost);
-    this.player.xp   = Math.max(0, (this.player.xp   ?? 0) - xpLost);
-
-    // Show death screen on top of the frozen game canvas
-    const deathScreen = new DeathScreen({
-      canvas:     this.renderer.canvas,
-      killerName,
-      goldLost,
-      xpLost
-    });
-
-    deathScreen.onRespawn = () => {
-      this._respawn();
-    };
-
-    deathScreen.onQuit = () => {
-      this.saveToSlot().finally(() => {
-        this.running = false;
-        this.onQuitToTitle?.();
-      });
-    };
-
-    this._deathScreen = deathScreen;
-    deathScreen.show();
-  }
-
-  async _respawn() {
-    const p = this.player;
-
-    p.hp       = p.maxHp;
-    p.resource = p.maxResource;
-    p.dead     = false;
-    p.inCombat = false;
-    p.moveTarget = null;
-    p.movePath   = null;
-
-    // Respawn at inn if set, otherwise world spawn
-    if (this._respawnPoint && this._respawnPoint.worldId !== this._currentWorldId) {
-      await this.transition({
-        targetWorld: this._respawnPoint.worldId,
-        targetX:     this._respawnPoint.x,
-        targetY:     this._respawnPoint.y
-      });
-    } else {
-      const rx = this._respawnPoint?.x ?? this._spawnX;
-      const ry = this._respawnPoint?.y ?? this._spawnY;
-      const { x, y } = findNearestWalkable(this.world, rx, ry);
-      p.x = x;
-      p.y = y;
-    }
-
-    this._playerDead = false;
-    this._deathScreen = null;
-
-    // Reset all NPCs
-    for (const npc of this.npcs) {
-      npc.state    = "roaming";
-      npc.inCombat = false;
-    }
-    this.combatSystem?.reset?.();
-    this.renderer.camera.centerOn(p.x, p.y, this.world);
-    this.combatLog?.push({ text: "You have returned.", type: "system" });
-  }
-  // ─────────────────────────────────────────────
-  // RESOURCE
-  // ─────────────────────────────────────────────
-
-  _tickPlayerResource() {
-    const p   = this.player;
-    const def = p?.resourceDef;
-    if (!def) return;
-
-    if (def.regenPerTick && def.regenPerTick > 0) {
-      p.resource = Math.min(p.maxResource, p.resource + def.regenPerTick);
-    }
-
-    // Rage decays slowly out of combat
-    if (def.type === "rage" && !p.inCombat) {
-      p.resource = Math.max(0, p.resource - 0.3);
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // SAVE SYSTEM
-  // ─────────────────────────────────────────────
-
-  /**
-   * Build a save data object from current game state.
-   * Called on zone change.
-   */
-  getSaveData() {
-    return {
-      name:          this.player.name          ?? "Hero",
-      classId:       this.player.classId       ?? this._playerClassId,
-      stats:         this.player.stats         ?? {},
-      position: {
-        worldId: this.world?.id ?? "overworld_C",
-        x:       this.player.x,
-        y:       this.player.y
-      },
-      gold:          this.player.gold          ?? 0,
-      xp:            this.player.xp            ?? 0,
-      level:         this.player.level         ?? 1,
-      bag:           this.player.bag           ?? [],
-      equipment:     this.player.equipment     ?? {},
-      quickSlots:    this.player.quickSlots    ?? [],
-      learnedSkills: this.player.learnedSkills ?? {},
-      abilities:     this.player.abilities     ?? [],
-      inventory:     []
-    };
-  }
-
-  /**
-   * Persist current state to the assigned save slot.
-   * Silent — errors are logged but not thrown.
-   */
-  async saveToSlot() {
-    if (!this.saveProvider || !this.saveSlot) return;
-    try {
-      await this.saveProvider.save(this.saveSlot, this.getSaveData());
-      this.combatLog?.push({ text: "Game saved.", type: "system" });
-    } catch (e) {
-      console.error("[Engine] Save failed:", e);
-    }
-  }
-
-  /**
-   * Call this when the player transitions to a new zone.
-   * Triggers auto-save and loads the new world.
-   */
-  async changeZone(worldId) {
-    await this.saveToSlot();
-    await this._loadWorldFromProvider(worldId);
-    this._spawnTestNPCs();
-    this._buildSystems();
-  }
-
-  // ─────────────────────────────────────────────
-  // GAME LOOP
-  // ─────────────────────────────────────────────
-
-  start() {
-    if (!this.world) throw new Error("Engine started without a world");
-    this.running = true;
-    this.loop();
-  }
-
-  loop() {
-    if (!this.running) return;
-
-    if (!this._playerDead) {
-      if (!this.townSystem) {
-        // Only run combat systems on the overworld/dungeons — not in towns
-        this.npcPerceptionSystem?.update();       // 1. awareness
-        this.npcMovementSystem?.update();         // 2. NPC movement (A*)
-        this.combatSystem?.update();              // 3. timers + resolution
-        this.npcAISystem?.update(this.world);     // 4. NPC decides actions
-      }
-      this.movementSystem?.update();              // 5. player movement (always)
-      this.lootSystem?.update();                  // 6. tick corpses
-      this.spawnSystem?.update();                 // 7. respawns + random encounters
-      this.townSystem?.update();                  // 8. town NPC wander + exit check
-      this._tickPlayerResource();                 // 9. mana regen / rage decay
-
-      // Periodic autosave
-      this._autoSaveTick++;
-      if (this._autoSaveTick >= this._autoSaveInterval) {
-        this._autoSaveTick = 0;
-        this.saveToSlot();
-      }
-    }
-
-    this.combatLog?.update();                   // 6. always age log messages
-
-    if (this.player) {
-      this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
-    }
-
-    this.renderer.render(this.world, this.entities);
-    requestAnimationFrame(() => this.loop());
-  }
+function vignette(ctx, s, strength = 0.10) {
+  ctx.fillStyle = `rgba(0,0,0,${strength})`;
+  ctx.fillRect(0, 0, s, 1);
+  ctx.fillRect(0, s - 1, s, 1);
+  ctx.fillRect(0, 0, 1, s);
+  ctx.fillRect(s - 1, 0, 1, s);
+}
+function makeRand(seed) {
+  // fast deterministic PRNG from a 32-bit seed
+  let x = seed >>> 0;
+  return function () {
+    // xorshift32
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17; x >>>= 0;
+    x ^= x << 5;  x >>>= 0;
+    return x / 4294967296;
+  };
 }
