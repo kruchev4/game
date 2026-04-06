@@ -13,6 +13,11 @@ import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
 
+import { HUMANOID_RIG } from "../entities/humanoidRig.js";
+
+console.log("[Humanoid Rig]", HUMANOID_RIG);
+
+
 const WORLD_ID = "overworld_C";
 
 async function start() {
