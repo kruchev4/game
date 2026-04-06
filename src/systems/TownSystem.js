@@ -65,8 +65,11 @@ export class TownSystem {
    * Returns true if an NPC was hit (so Engine can stop further click handling).
    */
   handleClick(worldX, worldY) {
+    // Check exact tile and one tile radius to account for floating point / floor rounding
     for (const npc of this.npcs) {
-      if (npc.x === worldX && npc.y === worldY) {
+      const dx = Math.abs(npc.x - worldX);
+      const dy = Math.abs(npc.y - worldY);
+      if (dx <= 1 && dy <= 1) {
         this.onInteract(npc);
         return true;
       }
