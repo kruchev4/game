@@ -17,8 +17,8 @@ import { createClient }               from "https://cdn.jsdelivr.net/npm/@supaba
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config/supabaseConfig.js";
 
 const MAX_SLOTS       = 5;
-const LS_PREFIX       = "roe_save_slot_";
-const LS_PLAYER_TOKEN = "roe_player_token";
+const LS_PREFIX       = "roe2_save_slot_";
+const LS_PLAYER_TOKEN = "roe2_player_token";
 
 function getPlayerToken() {
   let token = localStorage.getItem(LS_PLAYER_TOKEN);
@@ -63,7 +63,7 @@ export class SaveProvider {
       if (this._useSupabase) {
         try {
           const { data, error } = await this._supabase
-            .from("player_saves")
+            .from("roe2_saves")
             .select("*")
             .eq("player_token", this._playerToken);
 
@@ -115,27 +115,26 @@ export class SaveProvider {
     if (this._useSupabase) {
       try {
         const { data: rows, error: selError } = await this._supabase
-          .from("player_saves")
+          .from("roe2_saves")
           .select("*")
           .eq("player_token", this._playerToken);
 
         if (selError) console.warn("[SaveProvider] Select failed:", selError.message);
 
-        console.log("[SaveProvider] Rows from Supabase:", rows?.length, rows?.map(r => ({ id: r.id, dataType: typeof r.data, slot: parseData(r.data)?.slot })));
-
-        // Parse data column — may be string or object
+        // Match by slot number stored in data JSON
         const existing = (rows ?? []).find(r => parseData(r.data)?.slot === slot);
 
         if (existing?.id) {
+          // Always write fresh new-format data — overwrites old format cleanly
           const { error } = await this._supabase
-            .from("player_saves")
+            .from("roe2_saves")
             .update({ char_name: payload.name, data: payload })
             .eq("id", existing.id);
           if (error) console.warn("[SaveProvider] Update failed:", error.message);
-          else console.log(`[SaveProvider] Saved slot ${slot} (update)`);
+          else console.log(`[SaveProvider] Saved slot ${slot} to row ${existing.id} (update)`);
         } else {
           const { error } = await this._supabase
-            .from("player_saves")
+            .from("roe2_saves")
             .insert({ player_token: this._playerToken, char_name: payload.name, data: payload });
           if (error) console.warn("[SaveProvider] Insert failed:", error.message);
           else console.log(`[SaveProvider] Saved slot ${slot} (insert)`);
@@ -154,14 +153,14 @@ export class SaveProvider {
     if (this._useSupabase) {
       try {
         const { data: rows } = await this._supabase
-          .from("player_saves")
+          .from("roe2_saves")
           .select("*")
           .eq("player_token", this._playerToken);
 
         const target = (rows ?? []).find(r => parseData(r.data)?.slot === slot);
         if (target?.id) {
           await this._supabase
-            .from("player_saves")
+            .from("roe2_saves")
             .delete()
             .eq("id", target.id);
         }
