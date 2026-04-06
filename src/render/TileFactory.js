@@ -9,9 +9,7 @@ export class TileFactory {
   }
 
  getTileCanvas(tileId, wx, wy, neighbors = null, variant = 0) {
-  // Optional debug (turn off once confirmed)
-  // console.count("TILE VARIANT PAINT");
-
+  // Only soften edges where neighbor is NOT grass
   const n = neighbors || {};
 
   
