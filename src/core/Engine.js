@@ -943,7 +943,64 @@ export class Engine {
         // Entity updated in-place — no action needed
       },
 
-      onNPCDamaged: ({ npcId, hp, damage, attackerName }) => {
+      onNPCState: (serverNPCs) => {
+        // Sync NPCs from server — add new, update existing, remove dead
+        const serverIds = new Set(serverNPCs.map(n => n.id));
+
+        // Remove NPCs no longer on server
+        this.npcs     = this.npcs.filter(n => serverIds.has(n.id));
+        this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
+
+        for (const sNPC of serverNPCs) {
+          const existing = this.npcs.find(n => n.id === sNPC.id);
+          if (existing) {
+            // Update position and state
+            existing.x     = sNPC.x;
+            existing.y     = sNPC.y;
+            existing.hp    = sNPC.hp;
+            existing.maxHp = sNPC.maxHp;
+            existing.state = sNPC.state;
+          } else {
+            // New NPC from server — create local entity for rendering
+            const classDef = this._classes[sNPC.classId] ?? {};
+            const npc = new NPC({
+              id:         sNPC.id,
+              classId:    sNPC.classId,
+              classDef:   { ...classDef, icon: sNPC.icon },
+              x:          sNPC.x,
+              y:          sNPC.y,
+              roamCenter: { x: sNPC.x, y: sNPC.y },
+              roamRadius: 0
+            });
+            npc.hp      = sNPC.hp;
+            npc.maxHp   = sNPC.maxHp;
+            npc.state   = sNPC.state;
+            npc.isBoss  = sNPC.isBoss;
+            if (sNPC.name) npc.name = sNPC.name;
+            this.npcs.push(npc);
+            this.entities.push(npc);
+            // Wire into combat system only — AI/movement run on server
+            this.combatSystem?.npcs.push(npc);
+          }
+        }
+      },
+
+      onNPCAttackPlayer: ({ npcId, damage }) => {
+        // Server says this NPC attacked us — apply damage locally
+        if (this._playerDead) return;
+        const player = this.player;
+        player.hp = Math.max(0, player.hp - damage);
+        const npc = this.npcs.find(n => n.id === npcId);
+        this.combatLog?.push({
+          text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
+          type: "damage"
+        });
+        if (player.hp <= 0) {
+          this._onPlayerDeath();
+        }
+        // Broadcast updated HP
+        this.multiplayerSystem?.broadcastState();
+      },
         // Sync NPC HP from server
         const npc = this.npcs.find(n => n.id === npcId);
         if (npc) {
@@ -1187,21 +1244,26 @@ export class Engine {
     if (!this.running) return;
 
     if (!this._playerDead) {
-      if (!this.townSystem) {
-        // Only run combat systems on the overworld/dungeons — not in towns
-        this.npcPerceptionSystem?.update();       // 1. awareness
-        this.npcMovementSystem?.update();         // 2. NPC movement (A*)
-        this.combatSystem?.update();              // 3. timers + resolution
-        this.npcAISystem?.update(this.world);     // 4. NPC decides actions
-      }
-      this.movementSystem?.update();              // 5. player movement (always)
-      this.lootSystem?.update();                  // 6. tick corpses
-      this.spawnSystem?.update();                 // 7. respawns + random encounters
-      this.townSystem?.update();                  // 8. town NPC wander + exit check
-      this.multiplayerSystem?.update();           // 9. broadcast position
-      this._tickPlayerResource();                 // 10. mana regen / rage decay
+      // Only run local NPC simulation if not connected to multiplayer server
+      // When connected, server owns all NPC state
+      const serverOwnsNPCs = this.multiplayerSystem?._connected;
 
-      // Periodic autosave
+      if (!this.townSystem && !serverOwnsNPCs) {
+        this.npcPerceptionSystem?.update();
+        this.npcMovementSystem?.update();
+        this.combatSystem?.update();
+        this.npcAISystem?.update(this.world);
+      } else if (!this.townSystem && serverOwnsNPCs) {
+        // Server owns NPCs — only run combat resolution for player attacks
+        this.combatSystem?.update();
+      }
+      this.movementSystem?.update();
+      this.lootSystem?.update();
+      if (!serverOwnsNPCs) this.spawnSystem?.update();
+      this.townSystem?.update();
+      this.multiplayerSystem?.update();
+      this._tickPlayerResource();
+
       this._autoSaveTick++;
       if (this._autoSaveTick >= this._autoSaveInterval) {
         this._autoSaveTick = 0;
