@@ -70,7 +70,7 @@ update-manifest:
         # 1. Update the internal ingress to use the branch name
         - target:
             kind: Ingress
-            name: realm-of-echoes-ingress-internal
+            name: realm-of-echoes-ingress
           patch: |-
             - op: replace
               path: /spec/rules/0/host
