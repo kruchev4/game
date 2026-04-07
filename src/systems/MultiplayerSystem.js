@@ -10,15 +10,17 @@ const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
 export class MultiplayerSystem {
-  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled }) {
+  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
     this.player       = player;
     this.worldId      = worldId;
     this.playerToken  = playerToken;
-    this.onPlayerJoin   = onPlayerJoin   ?? (() => {});
-    this.onPlayerLeave  = onPlayerLeave  ?? (() => {});
-    this.onPlayerUpdate = onPlayerUpdate ?? (() => {});
-    this.onNPCDamaged   = onNPCDamaged   ?? (() => {});
-    this.onNPCKilled    = onNPCKilled    ?? (() => {});
+    this.onPlayerJoin      = onPlayerJoin      ?? (() => {});
+    this.onPlayerLeave     = onPlayerLeave     ?? (() => {});
+    this.onPlayerUpdate    = onPlayerUpdate    ?? (() => {});
+    this.onNPCDamaged      = onNPCDamaged      ?? (() => {});
+    this.onNPCKilled       = onNPCKilled       ?? (() => {});
+    this.onNPCState        = onNPCState        ?? (() => {});
+    this.onNPCAttackPlayer = onNPCAttackPlayer ?? (() => {});
 
     this._ws             = null;
     this._remotePlayers  = new Map(); // token -> entity
@@ -243,6 +245,20 @@ export class MultiplayerSystem {
         if (entity) {
           this._remotePlayers.delete(msg.token);
           this.onPlayerLeave(msg.token);
+        }
+        break;
+      }
+
+      case "npc_state": {
+        // Server sent full NPC state — sync all NPCs
+        this.onNPCState(msg.npcs ?? []);
+        break;
+      }
+
+      case "npc_attack_player": {
+        // Server says an NPC attacked a player
+        if (msg.targetToken === this.playerToken) {
+          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage });
         }
         break;
       }
