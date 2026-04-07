@@ -7,4 +7,4 @@ namespace: games
 images:
 - name: registry.gitlab.internal.garflak.com/development/realm_of_echoes
   newName: registry.gitlab.internal.garflak.com/development/realm_of_echoes
-  newTag: c9f498d9
+  newTag: 6cd53e51
