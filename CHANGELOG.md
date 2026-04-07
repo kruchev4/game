@@ -23,3 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Removed static `namespace.yaml` as ArgoCD now handles dynamic namespace provisioning.
+
+### Fixed
+- Restructured `k8s/` directory into `base/` and `overlays/prod/` to prevent CI pipeline failures on the `main` branch.
+- Integrated GitLab API token into External Secrets Operator so ArgoCD ApplicationSet can dynamically discover and deploy feature branches.

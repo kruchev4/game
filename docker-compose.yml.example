@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    volumes:
+      # This mounts your current local directory into the container's web root
+      # Format: /path/on/your/laptop:/path/inside/container
+      - ./:/usr/share/nginx/html
+    environment:
+      - ENVIRONMENT=development

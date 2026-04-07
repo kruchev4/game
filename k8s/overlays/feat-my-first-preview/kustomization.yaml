@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+namespace: games-feat-my-first-preview
+
+  # 1. Update the internal ingress to use the branch name
+
+  # 2. "Disable" the external ingress by assigning it a dummy internal-only host
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: feat-my-first-preview.apps.internal.garflak.com
+    - op: replace
+      path: /spec/tls/0/hosts/0
+      value: feat-my-first-preview.apps.internal.garflak.com
+  target:
+    kind: Ingress
+    name: realm-of-echoes-ingress
+- patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: feat-my-first-preview.local
+  target:
+    kind: Ingress
+    name: realm-of-echoes-ingress-external
+images:
+- name: registry.gitlab.internal.garflak.com/development/realm_of_echoes
+  newName: registry.gitlab.internal.garflak.com/development/realm_of_echoes
+  newTag: "07710543"
