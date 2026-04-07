@@ -32,19 +32,71 @@ update-manifest:
   stage: deploy
   image: alpine:latest
   script:
-    - apk add --no-cache git ca-certificates
+    - apk add --no-cache git ca-certificates curl bash
     - cp "${FREEIPA_CA_CERT}" /usr/local/share/ca-certificates/freeipa.crt
     - update-ca-certificates
+
+    # Install Kustomize
+    - curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    - mv kustomize /usr/local/bin/
+
+    # Configure Git
     - git config --global user.name "ci-gitops-bot"
     - git config --global user.email "ci-gitops-bot@internal.garflak.com"
     - git remote set-url origin https://oauth2:${GITLAB_ACCESS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git
     - git checkout $CI_COMMIT_BRANCH
     - git pull origin $CI_COMMIT_BRANCH --rebase
+
+    # Create the branch slug
+    - BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')
+
+    # Generate the dynamic Kustomize overlay
     - |
-      sed -i "s|image: .*|image: ${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}|g" k8s/deployment.yaml
-    - git add k8s/deployment.yaml
-    - |
-      git commit -m "chore: update image tag to ${CI_COMMIT_SHORT_SHA} [skip ci]" || echo "No changes to commit"
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        TARGET_DIR="k8s/overlays/prod"
+      else
+        TARGET_DIR="k8s/overlays/${BRANCH_SLUG}"
+        mkdir -p $TARGET_DIR
+
+        # Dynamically generate the Kustomization file for this specific branch
+        cat <<EOF > ${TARGET_DIR}/kustomization.yaml
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - ../../base
+      namespace: games-${BRANCH_SLUG}
+
+      patches:
+        # 1. Update the internal ingress to use the branch name
+        - target:
+            kind: Ingress
+            name: realm-of-echoes-ingress-internal
+          patch: |-
+            - op: replace
+              path: /spec/rules/0/host
+              value: ${BRANCH_SLUG}.apps.internal.garflak.com
+            - op: replace
+              path: /spec/tls/0/hosts/0
+              value: ${BRANCH_SLUG}.apps.internal.garflak.com
+
+        # 2. "Disable" the external ingress by assigning it a dummy internal-only host
+        - target:
+            kind: Ingress
+            name: realm-of-echoes-ingress-external
+          patch: |-
+            - op: replace
+              path: /spec/rules/0/host
+              value: ${BRANCH_SLUG}.local
+      EOF
+      fi
+
+    # Update the image tag
+    - cd $TARGET_DIR
+    - 'kustomize edit set image registry.gitlab.internal.garflak.com/development/realm_of_echoes=${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}'
+    - cd ../../../
+
+    - git add ${TARGET_DIR}/kustomization.yaml
+    - 'git commit -m "chore: update image tag to ${CI_COMMIT_SHORT_SHA} in ${TARGET_DIR} [skip ci]" || echo "No changes to commit"'
     - git push origin $CI_COMMIT_BRANCH
   needs: ["build-image"]
   tags:
