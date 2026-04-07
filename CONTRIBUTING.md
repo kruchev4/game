@@ -4,11 +4,12 @@ First off, thank you for considering contributing to Realm of Echoes!
 
 ## Branching Strategy
 
-We follow a feature-branch workflow that tightly integrates with our ArgoCD ephemeral environments. 
+We follow a prefixed-branch workflow that tightly integrates with our ArgoCD environments. 
 
 * **`main`**: The stable production branch. Code merged here goes live to the public immediately. Direct commits to `main` are strictly prohibited.
-* **`feat/*`**: Used for developing new features.
-* **`bugfix/*`**: Used for squashing bugs.
+* **`feat/*`**: Used for developing new features. Pushing this branch automatically spins up an isolated Ephemeral Preview Environment in the cluster.
+* **`bugfix/*`**: Used for squashing bugs. (Note: Ensure your ArgoCD ApplicationSet regex includes bugfixes if you want these to spin up preview environments!)
+* **`docs/*`**: Used for updating documentation. These branches do not trigger preview environments, saving cluster resources.
 
 ## Commit Message Guidelines
 
