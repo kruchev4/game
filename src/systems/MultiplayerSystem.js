@@ -125,6 +125,10 @@ export class MultiplayerSystem {
 
   _connect() {
     if (this._dead) return;
+    if (!SERVER_URL) {
+      console.log("[MP] No server URL configured — multiplayer disabled");
+      return;
+    }
 
     console.log(`[MP] Connecting to ${SERVER_URL}...`);
 
