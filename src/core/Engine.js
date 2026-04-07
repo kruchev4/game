@@ -450,6 +450,8 @@ export class Engine {
         this.npcAISystem?.npcs.push(npc);
         this.combatSystem?.npcs.push(npc);
         this.lootSystem  // lootSystem reads this.npcs directly via Engine reference
+        // Register with multiplayer server for HP tracking
+        this.multiplayerSystem?.registerNPC(npc);
       },
       onDespawn: (npc) => {
         this.npcs     = this.npcs.filter(n => n.id !== npc.id);
@@ -746,6 +748,16 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _onCombatEvent(event) {
+    // Forward hit events to multiplayer server for co-op resolution
+    if (event.type === "hit" && event.target?.type === "npc") {
+      this.multiplayerSystem?.sendAttack({
+        npcId:    event.target.id,
+        damage:   event.damage,
+        abilityId: event.abilityId
+      });
+      // Also broadcast our updated HP
+      this.multiplayerSystem?.broadcastState();
+    }
     const log = this.combatLog;
 
     switch (event.type) {
@@ -908,7 +920,6 @@ export class Engine {
       playerToken: token,
 
       onPlayerJoin: (remote) => {
-        // Add remote player to entities so renderer draws them
         if (!this.entities.find(e => e.id === remote.id)) {
           this.entities.push(remote);
         }
@@ -925,7 +936,40 @@ export class Engine {
       },
 
       onPlayerUpdate: (remote) => {
-        // Entity is updated in-place by MultiplayerSystem — no action needed
+        // Entity updated in-place — no action needed
+      },
+
+      onNPCDamaged: ({ npcId, hp, damage, attackerName }) => {
+        // Sync NPC HP from server
+        const npc = this.npcs.find(n => n.id === npcId);
+        if (npc) {
+          npc.hp = hp;
+          this.combatLog?.push({
+            text: `${attackerName} hit ${npc.id} for ${damage}!`,
+            type: "damage"
+          });
+        }
+      },
+
+      onNPCKilled: ({ npcId, killerName, xpShare, loot }) => {
+        // Server confirmed NPC dead — kill it locally
+        const npc = this.npcs.find(n => n.id === npcId);
+        if (npc && !npc.dead) {
+          npc.hp   = 0;
+          npc.dead = true;
+          // Award shared XP
+          if (xpShare > 0) {
+            this.xpSystem?.awardXP(xpShare);
+          }
+          // Award shared gold
+          if (loot?.gold > 0) {
+            this.player.gold = (this.player.gold ?? 0) + loot.gold;
+            this.combatLog?.push({
+              text: `${killerName} defeated ${npcId}! +${xpShare} XP, +${loot.gold} gold (shared)`,
+              type: "reward"
+            });
+          }
+        }
       }
     });
 
