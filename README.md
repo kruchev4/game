@@ -63,8 +63,24 @@ Once you push, our CI/CD pipeline automatically:
 Within ~3 minutes of pushing, your branch will be live and accessible internally behind real TLS certificates at:
 **`https://feat-new-inventory.apps.internal.garflak.com`**
 
-#### 4. Merge and Tear Down
-Once your code is reviewed and tested:
-1. **Clean up the repo:** Delete your dynamic overlay directory (`git rm -r k8s/overlays/feat-new-inventory`) and commit the deletion.
-2. **Merge to main:** Pushing to `main` will automatically deploy your changes to the live production environment at `https://echoes.garflak.com`.
+#### 4. Clean Up and Merge
+Because our CI pipeline automatically generates the Kustomize overlay and commits it directly to your feature branch, your local repository will be one commit behind GitLab. 
+
+Before merging your Merge Request, you must sync your local branch using `--rebase` and delete the temporary overlay folder so it doesn't pollute the `main` branch.
+
+1. **Sync and Clean up the repo:**
+   ```bash
+   # 1. Pull the CI bot's commit cleanly without creating a merge commit
+   git pull --rebase origin feat/new-inventory
+
+   # 2. Remove the temporary dynamic overlay
+   git rm -r k8s/overlays/feat-new-inventory/
+
+   # 3. Commit and push the cleanup
+   git commit -m "chore: clean up ephemeral overlay"
+   git push origin feat/new-inventory
+   ```
+
+2. **Merge to main:** Once approved and cleaned up, merge your MR. Pushing to `main` will automatically deploy your changes to the live production environment at `https://echoes.garflak.com`.
+
 3. **Delete the branch:** Deleting your feature branch in GitLab will signal ArgoCD to instantly destroy your preview namespace and reclaim the cluster resources.

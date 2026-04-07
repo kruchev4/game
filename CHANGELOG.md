@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+##[2026-04-07]
+
+### Added
+- Added Git `--rebase` and overlay cleanup workflow documentation to `README.md` and `CONTRIBUTING.md` to prevent Git commit history drift.
+- Established `docs/` branching convention for lightweight, non-ephemeral repository updates.
+
+### Fixed
+- Fixed ArgoCD duplicate application generation by updating the dynamic SCM variable to `{{branchNormalized}}`.
+- Corrected Kustomize patch target name in `.gitlab-ci.yml` so Traefik correctly routes external preview URLs (resolving 404 errors).
+- Resolved SCM Provider `x509` certificate errors by explicitly mapping the SCM `caRef` to the FreeIPA `argocd-tls-certs-cm` ConfigMap.
+- Upgraded GitLab API token scopes (`read_api`, `read_repository`) to properly authorize the ArgoCD ApplicationSet REST API queries.
+
 ## [1.0.0] - 2026-04-06
 
 ### Added
