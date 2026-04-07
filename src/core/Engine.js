@@ -985,32 +985,35 @@ export class Engine {
         }
       },
 
-      onNPCAttackPlayer: ({ npcId, damage }) => {
-        // Server says this NPC attacked us — apply damage locally
-        if (this._playerDead) return;
-        const player = this.player;
-        player.hp = Math.max(0, player.hp - damage);
-        const npc = this.npcs.find(n => n.id === npcId);
-        this.combatLog?.push({
-          text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
-          type: "damage"
-        });
-        if (player.hp <= 0) {
-          this._onPlayerDeath();
-        }
-        // Broadcast updated HP
-        this.multiplayerSystem?.broadcastState();
-      },
-        // Sync NPC HP from server
-        const npc = this.npcs.find(n => n.id === npcId);
-        if (npc) {
-          npc.hp = hp;
-          this.combatLog?.push({
-            text: `${attackerName} hit ${npc.id} for ${damage}!`,
-            type: "damage"
-          });
-        }
-      },
+  onNPCAttackPlayer: ({ npcId, damage }) => {
+    if (this._playerDead) return;
+
+    const player = this.player;
+    player.hp = Math.max(0, player.hp - damage);
+
+    const npc = this.npcs.find(n => n.id === npcId);
+    this.combatLog?.push({
+      text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
+      type: "damage"
+    });
+
+    if (player.hp <= 0) {
+      this._onPlayerDeath();
+    }
+
+    this.multiplayerSystem?.broadcastState();
+  },
+
+onNPCDamage: ({ npcId, hp, attackerName, damage }) => {
+  const npc = this.npcs.find(n => n.id === npcId);
+  if (!npc) return;
+
+  npc.hp = hp;
+  this.combatLog?.push({
+    text: `${attackerName} hit ${npc.id} for ${damage}!`,
+    type: "damage"
+  });
+},
 
       onNPCKilled: ({ npcId, killerName, xpShare, loot }) => {
         // Server confirmed NPC dead — kill it locally
