@@ -589,8 +589,12 @@ export class Engine {
       this._syncAbilityBar();
     }
 
-    // Start multiplayer presence
-    this._initMultiplayer();
+    // Start multiplayer presence — wrapped so any error doesn't block rendering
+    try {
+      this._initMultiplayer();
+    } catch (e) {
+      console.warn("[Engine] Multiplayer init failed, continuing without:", e.message);
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -973,9 +977,11 @@ export class Engine {
       }
     });
 
-    this.multiplayerSystem.join().catch(e =>
-      console.warn("[Engine] Multiplayer join failed:", e.message)
-    );
+    try {
+      this.multiplayerSystem.join();
+    } catch (e) {
+      console.warn("[Engine] Multiplayer join failed:", e.message);
+    }
   }
 
   _onXPEvent(event) {
