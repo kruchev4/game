@@ -5,7 +5,7 @@
  * Handles player presence, movement sync, and co-op combat.
  */
 
-const SERVER_URL   = "ws://192.168.68.62:8080";
+const SERVER_URL   = "wss://strings-feature-computer-emperor.trycloudflare.com";
 const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
