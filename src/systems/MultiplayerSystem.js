@@ -5,12 +5,14 @@
  * Handles player presence, movement sync, and co-op combat.
  */
 
-const SERVER_URL   = "wss://strings-feature-computer-emperor.trycloudflare.com";
+
 const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
 export class MultiplayerSystem {
-  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+  constructor({serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+    this.serverUrl = serverUrl;
+
     this.player       = player;
     this.worldId      = worldId;
     this.playerToken  = playerToken;
@@ -127,12 +129,14 @@ export class MultiplayerSystem {
 
   _connect() {
     if (this._dead) return;
-    if (!SERVER_URL) {
+    if (!this.serverUrl) {
       console.log("[MP] No server URL configured — multiplayer disabled");
       return;
     }
 
-    console.log(`[MP] Connecting to ${SERVER_URL}...`);
+    console.log(`[MP] Connecting to ${this.serverUrl}...`);
+    this._ws = new WebSocket(this.serverUrl);
+
 
     try {
       this._ws = new WebSocket(SERVER_URL);
