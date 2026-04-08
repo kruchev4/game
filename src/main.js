@@ -1,10 +1,15 @@
 /**
- * main.js — Entry point. Self-executes on load.
+ * main.js — Entry point
  *
  * Flow:
- *   ScreenManager (character select + creation HTML overlay)
+ *   ScreenManager (character select + creation)
  *     ├─ Play saved char  → Engine
  *     └─ Create new char  → auto-save → Engine
+ *
+ * Multiplayer:
+ *   - Fetches available servers from Supabase roe2_servers table
+ *   - Player selects server (or plays offline if none available)
+ *   - Engine connects via MultiplayerSystem
  */
 
 import { Engine }                    from "./core/Engine.js";
@@ -12,8 +17,39 @@ import { Renderer }                  from "./render/Renderer.js";
 import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
+import { MultiplayerSystem }         from "./systems/MultiplayerSystem.js";
+import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 const WORLD_ID = "overworld_C";
+const supabase  = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── Server list ───────────────────────────────────────────────────────────
+
+/**
+ * Fetch available game servers from Supabase.
+ * Returns [] if table doesn't exist yet or fetch fails.
+ */
+async function fetchServers() {
+  try {
+    const { data, error } = await supabase
+      .from("roe2_servers")
+      .select("*")
+      .eq("online", true)
+      .order("player_count", { ascending: true }); // prefer least populated
+
+    if (error) {
+      console.warn("[main] Could not fetch servers:", error.message);
+      return [];
+    }
+    return data ?? [];
+  } catch (e) {
+    console.warn("[main] Server fetch exception:", e.message);
+    return [];
+  }
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────
 
 async function start() {
   try {
@@ -35,70 +71,52 @@ async function start() {
     const abilities = await abilitiesRes.json();
     const classes   = await classesRes.json();
 
-    // ── Launch engine ───────────────────────────────────────────────
-    async function launchGame(config, saveSlot) {
+    // ── Launch engine ─────────────────────────────────────────────────────
+    async function launchGame(character, saveSlot, serverUrl = null) {
       const engine = new Engine({ worldProvider, renderer });
-
-      const { serverUrl, name, raceId, classId, stats } = config;
 
       engine.saveSlot      = saveSlot;
       engine.saveProvider  = saveProvider;
       engine.onQuitToTitle = () => showScreens();
 
-      await engine.loadWorld(WORLD_ID, {
-        name,
-        raceId,
-        classId,
-        stats
-      });
-
-      if (serverUrl) {
-        engine.multiplayer = new MultiplayerSystem({
-          serverUrl,
-          player:      engine.player,
-          worldId:     WORLD_ID,
-          playerToken: engine.playerToken
-        });
-
-        engine.multiplayer.join();
-      }
+      await engine.loadWorld(WORLD_ID, character);
 
       engine.start();
       window.engine = engine;
     }
 
-    // ── Show pre-game screens ───────────────────────────────────────
+    // ── Show pre-game screens ─────────────────────────────────────────────
     async function showScreens() {
-      const slots = await saveProvider.loadAll();
-      const mgr   = new ScreenManager({ slots, saveProvider, classes, abilities });
+      // Stop any running engine
+      if (window.engine) {
+        window.engine.running = false;
+        window.engine.multiplayerSystem?.leave();
+        window.engine = null;
+      }
 
-      mgr.onPlay = async (slotIndex, saveData) => {
-        const servers = await fetchAvailableServers();
-        if (!servers.length) {
-          alert("No multiplayer servers online.");
-          return;
-        }
+      const [slots, servers] = await Promise.all([
+        saveProvider.loadAll(),
+        fetchServers()
+      ]);
 
-        const selectedServer = servers[0];
+      const mgr = new ScreenManager({
+        slots,
+        servers,       // passed to ScreenManager for server selection UI
+        saveProvider,
+        classes,
+        abilities
+      });
 
+      mgr.onPlay = async (slotIndex, saveData, serverUrl) => {
         await launchGame({
-          name:      saveData.name,
-          raceId:    saveData.raceId,
-          classId:   saveData.classId,
-          stats:     saveData.stats,
-          serverUrl: selectedServer.ws_url
-        }, slotIndex + 1);
+          name:    saveData.name,
+          raceId:  saveData.raceId,
+          classId: saveData.classId,
+          stats:   saveData.stats
+        }, slotIndex + 1, serverUrl);
       };
 
-      mgr.onCreate = async (slotIndex, character) => {
-        const servers = await fetchAvailableServers();
-        if (!servers.length) {
-          alert("No multiplayer servers online.");
-          return;
-        }
-
-        const selectedServer = servers[0];
-
+      mgr.onCreate = async (slotIndex, character, serverUrl) => {
         await saveProvider.save(slotIndex + 1, {
           ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
@@ -106,11 +124,7 @@ async function start() {
           xp:        0,
           inventory: []
         });
-
-        await launchGame({
-          ...character,
-          serverUrl: selectedServer.ws_url
-        }, slotIndex + 1);
+        await launchGame(character, slotIndex + 1, serverUrl);
       };
 
       mgr.show();
@@ -120,28 +134,22 @@ async function start() {
 
   } catch (e) {
     console.error("[Realm of Echoes] Startup error:", e);
-
     const canvas = document.getElementById("game");
     if (canvas) {
       const ctx = canvas.getContext("2d");
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
-
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       ctx.fillStyle = "#cc4444";
-      ctx.font = "16px monospace";
+      ctx.font      = "16px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(
-        "Startup error — check console",
-        canvas.width / 2,
-        canvas.height / 2
-      );
+      ctx.fillText("Startup error — check console", canvas.width / 2, canvas.height / 2);
+      ctx.fillStyle = "#888";
+      ctx.font      = "12px monospace";
+      ctx.fillText(e.message, canvas.width / 2, canvas.height / 2 + 24);
     }
   }
 }
 
 start();
-
-
