@@ -5,14 +5,11 @@
  * Handles player presence, movement sync, and co-op combat.
  */
 
-
 const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
 export class MultiplayerSystem {
-  constructor({serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
-    this.serverUrl = serverUrl;
-
+  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
     this.player       = player;
     this.worldId      = worldId;
     this.playerToken  = playerToken;
@@ -135,11 +132,9 @@ export class MultiplayerSystem {
     }
 
     console.log(`[MP] Connecting to ${this.serverUrl}...`);
-    this._ws = new WebSocket(this.serverUrl);
-
 
     try {
-      this._ws = new WebSocket(SERVER_URL);
+      this._ws = new WebSocket(this.serverUrl);
     } catch (e) {
       console.warn("[MP] WebSocket creation failed:", e.message);
       this._scheduleReconnect();
@@ -213,136 +208,87 @@ export class MultiplayerSystem {
   // ─────────────────────────────────────────────
 
   _onMessage(msg) {
-  // Normalize common alternate server message names → your existing handlers
-  const t = msg.type;
+    switch (msg.type) {
 
-  // ---- Player presence (compat layer) ----
-  if (t === "player_join") {
-    // server.js uses { type:"player_join", player:{...} }
-    this._addOrUpdateRemote(msg.player);
-    return;
-  }
-
-  if (t === "player_update") {
-    // server.js uses { type:"player_update", player:{...} }
-    this._addOrUpdateRemote(msg.player);
-    return;
-  }
-
-  if (t === "player_left") {
-    // both protocols often use token; some use playerToken
-    const tok = msg.token ?? msg.playerToken;
-    const entity = this._remotePlayers.get(tok);
-    if (entity) {
-      this._remotePlayers.delete(tok);
-      this.onPlayerLeave(tok);
-    }
-    return;
-  }
-
-  // Some servers send "move" with x,y and no token (that’s usually *self* only).
-  // Others send "player_moved" with token. We handle both safely:
-  if (t === "player_moved") {
-    const entity = this._remotePlayers.get(msg.token);
-    if (entity) {
-      entity.x = msg.x;
-      entity.y = msg.y;
-      entity.state = msg.state;
-      this.onPlayerUpdate(entity);
-    }
-    return;
-  }
-
-  if (t === "move") {
-    // If server broadcasts move with a token, support it.
-    // If it doesn't, ignore (it might be echo of our own move).
-    const tok = msg.token ?? msg.playerToken;
-    if (!tok || tok === this.playerToken) return;
-    const entity = this._remotePlayers.get(tok);
-    if (entity) {
-      entity.x = msg.x;
-      entity.y = msg.y;
-      entity.state = msg.state;
-      this.onPlayerUpdate(entity);
-    }
-    return;
-  }
-
-  // ---- NPC state / combat (compat layer) ----
-  if (t === "npc_state") {
-    this.onNPCState(msg.npcs ?? []);
-    return;
-  }
-
-  // server.js I generated sends npc_damage, while your client expects npc_damaged
-  if (t === "npc_damage") {
-    this.onNPCDamaged({
-      npcId: msg.npcId,
-      hp: msg.hp,
-      maxHp: msg.maxHp,
-      damage: msg.damage,
-      attackerName: msg.attackerName
-    });
-    return;
-  }
-
-  if (t === "npc_damaged") {
-    this.onNPCDamaged({
-      npcId: msg.npcId,
-      hp: msg.hp,
-      maxHp: msg.maxHp,
-      damage: msg.damage,
-      attackerName: msg.attackerName
-    });
-    return;
-  }
-
-  if (t === "npc_killed") {
-    this.onNPCKilled({
-      npcId: msg.npcId,
-      killerName: msg.killerName,
-      xpShare: msg.xpShare,
-      loot: msg.loot
-    });
-    return;
-  }
-
-  if (t === "npc_attack_player") {
-    if (msg.targetToken === this.playerToken) {
-      this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage });
-    }
-    return;
-  }
-
-  // Some servers answer ping with pong, some don't
-  if (t === "pong") return;
-
-  // ---- Existing protocol (your current cases) ----
-  switch (t) {
-    case "world_state": {
-      for (const playerData of (msg.players ?? [])) {
-        this._addOrUpdateRemote(playerData);
+      case "world_state": {
+        // Initial state — list of players already in this world
+        for (const playerData of (msg.players ?? [])) {
+          this._addOrUpdateRemote(playerData);
+        }
+        break;
       }
-      break;
+
+      case "player_joined": {
+        this._addOrUpdateRemote(msg.player);
+        break;
+      }
+
+      case "player_moved": {
+        const entity = this._remotePlayers.get(msg.token);
+        if (entity) {
+          entity.x     = msg.x;
+          entity.y     = msg.y;
+          entity.state = msg.state;
+          this.onPlayerUpdate(entity);
+        }
+        break;
+      }
+
+      case "player_updated": {
+        this._addOrUpdateRemote(msg.player);
+        break;
+      }
+
+      case "player_left": {
+        const entity = this._remotePlayers.get(msg.token);
+        if (entity) {
+          this._remotePlayers.delete(msg.token);
+          this.onPlayerLeave(msg.token);
+        }
+        break;
+      }
+
+      case "npc_state": {
+        // Server sent full NPC state — sync all NPCs
+        this.onNPCState(msg.npcs ?? []);
+        break;
+      }
+
+      case "npc_attack_player": {
+        // Server says an NPC attacked a player
+        if (msg.targetToken === this.playerToken) {
+          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage });
+        }
+        break;
+      }
+
+      case "npc_damaged": {
+        this.onNPCDamaged({
+          npcId:        msg.npcId,
+          hp:           msg.hp,
+          maxHp:        msg.maxHp,
+          damage:       msg.damage,
+          attackerName: msg.attackerName
+        });
+        break;
+      }
+
+      case "npc_killed": {
+        this.onNPCKilled({
+          npcId:       msg.npcId,
+          killerName:  msg.killerName,
+          xpShare:     msg.xpShare,
+          loot:        msg.loot
+        });
+        break;
+      }
+
+      case "pong": break; // keepalive response
+
+      default:
+        console.log("[MP] Unknown message:", msg.type);
     }
-
-    case "player_joined": {
-      this._addOrUpdateRemote(msg.player);
-      break;
-    }
-
-    case "player_updated": {
-      this._addOrUpdateRemote(msg.player);
-      break;
-    }
-
-    // NOTE: player_left handled above
-
-    default:
-      console.log("[MP] Unknown message:", t, msg);
   }
-}
-
 
   // ─────────────────────────────────────────────
   // REMOTE PLAYER MANAGEMENT
