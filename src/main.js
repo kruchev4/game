@@ -100,7 +100,7 @@ async function start() {
           name:    saveData.name,
           raceId:  saveData.raceId,
           classId: saveData.classId,
-          stats:   saveData.stats
+          stats:   saveData.stats,
           serverUrl: selectedServer.ws_url
         }, slotIndex + 1);
       };
