@@ -121,16 +121,29 @@ async function start() {
   }, slotIndex + 1);
 };
 
-      // New character confirmed — save then launch
       mgr.onCreate = async (slotIndex, character) => {
-        
-      // 1) Discover available servers
-        const servers = await fetchAvailableServers();
+  const servers = await fetchAvailableServers();
 
-        if (!servers.length) {
-        alert("No multiplayer servers are currently online.");
-        return;
-     }
+  if (!servers.length) {
+    alert("No multiplayer servers are currently online.");
+    return;
+  }
+
+  const selectedServer = servers[0];
+
+  await saveProvider.save(slotIndex + 1, {
+    ...character,
+    position:  { worldId: WORLD_ID, x: null, y: null },
+    gold:      50,
+    xp:        0,
+    inventory: []
+  });
+
+  await launchGame({
+    ...character,
+    serverUrl: selectedServer.ws_url
+  }, slotIndex + 1);
+};
 
   // 2) Select server (same rule as onPlay)
        const selectedServer = servers[0];
