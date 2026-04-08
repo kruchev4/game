@@ -37,16 +37,55 @@ async function start() {
     const classes   = await classesRes.json();
 
     // ── Launch engine ──────────────────────────────────────────────────
-    async function launchGame(character, saveSlot) {
-      const engine        = new Engine({ worldProvider, renderer });
-      engine.saveSlot     = saveSlot;
-      engine.saveProvider = saveProvider;
-      engine.onQuitToTitle = () => showScreens();
+    async function launchGame(config, saveSlot) {
+  const engine = new Engine({ worldProvider, renderer });
 
-      await engine.loadWorld(WORLD_ID, character);
-      engine.start();
-      window.engine = engine;
-    }
+  const {
+    serverUrl,
+    name,
+    raceId,
+    classId,
+    stats
+  } = config;
+
+  engine.saveSlot     = saveSlot;
+  engine.saveProvider = saveProvider;
+  engine.onQuitToTitle = () => showScreens();
+
+  // ── Load world & player ─────────────────────────────────────────
+  await engine.loadWorld(WORLD_ID, {
+    name,
+    raceId,
+    classId,
+    stats
+  });
+
+  // ── Multiplayer setup (AFTER player exists) ─────────────────────
+  if (serverUrl) {
+    engine.multiplayer = new MultiplayerSystem({
+      serverUrl,
+      player:      engine.player,
+      worldId:     WORLD_ID,
+      playerToken: engine.playerToken,
+
+      onPlayerJoin:   (entity) => engine.addRemotePlayer?.(entity),
+      onPlayerLeave:  (token)  => engine.removeRemotePlayer?.(token),
+      onPlayerUpdate: (entity) => engine.updateRemotePlayer?.(entity),
+
+      onNPCDamaged:      (data) => engine.onNPCDamaged?.(data),
+      onNPCKilled:       (data) => engine.onNPCKilled?.(data),
+      onNPCState:        (npcs) => engine.onNPCState?.(npcs),
+      onNPCAttackPlayer: (data) => engine.onNPCAttackPlayer?.(data)
+    });
+
+    engine.multiplayer.join();
+  } else {
+    console.warn("[MP] No serverUrl provided — running in solo mode");
+  }
+
+  engine.start();
+  window.engine = engine;
+}
 
     // ── Show pre-game screens ──────────────────────────────────────────
     async function showScreens() {
@@ -62,11 +101,24 @@ async function start() {
           raceId:  saveData.raceId,
           classId: saveData.classId,
           stats:   saveData.stats
+          serverUrl: selectedServer.ws_url
         }, slotIndex + 1);
       };
 
       // New character confirmed — save then launch
       mgr.onCreate = async (slotIndex, character) => {
+        
+      // 1) Discover available servers
+        const servers = await fetchAvailableServers();
+
+        if (!servers.length) {
+        alert("No multiplayer servers are currently online.");
+        return;
+     }
+
+  // 2) Select server (same rule as onPlay)
+       const selectedServer = servers[0];
+
         await saveProvider.save(slotIndex + 1, {
           ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
