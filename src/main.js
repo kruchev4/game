@@ -105,16 +105,7 @@ async function start() {
 
   const selectedServer = servers[0];
 
-  await launchGame({
-    name:      saveData.name,
-    raceId:    saveData.raceId,
-    classId:   saveData.classId,
-    stats:     saveData.stats,
-    serverUrl: selectedServer.ws_url
-  }, slotIndex + 1);
-};
-
-mgr.onCreate = async (slotIndex, character) => {
+  mgr.onCreate = async (slotIndex, character) => {
   // 1) Fetch available servers
   const servers = await fetchAvailableServers();
 
@@ -123,10 +114,10 @@ mgr.onCreate = async (slotIndex, character) => {
     return;
   }
 
-  // 2) Select server (same rule as onPlay)
+  // 2) Select server
   const selectedServer = servers[0];
 
-  // 3) Save the new character
+  // 3) Save character
   await saveProvider.save(slotIndex + 1, {
     ...character,
     position:  { worldId: WORLD_ID, x: null, y: null },
@@ -135,7 +126,7 @@ mgr.onCreate = async (slotIndex, character) => {
     inventory: []
   });
 
-  // 4) Launch game with serverUrl
+  // 4) Launch game
   await launchGame({
     ...character,
     serverUrl: selectedServer.ws_url
