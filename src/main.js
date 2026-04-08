@@ -96,14 +96,30 @@ async function start() {
 
       // Load existing character
       mgr.onPlay = async (slotIndex, saveData) => {
-        await launchGame({
-          name:    saveData.name,
-          raceId:  saveData.raceId,
-          classId: saveData.classId,
-          stats:   saveData.stats,
-          serverUrl: selectedServer.ws_url
-        }, slotIndex + 1);
-      };
+  // 1) Fetch available servers
+  const servers = await fetchAvailableServers();
+
+  if (!servers.length) {
+    alert("No multiplayer servers are currently online.");
+    return;
+  }
+
+  // 2) Select server (auto-pick first for now)
+  const selectedServer = servers[0];
+
+  console.log(
+    `[MP] Selected server: ${selectedServer.name} (${selectedServer.ws_url})`
+  );
+
+  // 3) Launch game
+  await launchGame({
+    name:      saveData.name,
+    raceId:    saveData.raceId,
+    classId:   saveData.classId,
+    stats:     saveData.stats,
+    serverUrl: selectedServer.ws_url
+  }, slotIndex + 1);
+};
 
       // New character confirmed — save then launch
       mgr.onCreate = async (slotIndex, character) => {
