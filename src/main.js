@@ -137,10 +137,6 @@ async function start() {
 
        
 
-    showScreens();
-
-  } catch (e) {
-    console.error("[Realm of Echoes] Startup error:", e);
 
     const canvas = document.getElementById("game");
     if (canvas) {
