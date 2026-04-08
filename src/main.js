@@ -133,21 +133,9 @@ async function start() {
   }, slotIndex + 1);
 };
 
-  // 2) Select server (same rule as onPlay)
-       const selectedServer = servers[0];
+ 
 
-        await saveProvider.save(slotIndex + 1, {
-          ...character,
-          position:  { worldId: WORLD_ID, x: null, y: null },
-          gold:      50,
-          xp:        0,
-          inventory: []
-        });
-        await launchGame(character, slotIndex + 1);
-      };
-
-      mgr.show();
-    }
+       
 
     showScreens();
 
