@@ -135,6 +135,6 @@ async function showScreens() {
 
   mgr.show();
 }
- 
+  }
 
 start();
