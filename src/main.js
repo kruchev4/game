@@ -95,8 +95,7 @@ async function start() {
       const mgr = new ScreenManager({ slots, saveProvider, classes, abilities });
 
       // Load existing character
-      mgr.onPlay = async (slotIndex, saveData) => {
-  // 1) Fetch available servers
+  mgr.onPlay = async (slotIndex, saveData) => {
   const servers = await fetchAvailableServers();
 
   if (!servers.length) {
@@ -104,14 +103,8 @@ async function start() {
     return;
   }
 
-  // 2) Select server (auto-pick first for now)
   const selectedServer = servers[0];
 
-  console.log(
-    `[MP] Selected server: ${selectedServer.name} (${selectedServer.ws_url})`
-  );
-
-  // 3) Launch game
   await launchGame({
     name:      saveData.name,
     raceId:    saveData.raceId,
@@ -121,7 +114,8 @@ async function start() {
   }, slotIndex + 1);
 };
 
-      mgr.onCreate = async (slotIndex, character) => {
+mgr.onCreate = async (slotIndex, character) => {
+  // 1) Fetch available servers
   const servers = await fetchAvailableServers();
 
   if (!servers.length) {
@@ -129,8 +123,10 @@ async function start() {
     return;
   }
 
+  // 2) Select server (same rule as onPlay)
   const selectedServer = servers[0];
 
+  // 3) Save the new character
   await saveProvider.save(slotIndex + 1, {
     ...character,
     position:  { worldId: WORLD_ID, x: null, y: null },
@@ -139,6 +135,7 @@ async function start() {
     inventory: []
   });
 
+  // 4) Launch game with serverUrl
   await launchGame({
     ...character,
     serverUrl: selectedServer.ws_url
