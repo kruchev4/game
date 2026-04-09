@@ -88,10 +88,20 @@ async function start() {
 
       mgr.onPlay = async (slotIndex, saveData) => {
         await launchGame({
-          name:    saveData.name,
-          raceId:  saveData.raceId,
-          classId: saveData.classId,
-          stats:   saveData.stats
+          name:          saveData.name,
+          raceId:        saveData.raceId,
+          classId:       saveData.classId,
+          stats:         saveData.stats,
+          // Full save data for inventory/progress restoration
+          gold:          saveData.gold,
+          xp:            saveData.xp,
+          level:         saveData.level,
+          bag:           saveData.bag,
+          equipment:     saveData.equipment,
+          quickSlots:    saveData.quickSlots,
+          learnedSkills: saveData.learnedSkills,
+          abilities:     saveData.abilities,
+          position:      saveData.position
         }, slotIndex + 1, serverUrl);
       };
 
