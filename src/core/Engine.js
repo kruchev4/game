@@ -828,8 +828,9 @@ export class Engine {
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
         // Spawn loot corpse
         this.lootSystem?.onNPCKilled(event.target);
-        // Award XP
-        if (event.attacker.id === "player") {
+        // Award XP — only if not connected to multiplayer server
+        // When connected, server broadcasts shared XP via onNPCKilled callback
+        if (event.attacker.id === "player" && !this.multiplayerSystem?._connected) {
           this.xpSystem?.awardKillXP(event.target);
         }
         // Notify spawn system for respawn tracking
@@ -1024,24 +1025,27 @@ export class Engine {
       },
 
       onNPCKilled: ({ npcId, killerName, xpShare, loot }) => {
-        // Server confirmed NPC dead — kill it locally
+        // Server confirmed NPC dead — remove from world
         const npc = this.npcs.find(n => n.id === npcId);
         if (npc && !npc.dead) {
           npc.hp   = 0;
           npc.dead = true;
-          // Award shared XP
-          if (xpShare > 0) {
-            this.xpSystem?.awardXP(xpShare);
-          }
-          // Award shared gold
-          if (loot?.gold > 0) {
-            this.player.gold = (this.player.gold ?? 0) + loot.gold;
-            this.combatLog?.push({
-              text: `${killerName} defeated ${npcId}! +${xpShare} XP, +${loot.gold} gold (shared)`,
-              type: "reward"
-            });
-          }
+          this.entities = this.entities.filter(e => e.id !== npcId);
+          this.npcs     = this.npcs.filter(n => n.id !== npcId);
+          if (this._currentTarget?.id === npcId) this._setTarget(null);
         }
+        // Award shared XP to ALL players in the world
+        if (xpShare > 0) this.xpSystem?.awardXP(xpShare);
+        // Award shared gold to ALL players
+        if (loot?.gold > 0) this.player.gold = (this.player.gold ?? 0) + loot.gold;
+        // Combat log
+        const isKiller = killerName === this.player.name;
+        this.combatLog?.push({
+          text: isKiller
+            ? `You killed ${npcId}! +${xpShare} XP, +${loot?.gold ?? 0} gold`
+            : `${killerName} killed ${npcId}! +${xpShare} XP, +${loot?.gold ?? 0} gold (shared)`,
+          type: "reward"
+        });
       }
     });
 
