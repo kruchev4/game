@@ -228,11 +228,29 @@ export class Engine {
   _spawnPlayer() {
     const cx = Math.floor(this.world.width  / 2);
     const cy = Math.floor(this.world.height / 2);
-    const { x, y } = findNearestWalkable(this.world, cx, cy);
+    const char = this._characterData;
 
-    this.player = new Player({ x, y });
-    this._spawnX = x;
-    this._spawnY = y;
+    // Use saved position if available and in the same world, else spawn at center
+    let spawnX, spawnY;
+    if (char?.position?.x && char?.position?.worldId === this._currentWorldId) {
+      try {
+        const safe = findNearestWalkable(this.world, char.position.x, char.position.y, 3);
+        spawnX = safe.x;
+        spawnY = safe.y;
+      } catch {
+        const center = findNearestWalkable(this.world, cx, cy);
+        spawnX = center.x;
+        spawnY = center.y;
+      }
+    } else {
+      const center = findNearestWalkable(this.world, cx, cy);
+      spawnX = center.x;
+      spawnY = center.y;
+    }
+
+    this.player = new Player({ x: spawnX, y: spawnY });
+    this._spawnX = spawnX;
+    this._spawnY = spawnY;
 
     // Use confirmed character data if available, else fall back to test class
     const char     = this._characterData;
@@ -247,11 +265,10 @@ export class Engine {
       this.player.actionSpeed = classDef.actionSpeed;
       this.player.actionTimer = classDef.actionSpeed;
 
-      // If rolled stats provided, use them; otherwise use class base stats
+      // Stats and HP — use saved HP if available, else class base
       const stats = char?.stats ?? classDef.baseStats;
-      this.player.hp    = classDef.baseStats.hp;
       this.player.maxHp = classDef.baseStats.hp;
-
+      this.player.hp    = char?.hp ?? classDef.baseStats.hp;
       this.player.stats = stats;
 
       // Restore inventory from save data
@@ -1212,10 +1229,11 @@ export class Engine {
       name:          this.player.name          ?? "Hero",
       classId:       this.player.classId       ?? this._playerClassId,
       stats:         this.player.stats         ?? {},
+      hp:            Math.ceil(this.player.hp  ?? this.player.maxHp),
       position: {
         worldId: this.world?.id ?? "overworld_C",
-        x:       this.player.x,
-        y:       this.player.y
+        x:       Math.round(this.player.x),
+        y:       Math.round(this.player.y)
       },
       gold:          this.player.gold          ?? 0,
       xp:            this.player.xp            ?? 0,
