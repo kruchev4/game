@@ -173,12 +173,92 @@ export class MultiplayerSystem {
     this._ws.addEventListener("close", () => {
       this._connected = false;
       console.log("[MP] Disconnected from server");
-      this._scheduleReconnect();
+      if (!this._dead) {
+        this._showDisconnectDialog();
+      }
     });
 
     this._ws.addEventListener("error", (e) => {
       console.warn("[MP] WebSocket error:", e.message ?? e);
     });
+  }
+
+  _showDisconnectDialog() {
+    // Remove any existing dialog
+    document.getElementById("mp-disconnect-dialog")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "mp-disconnect-dialog";
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-family: monospace;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background: #0d0d18;
+        border: 1.5px solid #444466;
+        border-radius: 10px;
+        padding: 32px 40px;
+        text-align: center;
+        max-width: 340px;
+      ">
+        <div style="color:#cc4444; font-size:18px; margin-bottom:10px;">⚠ Disconnected</div>
+        <div style="color:#aaaaaa; font-size:13px; margin-bottom:24px;">
+          You have been disconnected from the server.
+          Rejoin to continue playing with others.
+        </div>
+        <div style="display:flex; gap:12px; justify-content:center;">
+          <button id="mp-rejoin-btn" style="
+            background:#1a3a1a; color:#88ee88;
+            border:1.5px solid #44aa44;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Rejoin [Y]</button>
+          <button id="mp-offline-btn" style="
+            background:#1a1a2a; color:#888899;
+            border:1.5px solid #444466;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Play Offline [N]</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    document.getElementById("mp-rejoin-btn").onclick = () => {
+      close();
+      this._reconnectDelay = 2000;
+      this._scheduleReconnect();
+    };
+
+    document.getElementById("mp-offline-btn").onclick = () => {
+      close();
+      this._dead = true; // stop reconnect attempts
+    };
+
+    // Keyboard shortcut Y/N
+    const onKey = (e) => {
+      if (e.key === "y" || e.key === "Y") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-rejoin-btn")?.click();
+      } else if (e.key === "n" || e.key === "N") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-offline-btn")?.click();
+      }
+    };
+    document.addEventListener("keydown", onKey);
   }
 
   _scheduleReconnect() {
