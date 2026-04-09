@@ -7,7 +7,7 @@ import {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const HEARTBEAT_TIMEOUT_MS = 30_000;
+const HEARTBEAT_TIMEOUT_MS = 60_000;
 
 /**
  * Fetch servers that are online and recently heartbeating.
@@ -26,11 +26,18 @@ export async function fetchAvailableServers() {
       return [];
     }
 
+    console.log("[ServerDirectory] Raw rows:", data);
+
     const now = Date.now();
-    return (data ?? []).filter(server => {
+    const filtered = (data ?? []).filter(server => {
       const last = new Date(server.last_heartbeat).getTime();
-      return (now - last) < HEARTBEAT_TIMEOUT_MS;
+      const age  = now - last;
+      console.log(`[ServerDirectory] Server ${server.name}: age=${age}ms, limit=${HEARTBEAT_TIMEOUT_MS}ms, pass=${age < HEARTBEAT_TIMEOUT_MS}`);
+      return age < HEARTBEAT_TIMEOUT_MS;
     });
+
+    console.log("[ServerDirectory] Available servers:", filtered.length);
+    return filtered;
   } catch (e) {
     console.warn("[ServerDirectory] Exception:", e.message);
     return [];
