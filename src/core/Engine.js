@@ -954,7 +954,6 @@ export class Engine {
       },
 
       onNPCState: (serverNPCs) => {
-        // Sync NPCs from server — add new, update existing, remove dead
         const serverIds = new Set(serverNPCs.map(n => n.id));
 
         // Remove NPCs no longer on server
@@ -964,14 +963,12 @@ export class Engine {
         for (const sNPC of serverNPCs) {
           const existing = this.npcs.find(n => n.id === sNPC.id);
           if (existing) {
-            // Update position and state
             existing.x     = sNPC.x;
             existing.y     = sNPC.y;
             existing.hp    = sNPC.hp;
             existing.maxHp = sNPC.maxHp;
             existing.state = sNPC.state;
           } else {
-            // New NPC from server — create local entity for rendering
             const classDef = this._classes[sNPC.classId] ?? {};
             const npc = new NPC({
               id:         sNPC.id,
@@ -982,17 +979,18 @@ export class Engine {
               roamCenter: { x: sNPC.x, y: sNPC.y },
               roamRadius: 0
             });
-            npc.hp      = sNPC.hp;
-            npc.maxHp   = sNPC.maxHp;
-            npc.state   = sNPC.state;
-            npc.isBoss  = sNPC.isBoss;
+            npc.hp     = sNPC.hp;
+            npc.maxHp  = sNPC.maxHp;
+            npc.state  = sNPC.state;
+            npc.isBoss = sNPC.isBoss;
             if (sNPC.name) npc.name = sNPC.name;
             this.npcs.push(npc);
             this.entities.push(npc);
-            // Wire into combat system only — AI/movement run on server
-            this.combatSystem?.npcs.push(npc);
           }
         }
+
+        // Always keep combatSystem.npcs pointing at same array as this.npcs
+        if (this.combatSystem) this.combatSystem.npcs = this.npcs;
       },
 
       onNPCAttackPlayer: ({ npcId, damage }) => {
