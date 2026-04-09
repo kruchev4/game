@@ -8,19 +8,18 @@ import {
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const HEARTBEAT_TIMEOUT_MS = 30_000;
-const TABLE = "game_servers"; // change to "roe2_servers" if you renamed it
 
 /**
  * Fetch servers that are online and recently heartbeating.
- * Returns an array of server rows sorted by player count (least busy first).
+ * Returns an array of server rows sorted by players_online ascending.
  */
 export async function fetchAvailableServers() {
   try {
     const { data, error } = await supabase
-      .from(TABLE)
+      .from("game_servers")
       .select("*")
       .eq("status", "online")
-      .order("player_count", { ascending: true });
+      .order("players_online", { ascending: true });
 
     if (error) {
       console.warn("[ServerDirectory] Failed to load servers:", error.message);
