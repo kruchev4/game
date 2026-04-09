@@ -1335,24 +1335,25 @@ export class Engine {
     if (!this.running) return;
 
     if (!this._playerDead) {
-      // Only run local NPC simulation if not connected to multiplayer server
-      // When connected, server owns all NPC state
       const serverOwnsNPCs = this.multiplayerSystem?._connected;
 
       if (!this.townSystem && !serverOwnsNPCs) {
+        // Single player / offline — full local simulation
         this.npcPerceptionSystem?.update();
         this.npcMovementSystem?.update();
         this.combatSystem?.update();
         this.npcAISystem?.update(this.world);
       } else if (!this.townSystem && serverOwnsNPCs) {
-        // Server owns NPCs — only run combat resolution for player attacks
-        this.combatSystem?.update();
+        // Multiplayer — server owns NPC movement and attacks
+        if (this.combatSystem) this.combatSystem.multiplayerMode = true;
+        this.combatSystem?.updatePlayerOnly();
       }
+
       this.movementSystem?.update();
       this.lootSystem?.update();
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
-      this.animSystem?.update();              // animations + projectiles
+      this.animSystem?.update();
       this.multiplayerSystem?.update();
       this._tickPlayerResource();
 
