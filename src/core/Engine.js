@@ -707,6 +707,17 @@ export class Engine {
         }
       }
 
+      // NPC click — target the NPC
+      const clickedNPC = this.npcs.find(n =>
+        !n.dead &&
+        Math.abs(n.x - worldTile.x) <= 1 &&
+        Math.abs(n.y - worldTile.y) <= 1
+      );
+      if (clickedNPC) {
+        this._setTarget(clickedNPC);
+        return;
+      }
+
       // Corpse click
       const corpse = this.lootSystem?.corpses.find(
         c => c.x === worldTile.x && c.y === worldTile.y
