@@ -9,7 +9,8 @@ const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
 export class MultiplayerSystem {
-  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+  constructor({ serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+    this.serverUrl    = serverUrl;
     this.player       = player;
     this.worldId      = worldId;
     this.playerToken  = playerToken;
