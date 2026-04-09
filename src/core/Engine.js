@@ -255,7 +255,6 @@ export class Engine {
     this._spawnY = spawnY;
 
     // Use confirmed character data if available, else fall back to test class
-    const char     = this._characterData;
     const classId  = char?.classId ?? this._playerClassId;
     const classDef = this._classes[classId];
 
