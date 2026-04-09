@@ -91,6 +91,14 @@ export class MultiplayerSystem {
     this._send({ type: "npc_attack", npcId, damage, abilityId });
   }
 
+  sendTaunt(radius = 6) {
+    this._send({ type: "taunt", radius });
+  }
+
+  sendHealThreat(targetToken, amount) {
+    this._send({ type: "heal_threat", targetToken, amount });
+  }
+
   /**
    * Register an NPC with the server so it can track HP.
    * Call when spawning NPCs.
