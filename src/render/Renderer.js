@@ -2,6 +2,7 @@ import { Camera }     from "./Camera.js";
 import { getTileDef } from "../world/getTileDef.js";
 import { TileFactory } from "./TileFactory.js";
 import { ChunkLayer } from "./ChunkLayer.js";
+import { drawSprite, SPRITE_COLORS } from "./CharacterSprites.js";
 // ── Color constants ───────────────────────────────────────────────────────────
 const WHITE = "#eeeeee";
 const DIM   = "#888899";
@@ -52,6 +53,7 @@ export class Renderer {
     this.itemDefs        = {};
     this.player          = null;
     this.combatLog       = null;
+    this.animSystem      = null;  // set by Engine
     // Set by Engine when in a town
     this.currentWorld    = null;
     this._lastWorld      = null;
@@ -68,57 +70,60 @@ export class Renderer {
     const { ctx, tileSize, camera } = this;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
 
-    if (entity.type === "corpse") { this._drawCorpse(entity, sx, sy); return; }
+    if (entity.type === "corpse")       { this._drawCorpse(entity, sx, sy); return; }
     if (entity.type === "friendly_npc") { this._drawFriendlyNPC(entity, sx, sy); return; }
-    if (entity.type === "remote_player") { this._drawRemotePlayer(entity, sx, sy); return; }
+    if (entity.type === "remote_player"){ this._drawRemotePlayer(entity, sx, sy); return; }
 
     const cx = sx + tileSize / 2;
     const cy = sy + tileSize / 2;
 
+    // Get animation state
+    const anim  = this.animSystem?.getEntityRenderState(entity.id, tileSize)
+                  ?? { offsetX: 0, offsetY: 0, scaleY: 1, alpha: 1, flash: null };
+
     if (entity.type === "npc") {
-      const icon = entity.icon ?? "👾";
-
-      // Dark backing so icon reads against any tile
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.fillRect(sx + 2, sy + 2, tileSize - 4, tileSize - 4);
-
-      if (entity.state === "alert") {
-        ctx.strokeStyle = entity === this.currentTarget ? "rgba(255,200,0,0.9)" : "rgba(255,60,60,0.8)";
-        ctx.lineWidth = 2;
+      // Target indicator
+      if (entity === this.currentTarget) {
+        ctx.strokeStyle = "rgba(255,200,0,0.9)";
+        ctx.lineWidth   = 2;
         ctx.beginPath();
-        ctx.arc(cx, cy, tileSize / 2, 0, Math.PI * 2);
+        ctx.arc(cx, cy + tileSize * 0.4, tileSize * 0.35, 0, Math.PI * 2);
         ctx.stroke();
         ctx.lineWidth = 1;
       }
-      if (entity === this.currentTarget) {
-        ctx.strokeStyle = "rgba(255,200,0,0.9)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
+      // Alert ring
+      if (entity.state === "alert") {
+        ctx.strokeStyle = entity === this.currentTarget
+          ? "rgba(255,200,0,0.6)" : "rgba(255,60,60,0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx + anim.offsetX, cy + anim.offsetY, tileSize * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.lineWidth = 1;
       }
-
-      ctx.globalAlpha = 1;
-      ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(icon, cx, cy + 1);
-      ctx.textBaseline = "alphabetic";
-      ctx.textAlign = "left";
+      // Sprite
+      drawSprite(ctx, entity.classId, cx + anim.offsetX, cy + anim.offsetY,
+                 tileSize, SPRITE_COLORS[entity.classId], anim.alpha, anim);
+      // Flash overlay
+      if (anim.flash) {
+        ctx.fillStyle = anim.flash;
+        ctx.fillRect(sx, sy, tileSize, tileSize);
+      }
 
     } else if (entity.type === "player") {
-      const icon = entity.icon ?? "🧙";
-
-      // Gold backing for player
-      ctx.fillStyle = "rgba(180,140,0,0.35)";
-      ctx.fillRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
-
-      ctx.globalAlpha = 1;
-      ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(icon, cx, cy + 1);
-      ctx.textBaseline = "alphabetic";
-      ctx.textAlign = "left";
+      // Player glow
+      ctx.fillStyle = "rgba(255,220,80,0.12)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, tileSize * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      // Sprite
+      drawSprite(ctx, entity.classId, cx + anim.offsetX, cy + anim.offsetY,
+                 tileSize, SPRITE_COLORS[entity.classId], anim.alpha, anim);
+      // Flash overlay
+      if (anim.flash) {
+        ctx.fillStyle = anim.flash;
+        ctx.fillRect(sx, sy, tileSize, tileSize);
+      }
     }
   }
   // ── Friendly NPC ─────────────────────────────────────────────────────────
@@ -127,18 +132,14 @@ export class Renderer {
     const cx = sx + tileSize / 2;
     const cy = sy + tileSize / 2;
 
-    // Blue tint backing to distinguish from local player
-    ctx.fillStyle = "rgba(40,80,180,0.35)";
-    ctx.fillRect(sx + 1, sy + 1, tileSize - 2, tileSize - 2);
+    // Blue glow to distinguish from local player
+    ctx.fillStyle = "rgba(40,80,220,0.20)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, tileSize * 0.55, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Icon
-    ctx.globalAlpha = 1;
-    ctx.font = `${Math.round(tileSize * 0.9)}px serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(entity.icon ?? "🧙", cx, cy + 1);
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
+    // Sprite
+    drawSprite(ctx, entity.classId, cx, cy, tileSize, SPRITE_COLORS[entity.classId]);
 
     // Name tag above
     ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -266,6 +267,12 @@ export class Renderer {
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
+    // ── Projectiles ──
+    if (this.animSystem) {
+      this._drawProjectiles();
+      this._drawParticles(entities);
+    }
+
     // ── HUD ──
     this._drawTargetFrame();
     this._drawPlayerFrame();
@@ -326,6 +333,92 @@ export class Renderer {
       ctx.textAlign = "left";
     }
   }
+  // ── Projectiles ──────────────────────────────────────────────────────────
+  _drawProjectiles() {
+    const { ctx, camera, tileSize } = this;
+    for (const p of this.animSystem.projectiles) {
+      const { sx: x1, sy: y1 } = camera.worldToScreen(p.x, p.y);
+      const progress = p.elapsed / p.duration;
+
+      ctx.save();
+      ctx.translate(x1 + tileSize/2, y1 + tileSize/2);
+      ctx.rotate(p.angle);
+
+      if (p.type === "arrow") {
+        // Arrow shaft
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-tileSize * 0.5, -1.5, tileSize * 0.5, 3);
+        // Arrowhead
+        ctx.fillStyle = "#aaaaaa";
+        ctx.beginPath();
+        ctx.moveTo(2,  0);
+        ctx.lineTo(-6, -4);
+        ctx.lineTo(-6,  4);
+        ctx.fill();
+        // Fletching
+        ctx.fillStyle = "#e74c3c";
+        ctx.fillRect(-tileSize*0.5, -3, 6, 2);
+        ctx.fillRect(-tileSize*0.5,  1, 6, 2);
+      } else if (p.type === "holy") {
+        // Holy bolt — glowing cross
+        ctx.fillStyle = "#ffffcc";
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(-8, -2, 16, 4);
+        ctx.fillRect(-2, -8, 4, 16);
+        ctx.fillStyle = "rgba(255,255,180,0.4)";
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI*2);
+        ctx.fill();
+      } else {
+        // Generic spell bolt
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.beginPath();
+        ctx.arc(-2, -2, 2, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  _drawParticles(entities) {
+    const { ctx, camera, tileSize } = this;
+    for (const p of this.animSystem.particles) {
+      // AOE marker
+      if (p.type === "aoe") {
+        const { sx, sy } = camera.worldToScreen(p.x, p.y);
+        ctx.globalAlpha = p.alpha * 0.6;
+        ctx.fillStyle   = p.color;
+        ctx.beginPath();
+        ctx.arc(sx + tileSize/2, sy + tileSize/2, p.radius * tileSize, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        continue;
+      }
+
+      // Entity-attached particles
+      if (p.entityId) {
+        const entity = entities.find(e => e.id === p.entityId);
+        if (!entity) continue;
+        const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
+        const ex = sx + tileSize/2 + p.offsetX + p.vx * p.elapsed;
+        const ey = sy + tileSize/2 + p.offsetY + p.vy * p.elapsed;
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle   = p.color;
+        ctx.beginPath();
+        ctx.arc(ex, ey, p.size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
   // ── Target Frame ─────────────────────────────────────────────────────────
   _drawTargetFrame() {
     const target = this.currentTarget;
