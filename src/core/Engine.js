@@ -26,7 +26,7 @@ export class Engine {
   constructor({ worldProvider, renderer }) {
     this.worldProvider = worldProvider;
     this.renderer      = renderer;
-    this._hasServerNPCSnapshot = false;
+
     this.world    = null;
     this.player   = null;
     this.npcs     = [];
@@ -71,6 +71,7 @@ export class Engine {
     // Save system
     this.saveSlot     = null;
     this.saveProvider = null;
+    this.serverUrl    = null;  // set by main.js before loadWorld
 
     this.onQuitToTitle = null;
 
@@ -913,12 +914,20 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _initMultiplayer() {
-    // Leave any existing session first
     this.multiplayerSystem?.leave();
 
-    const token = localStorage.getItem("roe2_player_token") ?? this.player.id;
+    const token     = localStorage.getItem("roe2_player_token") ?? this.player.id;
+    const serverUrl = this.serverUrl ?? null;
+
+    console.log(`[Engine] _initMultiplayer — serverUrl: ${serverUrl}`);
+
+    if (!serverUrl) {
+      console.log("[Engine] No server URL — multiplayer disabled");
+      return;
+    }
 
     this.multiplayerSystem = new MultiplayerSystem({
+      serverUrl,
       player:      this.player,
       worldId:     this._currentWorldId,
       playerToken: token,
@@ -944,93 +953,73 @@ export class Engine {
       },
 
       onNPCState: (serverNPCs) => {
+        // Sync NPCs from server — add new, update existing, remove dead
+        const serverIds = new Set(serverNPCs.map(n => n.id));
 
-  // ─── FIRST SNAPSHOT: reset client NPCs ───
-  if (!this._hasServerNPCSnapshot) {
-    this._hasServerNPCSnapshot = true;
+        // Remove NPCs no longer on server
+        this.npcs     = this.npcs.filter(n => serverIds.has(n.id));
+        this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
 
-    this.npcs = [];
-    this.entities = this.entities.filter(e => e.type !== "npc");
+        for (const sNPC of serverNPCs) {
+          const existing = this.npcs.find(n => n.id === sNPC.id);
+          if (existing) {
+            // Update position and state
+            existing.x     = sNPC.x;
+            existing.y     = sNPC.y;
+            existing.hp    = sNPC.hp;
+            existing.maxHp = sNPC.maxHp;
+            existing.state = sNPC.state;
+          } else {
+            // New NPC from server — create local entity for rendering
+            const classDef = this._classes[sNPC.classId] ?? {};
+            const npc = new NPC({
+              id:         sNPC.id,
+              classId:    sNPC.classId,
+              classDef:   { ...classDef, icon: sNPC.icon },
+              x:          sNPC.x,
+              y:          sNPC.y,
+              roamCenter: { x: sNPC.x, y: sNPC.y },
+              roamRadius: 0
+            });
+            npc.hp      = sNPC.hp;
+            npc.maxHp   = sNPC.maxHp;
+            npc.state   = sNPC.state;
+            npc.isBoss  = sNPC.isBoss;
+            if (sNPC.name) npc.name = sNPC.name;
+            this.npcs.push(npc);
+            this.entities.push(npc);
+            // Wire into combat system only — AI/movement run on server
+            this.combatSystem?.npcs.push(npc);
+          }
+        }
+      },
 
-    console.log("[MP] Received initial NPC snapshot:", serverNPCs.length);
-  }
-
-  const serverIds = new Set(serverNPCs.map(n => n.id));
-
-  // Remove NPCs missing from server
-  this.npcs = this.npcs.filter(n => serverIds.has(n.id));
-  this.entities = this.entities.filter(
-    e => e.type !== "npc" || serverIds.has(e.id)
-  );
-
-  // Upsert NPCs from server
-  for (const sNPC of serverNPCs) {
-
-    let npc = this.npcs.find(n => n.id === sNPC.id);
-
-    if (!npc) {
-      const classDef = this._classes[sNPC.classId] ?? {};
-
-      npc = new NPC({
-        id:         sNPC.id,
-        classId:    sNPC.classId,
-        classDef:   { ...classDef, icon: sNPC.icon },
-        x:          sNPC.x,
-        y:          sNPC.y,
-        roamCenter: { x: sNPC.x, y: sNPC.y },
-        roamRadius: 0
-      });
-
-      npc.type = "npc";          // ✅ REQUIRED FOR RENDER / FILTERING
-      npc.isBoss = sNPC.isBoss;
-      npc.name   = sNPC.name ?? classDef.name;
-
-      this.npcs.push(npc);
-      this.entities.push(npc);
-
-      // Combat only — AI & movement stay server‑side
-      this.combatSystem?.npcs.push(npc);
-
-    } else {
-      // Update existing NPC
-      npc.x     = sNPC.x;
-      npc.y     = sNPC.y;
-      npc.hp    = sNPC.hp;
-      npc.maxHp = sNPC.maxHp;
-      npc.state = sNPC.state;
-    }
-  }
-},
-
-  onNPCAttackPlayer: ({ npcId, damage }) => {
-    if (this._playerDead) return;
-
-    const player = this.player;
-    player.hp = Math.max(0, player.hp - damage);
-
-    const npc = this.npcs.find(n => n.id === npcId);
-    this.combatLog?.push({
-      text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
-      type: "damage"
-    });
-
-    if (player.hp <= 0) {
-      this._onPlayerDeath();
-    }
-
-    this.multiplayerSystem?.broadcastState();
-  },
-
-onNPCDamage: ({ npcId, hp, attackerName, damage }) => {
-  const npc = this.npcs.find(n => n.id === npcId);
-  if (!npc) return;
-
-  npc.hp = hp;
-  this.combatLog?.push({
-    text: `${attackerName} hit ${npc.id} for ${damage}!`,
-    type: "damage"
-  });
-},
+      onNPCAttackPlayer: ({ npcId, damage }) => {
+        // Server says this NPC attacked us — apply damage locally
+        if (this._playerDead) return;
+        const player = this.player;
+        player.hp = Math.max(0, player.hp - damage);
+        const npc = this.npcs.find(n => n.id === npcId);
+        this.combatLog?.push({
+          text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
+          type: "damage"
+        });
+        if (player.hp <= 0) {
+          this._onPlayerDeath();
+        }
+        // Broadcast updated HP
+        this.multiplayerSystem?.broadcastState();
+      },
+        // Sync NPC HP from server
+        const npc = this.npcs.find(n => n.id === npcId);
+        if (npc) {
+          npc.hp = hp;
+          this.combatLog?.push({
+            text: `${attackerName} hit ${npc.id} for ${damage}!`,
+            type: "damage"
+          });
+        }
+      },
 
       onNPCKilled: ({ npcId, killerName, xpShare, loot }) => {
         // Server confirmed NPC dead — kill it locally
