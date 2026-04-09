@@ -11,6 +11,7 @@ import { XPSystem }            from "../systems/XPSystem.js";
 import { SpawnSystem }         from "../systems/SpawnSystem.js";
 import { TownSystem }          from "../systems/TownSystem.js";
 import { MultiplayerSystem }   from "../systems/MultiplayerSystem.js";
+import { AnimationSystem }     from "../systems/AnimationSystem.js";
 import { TownWorldProvider }   from "../adapters/TownWorldProvider.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
@@ -56,6 +57,7 @@ export class Engine {
     this.spawnSystem      = null;
     this.townSystem       = null;
     this.multiplayerSystem = null;
+    this.animSystem        = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
     this._levelUpWindow   = null;
@@ -598,8 +600,9 @@ export class Engine {
 
     renderer.camera.centerOn(player.x, player.y, world);
 
-    // Prime the chunk layer with the world so first render has tiles
-    renderer.chunkLayer?.setWorld(world);
+    // Animation system
+    this.animSystem          = new AnimationSystem();
+    renderer.animSystem      = this.animSystem;
 
     // Sync ability bar now that renderer and skills are ready
     if (this._pendingSyncAbilityBar) {
@@ -781,15 +784,61 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _onCombatEvent(event) {
-    // Forward hit events to multiplayer server for co-op resolution
+    // Forward hit events to multiplayer server
     if (event.type === "hit" && event.target?.type === "npc") {
       this.multiplayerSystem?.sendAttack({
         npcId:    event.target.id,
         damage:   event.damage,
         abilityId: event.abilityId
       });
-      // Also broadcast our updated HP
       this.multiplayerSystem?.broadcastState();
+    }
+
+    // Trigger animations
+    if (event.type === "hit") {
+      // Attacker lunges toward target
+      if (event.attacker && event.target) {
+        const dx = event.target.x - event.attacker.x;
+        const dy = event.target.y - event.attacker.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        this.animSystem?.playAttack(event.attacker.id, dx/len, dy/len);
+      }
+      // Target flashes
+      this.animSystem?.playHit(event.target?.id);
+
+      // Spawn projectile for ranged attacks
+      if (event.attacker && event.target && event.abilityId) {
+        const ability = this._abilities[event.abilityId];
+        if (ability?.type === "ranged") {
+          const { sx: x1, sy: y1 } = this.renderer.camera.worldToScreen(event.attacker.x, event.attacker.y);
+          const { sx: x2, sy: y2 } = this.renderer.camera.worldToScreen(event.target.x, event.target.y);
+          const ts = this.renderer.tileSize;
+          if (event.attacker.classId === "ranger") {
+            this.animSystem?.spawnArrow(
+              event.attacker.x, event.attacker.y,
+              event.target.x, event.target.y
+            );
+          } else if (event.attacker.classId === "paladin") {
+            this.animSystem?.spawnHolyBolt(
+              event.attacker.x, event.attacker.y,
+              event.target.x, event.target.y
+            );
+          } else {
+            this.animSystem?.spawnSpellBolt(
+              event.attacker.x, event.attacker.y,
+              event.target.x, event.target.y
+            );
+          }
+        }
+      }
+    }
+
+    if (event.type === "heal") {
+      this.animSystem?.playHeal(event.target?.id ?? "player");
+    }
+
+    if (event.type === "npc_death") {
+      this.animSystem?.playDying(event.entity?.id);
     }
     const log = this.combatLog;
 
@@ -1089,6 +1138,7 @@ export class Engine {
         log?.push({ text: `+${event.amount} XP`, type: "system" });
         break;
       case "level_up":
+        this.animSystem?.playLevelUp("player");
         log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
         if (event.isSpecial) {
           // Small delay so combat log shows first
@@ -1303,6 +1353,7 @@ export class Engine {
       this.lootSystem?.update();
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
+      this.animSystem?.update();              // animations + projectiles
       this.multiplayerSystem?.update();
       this._tickPlayerResource();
 
