@@ -1010,6 +1010,8 @@ export class Engine {
         // Broadcast updated HP
         this.multiplayerSystem?.broadcastState();
       },
+
+      onNPCDamaged: ({ npcId, hp, damage, attackerName }) => {
         // Sync NPC HP from server
         const npc = this.npcs.find(n => n.id === npcId);
         if (npc) {
