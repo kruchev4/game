@@ -284,9 +284,10 @@ export class CombatSystem {
   _resolveAction(attacker, target, ability) {
     if (target.dead) return false;
 
-    // In multiplayer, server validates range — skip local range check
-    // to avoid false "out of range" from position sync lag
-    if (!this.multiplayerMode && !inRange(this.world, attacker, target, ability)) {
+    // In multiplayer, skip range check only for NPC attacks (server is authoritative)
+    // Player abilities still check range locally for responsiveness
+    const skipRange = this.multiplayerMode && attacker.id !== "player";
+    if (!skipRange && !inRange(this.world, attacker, target, ability)) {
       this.onEvent({ type: "out_of_range", attacker, target, ability });
       return false;
     }
