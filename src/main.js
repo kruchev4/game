@@ -18,36 +18,9 @@ import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
 import { MultiplayerSystem }         from "./systems/MultiplayerSystem.js";
-import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
+import { fetchAvailableServers }     from "./adapters/ServerDirectory.js";
 
 const WORLD_ID = "overworld_C";
-const supabase  = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ── Server list ───────────────────────────────────────────────────────────
-
-/**
- * Fetch available game servers from Supabase.
- * Returns [] if table doesn't exist yet or fetch fails.
- */
-async function fetchServers() {
-  try {
-    const { data, error } = await supabase
-      .from("roe2_servers")
-      .select("*")
-      .eq("online", true)
-      .order("player_count", { ascending: true }); // prefer least populated
-
-    if (error) {
-      console.warn("[main] Could not fetch servers:", error.message);
-      return [];
-    }
-    return data ?? [];
-  } catch (e) {
-    console.warn("[main] Server fetch exception:", e.message);
-    return [];
-  }
-}
 
 // ── Entry point ───────────────────────────────────────────────────────────
 
@@ -77,6 +50,7 @@ async function start() {
 
       engine.saveSlot      = saveSlot;
       engine.saveProvider  = saveProvider;
+      engine.serverUrl     = serverUrl;  // pass URL to engine before loadWorld
       engine.onQuitToTitle = () => showScreens();
 
       await engine.loadWorld(WORLD_ID, character);
@@ -96,18 +70,23 @@ async function start() {
 
       const [slots, servers] = await Promise.all([
         saveProvider.loadAll(),
-        fetchServers()
+        fetchAvailableServers()
       ]);
+
+      // Auto-select first available server — server selection UI can come later
+      const serverUrl = servers?.[0]?.ws_url ?? null;
+      if (serverUrl) console.log(`[main] Using server: ${serverUrl}`);
+      else           console.warn("[main] No servers found — playing offline");
 
       const mgr = new ScreenManager({
         slots,
-        servers,       // passed to ScreenManager for server selection UI
+        servers,
         saveProvider,
         classes,
         abilities
       });
 
-      mgr.onPlay = async (slotIndex, saveData, serverUrl) => {
+      mgr.onPlay = async (slotIndex, saveData) => {
         await launchGame({
           name:    saveData.name,
           raceId:  saveData.raceId,
@@ -116,7 +95,7 @@ async function start() {
         }, slotIndex + 1, serverUrl);
       };
 
-      mgr.onCreate = async (slotIndex, character, serverUrl) => {
+      mgr.onCreate = async (slotIndex, character) => {
         await saveProvider.save(slotIndex + 1, {
           ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
