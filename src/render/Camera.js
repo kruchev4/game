@@ -48,8 +48,11 @@ export class Camera {
     // Sync renderer tileSize if provided
     if (renderer) {
       renderer.tileSize = newSize;
+      // Rebuild TileFactory cache at new size
+      renderer.tileFactory = new (renderer.tileFactory.constructor)({ tileSize: newSize });
+      renderer.chunkLayer.tileFactory = renderer.tileFactory;
       // Invalidate chunk cache so tiles redraw at new size
-      if (renderer.chunkLayer && renderer._lastWorld) {
+      if (renderer._lastWorld) {
         renderer.chunkLayer.setWorld(renderer._lastWorld);
       }
     }
