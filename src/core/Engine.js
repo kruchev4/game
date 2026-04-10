@@ -777,18 +777,78 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _useAbilitySlot(slotIndex) {
-    const classDef  = this._classes[this._playerClassId];
+    const classDef = this._classes[this._playerClassId];
     if (!classDef) return;
 
-    const abilityId = classDef.abilities[slotIndex];
+    const abilityId = classDef.abilities?.[slotIndex];
     if (!abilityId) return;
 
+    const ability = this._abilities[abilityId];
+    if (!ability) return;
+
     const target = this._currentTarget;
-    if (!target || target.dead) {
-      console.log("[Combat] No valid target");
+
+    // Self-targeted abilities (buffs, heals) don't need a target
+    if (ability.type === "self") {
+      this._resolveSpecialAbility({ ability, attacker: this.player, target: this.player });
+      if (ability.selfEffect) {
+        this.effectSystem?.apply(this.player, ability.selfEffect.effect, "player", {
+          duration:  ability.selfEffect.duration,
+          magnitude: ability.selfEffect.magnitude
+        });
+      }
+      this.combatSystem?._startCooldown?.("player", abilityId);
       return;
     }
 
+    if (!target || target.dead) {
+      this.combatLog?.push({ text: "No target.", type: "system" });
+      return;
+    }
+
+    // In multiplayer — send to server, server resolves damage and broadcasts result
+    if (this.multiplayerSystem?._connected) {
+      // Calculate local damage roll for the server to validate
+      const base     = ability.damage?.base ?? 0;
+      const variance = ability.damage?.variance ?? 0;
+      const damage   = base + Math.floor(Math.random() * (variance + 1));
+
+      // Apply outgoing damage multiplier from effects
+      const mult         = this.effectSystem?.getDamageMultiplier("player") ?? 1;
+      const finalDamage  = Math.round(damage * mult);
+
+      this.multiplayerSystem.sendAttack({ npcId: target.id, damage: finalDamage, abilityId });
+
+      // Apply onHit effects locally (visual/client side)
+      if (ability.onHit) {
+        this.effectSystem?.apply(target, ability.onHit.effect, "player", {
+          duration:  ability.onHit.duration,
+          magnitude: ability.onHit.magnitude
+        });
+      }
+
+      // Animations
+      this.animSystem?.playAttack("player", target.x - this.player.x, target.y - this.player.y);
+      this.animSystem?.playHit(target.id);
+      if (ability.type === "ranged") {
+        if (this.player.classId === "ranger") {
+          this.animSystem?.spawnArrow(this.player.x, this.player.y, target.x, target.y);
+        } else if (this.player.classId === "paladin") {
+          this.animSystem?.spawnHolyBolt(this.player.x, this.player.y, target.x, target.y);
+        }
+      }
+
+      // Special ability handling
+      if (ability.special) {
+        this._resolveSpecialAbility({ ability, attacker: this.player, target });
+      }
+
+      // Start local cooldown so bar reflects state
+      this.combatSystem?.startCooldown("player", abilityId);
+      return;
+    }
+
+    // Single player — queue through local combat system
     this.combatSystem.queuePlayerAction(abilityId, target.id);
   }
 
@@ -1464,13 +1524,17 @@ export class Engine {
       }
     }
 
-    this.combatLog?.update();                   // 6. always age log messages
+    this.combatLog?.update();
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
     }
 
-    this.renderer.render(this.world, this.entities);
+    // Don't render game world when death screen is active — it draws on same canvas
+    if (!this._deathScreen?.active) {
+      this.renderer.render(this.world, this.entities);
+    }
+
     requestAnimationFrame(() => this.loop());
   }
 }
