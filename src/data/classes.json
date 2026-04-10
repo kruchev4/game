@@ -16,7 +16,16 @@
     },
     "actionSpeed": 60,
     "abilities": [
-      "slash"
+      "slash",
+      "shield_bash",
+      "whirlwind",
+      "battle_cry",
+      "charge",
+      "execute",
+      "taunt",
+      "second_wind",
+      "rend",
+      "fortify"
     ],
     "preferredRange": 1,
     "color": "#e8c84a",
@@ -49,8 +58,15 @@
     "actionSpeed": 70,
     "abilities": [
       "shoot",
-      "frostArrow",
-      "multishot"
+      "frost_arrow",
+      "multishot",
+      "poison_shot",
+      "volley",
+      "snipe",
+      "fire_arrow",
+      "scatter_shot",
+      "eagles_eye",
+      "shadow_step"
     ],
     "preferredRange": 6,
     "color": "#6abf5e",
