@@ -54,6 +54,7 @@ export class Renderer {
     this.player          = null;
     this.combatLog       = null;
     this.animSystem      = null;  // set by Engine
+    this.effectSystem    = null;  // set by Engine
     // Set by Engine when in a town
     this.currentWorld    = null;
     this._lastWorld      = null;
@@ -267,6 +268,11 @@ export class Renderer {
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
+    // ── Effect indicators ──
+    if (this.effectSystem) {
+      this._drawEffectIndicators(entities);
+    }
+
     // ── Projectiles ──
     if (this.animSystem) {
       this._drawProjectiles();
@@ -416,6 +422,58 @@ export class Renderer {
         ctx.fill();
         ctx.globalAlpha = 1;
       }
+    }
+  }
+
+  // ── Effect indicators ─────────────────────────────────────────────────
+  _drawEffectIndicators(entities) {
+    const { ctx, camera, tileSize } = this;
+
+    for (const entity of entities) {
+      if (entity.dead) continue;
+      const effects = this.effectSystem.getEffects(entity.id);
+      if (!effects.length) continue;
+
+      const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
+      const cx = sx + tileSize / 2;
+
+      // Draw effect icons in a row above the entity
+      const iconSize = Math.max(8, tileSize * 0.3);
+      const totalW   = effects.length * (iconSize + 2);
+      let iconX      = cx - totalW / 2;
+      const iconY    = sy - iconSize - 4;
+
+      ctx.font         = `${iconSize}px serif`;
+      ctx.textAlign    = "center";
+      ctx.textBaseline = "middle";
+
+      for (const effect of effects) {
+        // Background pip
+        const barColor = effect.category === "buff" ? "#224422"
+          : effect.category === "hot"  ? "#224422"
+          : effect.category === "dot"  ? "#442222"
+          : "#222244";
+
+        ctx.fillStyle = barColor;
+        ctx.fillRect(iconX, iconY - iconSize/2, iconSize, iconSize);
+
+        // Icon
+        ctx.globalAlpha = 0.9;
+        ctx.fillText(effect.icon ?? "?", iconX + iconSize/2, iconY);
+        ctx.globalAlpha = 1;
+
+        // Duration bar underneath
+        const pct = 1 - effect.elapsed / effect.duration;
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(iconX, iconY + iconSize/2, iconSize, 2);
+        ctx.fillStyle = effect.color ?? "#ffffff";
+        ctx.fillRect(iconX, iconY + iconSize/2, iconSize * pct, 2);
+
+        iconX += iconSize + 2;
+      }
+
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign    = "left";
     }
   }
 
