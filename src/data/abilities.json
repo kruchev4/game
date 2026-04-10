@@ -5,7 +5,7 @@
     "icon": "\u2694\ufe0f",
     "description": "A powerful melee strike.",
     "type": "melee",
-    "range": 1,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 10,
@@ -24,7 +24,7 @@
     "icon": "\ud83d\udee1\ufe0f",
     "description": "Bash the enemy with your shield, dealing damage and stunning them for 1.5s.",
     "type": "melee",
-    "range": 1,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 6,
@@ -49,7 +49,7 @@
     "icon": "\ud83c\udf00",
     "description": "Spin and strike all adjacent enemies.",
     "type": "melee",
-    "range": 1,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 7,
@@ -97,7 +97,7 @@
     "icon": "\ud83d\udca8",
     "description": "Rush up to 4 tiles and strike, dealing bonus damage.",
     "type": "melee",
-    "range": 4,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 14,
@@ -118,7 +118,7 @@
     "icon": "\ud83d\udc80",
     "description": "Devastating strike. Deals 200% damage to enemies below 25% HP.",
     "type": "melee",
-    "range": 1,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 12,
@@ -180,7 +180,7 @@
     "icon": "\ud83e\ude78",
     "description": "Tear into the enemy, causing them to bleed for 3 seconds.",
     "type": "melee",
-    "range": 1,
+    "range": 2,
     "requiresLoS": false,
     "damage": {
       "base": 6,
@@ -230,7 +230,7 @@
     "icon": "\ud83c\udff9",
     "description": "A steady aimed shot.",
     "type": "ranged",
-    "range": 8,
+    "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 8,
@@ -249,7 +249,7 @@
     "icon": "\u2744\ufe0f",
     "description": "An enchanted arrow that slows the target by 50% for 1.5 seconds.",
     "type": "ranged",
-    "range": 7,
+    "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 6,
@@ -275,7 +275,7 @@
     "icon": "\ud83c\udfaf",
     "description": "Fires arrows at all enemies in a cone. Each arrow deals full damage.",
     "type": "ranged",
-    "range": 6,
+    "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 5,
@@ -300,7 +300,7 @@
     "icon": "\u2620\ufe0f",
     "description": "A venomous arrow that poisons the target, dealing 3 damage every 0.67s for 4 seconds.",
     "type": "ranged",
-    "range": 7,
+    "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 5,
@@ -326,7 +326,7 @@
     "icon": "\ud83c\udf27\ufe0f",
     "description": "Rain arrows on a target area, hitting all enemies in a 2-tile radius.",
     "type": "ranged",
-    "range": 8,
+    "range": 6,
     "requiresLoS": false,
     "damage": {
       "base": 4,
@@ -371,7 +371,7 @@
     "icon": "\ud83d\udd25",
     "description": "A flaming arrow that burns the target for 3 seconds.",
     "type": "ranged",
-    "range": 7,
+    "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 6,
@@ -397,7 +397,7 @@
     "icon": "\ud83d\udca5",
     "description": "Fire a close-range burst that hits all enemies adjacent to you.",
     "type": "ranged",
-    "range": 2,
+    "range": 5,
     "requiresLoS": false,
     "damage": {
       "base": 8,
@@ -447,7 +447,7 @@
     "icon": "\ud83c\udf11",
     "description": "Vanish and reappear behind your target. Next attack crits.",
     "type": "ranged",
-    "range": 6,
+    "range": 5,
     "requiresLoS": false,
     "damage": {
       "base": 0,
