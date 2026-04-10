@@ -12,6 +12,7 @@ import { SpawnSystem }         from "../systems/SpawnSystem.js";
 import { TownSystem }          from "../systems/TownSystem.js";
 import { MultiplayerSystem }   from "../systems/MultiplayerSystem.js";
 import { AnimationSystem }     from "../systems/AnimationSystem.js";
+import { EffectSystem }        from "../systems/EffectSystem.js";
 import { TownWorldProvider }   from "../adapters/TownWorldProvider.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { DeathScreen }         from "../ui/DeathScreen.js";
@@ -58,6 +59,7 @@ export class Engine {
     this.townSystem       = null;
     this.multiplayerSystem = null;
     this.animSystem        = null;
+    this.effectSystem      = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
     this._levelUpWindow   = null;
@@ -603,6 +605,14 @@ export class Engine {
     this.animSystem          = new AnimationSystem();
     renderer.animSystem      = this.animSystem;
 
+    // Effect system
+    this.effectSystem = new EffectSystem({
+      player,
+      npcs,
+      onEvent: (e) => this._onEffectEvent(e)
+    });
+    renderer.effectSystem = this.effectSystem;
+
     // Sync ability bar now that renderer and skills are ready
     if (this._pendingSyncAbilityBar) {
       this._pendingSyncAbilityBar = false;
@@ -797,40 +807,47 @@ export class Engine {
       this.multiplayerSystem?.broadcastState();
     }
 
+    // Apply onHit effects from ability
+    if (event.type === "hit" && event.ability?.onHit) {
+      const fx = event.ability.onHit;
+      this.effectSystem?.apply(event.target, fx.effect, event.attacker.id, {
+        duration:  fx.duration,
+        magnitude: fx.magnitude
+      });
+    }
+
+    // Apply selfEffect from ability (buffs on the caster)
+    if ((event.type === "hit" || event.type === "self_effect") && event.ability?.selfEffect) {
+      const fx = event.ability.selfEffect;
+      this.effectSystem?.apply(this.player, fx.effect, "player", {
+        duration:  fx.duration,
+        magnitude: fx.magnitude
+      });
+    }
+
+    // Handle special abilities
+    if (event.type === "hit" && event.ability?.special) {
+      this._resolveSpecialAbility(event);
+    }
+
     // Trigger animations
     if (event.type === "hit") {
-      // Attacker lunges toward target
       if (event.attacker && event.target) {
         const dx = event.target.x - event.attacker.x;
         const dy = event.target.y - event.attacker.y;
         const len = Math.sqrt(dx*dx + dy*dy) || 1;
         this.animSystem?.playAttack(event.attacker.id, dx/len, dy/len);
       }
-      // Target flashes
       this.animSystem?.playHit(event.target?.id);
 
-      // Spawn projectile for ranged attacks
-      if (event.attacker && event.target && event.abilityId) {
-        const ability = this._abilities[event.abilityId];
-        if (ability?.type === "ranged") {
-          const { sx: x1, sy: y1 } = this.renderer.camera.worldToScreen(event.attacker.x, event.attacker.y);
-          const { sx: x2, sy: y2 } = this.renderer.camera.worldToScreen(event.target.x, event.target.y);
-          const ts = this.renderer.tileSize;
-          if (event.attacker.classId === "ranger") {
-            this.animSystem?.spawnArrow(
-              event.attacker.x, event.attacker.y,
-              event.target.x, event.target.y
-            );
-          } else if (event.attacker.classId === "paladin") {
-            this.animSystem?.spawnHolyBolt(
-              event.attacker.x, event.attacker.y,
-              event.target.x, event.target.y
-            );
+      // Projectiles for ranged abilities
+      if (event.ability?.type === "ranged" && event.attacker && event.target) {
+        if (event.attacker.classId === "ranger" || event.attacker.classId === "paladin") {
+          const isHoly = event.attacker.classId === "paladin";
+          if (isHoly) {
+            this.animSystem?.spawnHolyBolt(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
           } else {
-            this.animSystem?.spawnSpellBolt(
-              event.attacker.x, event.attacker.y,
-              event.target.x, event.target.y
-            );
+            this.animSystem?.spawnArrow(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
           }
         }
       }
@@ -838,10 +855,6 @@ export class Engine {
 
     if (event.type === "heal") {
       this.animSystem?.playHeal(event.target?.id ?? "player");
-    }
-
-    if (event.type === "npc_death") {
-      this.animSystem?.playDying(event.entity?.id);
     }
     const log = this.combatLog;
 
@@ -1134,6 +1147,88 @@ export class Engine {
     }
   }
 
+  _onEffectEvent(event) {
+    const log = this.combatLog;
+    switch (event.type) {
+      case "dot_tick": {
+        const name = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
+        log?.push({ text: `${name} takes ${event.damage} ${event.effect.name} damage`, type: "damage" });
+        // Animate hit flash
+        this.animSystem?.playHit(event.entity.id);
+        break;
+      }
+      case "hot_tick": {
+        log?.push({ text: `+${event.heal} HP (${event.effect.name})`, type: "heal" });
+        this.animSystem?.playHeal(event.entity.id);
+        break;
+      }
+      case "effect_applied": {
+        const name = event.entity.id === "player" ? "You" : this._npcLabel(event.entity);
+        log?.push({ text: `${name}: ${event.effect.name}`, type: "effect" });
+        break;
+      }
+      case "effect_expired":
+        // Silent expiry — no log spam
+        break;
+      case "kill":
+        // DoT kill — handle same as combat kill
+        this._onCombatEvent(event);
+        break;
+      case "player_death":
+        this._onPlayerDeath();
+        break;
+    }
+  }
+
+  _resolveSpecialAbility(event) {
+    const { ability, attacker, target } = event;
+    switch (ability.special) {
+      case "charge":
+        if (attacker.id === "player" && target) {
+          this.player.x = target.x + (target.x > this.player.x ? -1 : 1);
+          this.player.y = target.y;
+        }
+        break;
+
+      case "execute":
+        if (target && target.hp <= target.maxHp * 0.25) {
+          const bonus = event.damage;
+          target.hp   = Math.max(0, target.hp - bonus);
+          this.combatLog?.push({ text: `Execute! +${bonus} bonus damage`, type: "damage" });
+        }
+        break;
+
+      case "taunt":
+        this.multiplayerSystem?.sendTaunt(6);
+        for (const npc of this.npcs) {
+          if (npc.dead) continue;
+          const dx = npc.x - this.player.x;
+          const dy = npc.y - this.player.y;
+          if (Math.sqrt(dx*dx + dy*dy) <= 6) npc.state = "alert";
+        }
+        this.combatLog?.push({ text: "All nearby enemies focus on you!", type: "system" });
+        break;
+
+      case "second_wind": {
+        const heal = Math.floor(this.player.maxHp * 0.20);
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+        this.animSystem?.playHeal("player");
+        this.combatLog?.push({ text: `Second Wind: +${heal} HP`, type: "heal" });
+        break;
+      }
+
+      case "shadow_step":
+        if (attacker.id === "player" && target) {
+          const dx = this.player.x - target.x;
+          const dy = this.player.y - target.y;
+          const len = Math.sqrt(dx*dx + dy*dy) || 1;
+          this.player.x = Math.round(target.x + dx/len);
+          this.player.y = Math.round(target.y + dy/len);
+        }
+        break;
+    }
+  }
+
   _onXPEvent(event) {
     const log = this.combatLog;
     switch (event.type) {
@@ -1358,6 +1453,7 @@ export class Engine {
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
       this.animSystem?.update();
+      this.effectSystem?.update();
       this.multiplayerSystem?.update();
       this._tickPlayerResource();
 
