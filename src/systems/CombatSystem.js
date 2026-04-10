@@ -202,6 +202,11 @@ export class CombatSystem {
     return cd ? cd.remaining > 0 : false;
   }
 
+  // Public alias so Engine can start cooldowns directly in multiplayer
+  startCooldown(entityId, abilityId) {
+    this._startCooldown(entityId, abilityId);
+  }
+
   _startCooldown(entityId, abilityId) {
     const ability = this.abilities[abilityId];
     if (!ability?.cooldown) return;
