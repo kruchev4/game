@@ -3,7 +3,7 @@
     "id": "fighter",
     "name": "Fighter",
     "description": "A heavily armoured melee warrior. Excels in close quarters.",
-    "icon": "\ud83e\udddd",
+    "icon": "🧝",
     "role": "melee-dps",
     "baseStats": {
       "hp": 80,
@@ -44,7 +44,7 @@
     "id": "ranger",
     "name": "Ranger",
     "description": "A nimble archer who excels at range. Vulnerable up close.",
-    "icon": "\ud83c\udff9",
+    "icon": "🏹",
     "role": "ranged-dps",
     "baseStats": {
       "hp": 55,
@@ -83,7 +83,7 @@
     "id": "goblinMelee",
     "name": "Goblin Warrior",
     "description": "A scrappy melee goblin. Rushes the player on sight.",
-    "icon": "\ud83d\udc7a",
+    "icon": "👺",
     "role": "npc-melee",
     "baseStats": {
       "hp": 30,
@@ -109,7 +109,7 @@
     "id": "goblinArcher",
     "name": "Goblin Archer",
     "description": "Hangs back and slings rocks. Will try to maintain distance.",
-    "icon": "\ud83c\udff9",
+    "icon": "🏹",
     "role": "npc-ranged",
     "baseStats": {
       "hp": 22,
@@ -134,7 +134,7 @@
   "zombie": {
     "id": "zombie",
     "name": "Zombie",
-    "icon": "\ud83e\udddf",
+    "icon": "🧟",
     "description": "A shambling undead. Slow but relentless.",
     "role": "npc-melee",
     "baseStats": {
@@ -160,7 +160,7 @@
   "skeleton": {
     "id": "skeleton",
     "name": "Skeleton",
-    "icon": "\ud83d\udc80",
+    "icon": "💀",
     "description": "Reanimated bones. Fast and aggressive.",
     "role": "npc-melee",
     "baseStats": {
@@ -186,7 +186,7 @@
   "wraith": {
     "id": "wraith",
     "name": "Wraith",
-    "icon": "\ud83d\udc7b",
+    "icon": "👻",
     "description": "A spectral horror. Drains life on contact.",
     "role": "npc-ranged",
     "baseStats": {
@@ -212,7 +212,7 @@
   "necromancer": {
     "id": "necromancer",
     "name": "Necromancer",
-    "icon": "\ud83e\uddd9",
+    "icon": "🧙",
     "description": "A dark mage who commands the dead.",
     "role": "npc-ranged",
     "baseStats": {
@@ -238,7 +238,7 @@
   "lich": {
     "id": "lich",
     "name": "Lich",
-    "icon": "\ud83d\udc80",
+    "icon": "💀",
     "description": "An ancient undead sorcerer of immense power. Boss.",
     "role": "npc-boss",
     "baseStats": {
@@ -260,5 +260,44 @@
     "roamRadius": 3,
     "level": 8,
     "xpValue": 300
+  },
+  "paladin": {
+    "id": "paladin",
+    "name": "Paladin",
+    "description": "A holy warrior who can heal allies and smite enemies with divine power.",
+    "icon": "⚔️",
+    "role": "support-melee",
+    "baseStats": {
+      "hp": 70,
+      "str": 14,
+      "dex": 10,
+      "int": 10,
+      "con": 14,
+      "wis": 14,
+      "cha": 12
+    },
+    "actionSpeed": 65,
+    "abilities": [
+      "holy_strike",
+      "heal",
+      "consecrate",
+      "divine_shield",
+      "judgment",
+      "holy_light",
+      "hammer_of_justice",
+      "aura_of_protection",
+      "resurrection",
+      "divine_storm"
+    ],
+    "preferredRange": 1,
+    "color": "#f39c12",
+    "resource": {
+      "type": "mana",
+      "label": "Mana",
+      "color": "#88aaff",
+      "max": 100,
+      "startAt": 100,
+      "regenPerTick": 0.08
+    }
   }
 }
