@@ -87,6 +87,10 @@ export class MultiplayerSystem {
    * Tell server this player attacked an NPC.
    * Server resolves damage and broadcasts result to all clients.
    */
+  getRemotePlayers() {
+    return [...this._remotePlayers.values()];
+  }
+
   sendAttack({ npcId, damage, abilityId }) {
     this._send({ type: "npc_attack", npcId, damage, abilityId });
   }
