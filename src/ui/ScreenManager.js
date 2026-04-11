@@ -31,8 +31,9 @@ const STAT_NAMES  = ["STR","DEX","INT","CON","WIS","CHA"];
 const MAX_REROLLS = 3;
 
 export class ScreenManager {
-  constructor({ slots, saveProvider, classes, abilities }) {
+  constructor({ slots, servers, saveProvider, classes, abilities }) {
     this.slots        = slots;
+    this.servers      = servers ?? [];
     this.saveProvider = saveProvider;
     this.classes      = classes;
     this.abilities    = abilities;
@@ -62,6 +63,7 @@ export class ScreenManager {
   show() {
     this._build();
     this._startParticles();
+    console.log("[ScreenManager] servers at show():", this.servers?.length, this.servers);
     if (this.servers?.length > 0) {
       this._showServerSelect();
     } else {
