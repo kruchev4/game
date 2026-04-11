@@ -228,7 +228,7 @@ export class CombatSystem {
   _resolvePlayerAction() {
     if (!this._playerAction) return;
 
-    // In multiplayer the player may not be in combatants — auto-engage them
+    // Auto-engage player if not in combatants (multiplayer mode)
     if (!this.combatants.has(this.player.id)) {
       this._engage(this.player);
     }
@@ -240,14 +240,164 @@ export class CombatSystem {
     this._playerAction = null;
 
     const ability = this.abilities[abilityId];
-    const target  = this._findNPC(targetId);
-    if (!target || target.dead) return;
+    if (!ability) return;
 
-    const fired = this._resolveAction(this.player, target, ability);
+    let fired = false;
+
+    switch (ability.type) {
+      case "heal":
+        fired = this._resolveHeal(this.player, targetId, ability);
+        break;
+      case "rez":
+        fired = this._resolveRez(this.player, targetId, ability);
+        break;
+      case "aoe":
+        fired = this._resolveAOE(this.player, ability);
+        break;
+      case "buff":
+        fired = this._resolveBuff(this.player, ability);
+        break;
+      case "taunt":
+        fired = this._resolveTaunt(this.player, ability);
+        break;
+      default:
+        // melee / ranged — single target
+        const target = this._findNPC(targetId);
+        if (target && !target.dead) {
+          fired = this._resolveAction(this.player, target, ability);
+        }
+    }
+
     if (fired) {
       this._startCooldown(this.player.id, abilityId);
       this._actionTimers.set(this.player.id, this.player.actionSpeed ?? 60);
     }
+  }
+
+  // ── Heal ─────────────────────────────────────────────────────────────────
+  _resolveHeal(caster, targetId, ability) {
+    // Heal self if no valid target, or target is the player
+    const target = targetId === "player" || !targetId
+      ? this.player
+      : this._findNPC(targetId) ?? this.player;
+
+    const healDef = ability.heal ?? { base: 20, variance: 5 };
+    const amount  = healDef.base + Math.floor(Math.random() * (healDef.variance + 1));
+
+    target.hp = Math.min(target.maxHp, (target.hp ?? 0) + amount);
+
+    this.onEvent({ type: "heal", caster, target, ability, amount });
+    return true;
+  }
+
+  // ── Resurrection ─────────────────────────────────────────────────────────
+  _resolveRez(caster, targetId, ability) {
+    // In multiplayer, rez targets remote players — fire event for Engine to handle
+    this.onEvent({ type: "rez", caster, targetId, ability });
+    return true;
+  }
+
+  // ── AOE ───────────────────────────────────────────────────────────────────
+  _resolveAOE(caster, ability) {
+    const aoe        = ability.aoe ?? {};
+    const radius     = aoe.radius    ?? 3;
+    const maxTargets = aoe.maxTargets ?? 6;
+    const isSelf     = aoe.centeredOnSelf ?? true;
+    const cx         = isSelf ? caster.x : caster.x;
+    const cy         = isSelf ? caster.y : caster.y;
+
+    // For cone (multishot) — get targets in front of player relative to current target
+    let targets = [];
+    if (aoe.shape === "cone") {
+      targets = this._getConeTargets(caster, ability, maxTargets);
+    } else {
+      // Radius — all NPCs within range
+      targets = this.npcs
+        .filter(n => !n.dead)
+        .map(n => ({
+          npc:  n,
+          dist: Math.sqrt((n.x - cx)**2 + (n.y - cy)**2)
+        }))
+        .filter(({ dist }) => dist <= radius)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, maxTargets)
+        .map(({ npc }) => npc);
+    }
+
+    if (!targets.length) return false;
+
+    let hitCount = 0;
+    for (const target of targets) {
+      const damage = this._rollDamage(ability);
+      target.hp = Math.max(0, (target.hp ?? 0) - damage);
+      this.onEvent({ type: "hit", attacker: caster, target, ability, abilityId: ability.id, damage });
+
+      if (target.hp <= 0) {
+        target.dead = true;
+        this._disengage(target);
+        this.onEvent({ type: "kill", attacker: caster, target });
+      }
+      hitCount++;
+    }
+
+    // AOE heal component (divine storm)
+    if (ability.heal) {
+      this._resolveHeal(caster, "player", ability);
+    }
+
+    this.onEvent({ type: "aoe", caster, ability, hitCount });
+    return hitCount > 0;
+  }
+
+  // ── Cone (multishot) ──────────────────────────────────────────────────────
+  _getConeTargets(caster, ability, maxTargets) {
+    const range  = ability.range    ?? 6;
+    const spread = ability.aoe?.spread ?? 2; // tile spread at max range
+
+    // Get direction from caster to current target
+    // Use the last targeted NPC as cone direction
+    const primaryTarget = this.npcs.find(n =>
+      !n.dead && Math.sqrt((n.x - caster.x)**2 + (n.y - caster.y)**2) <= range
+    );
+    if (!primaryTarget) return [];
+
+    const dx  = primaryTarget.x - caster.x;
+    const dy  = primaryTarget.y - caster.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const ux  = dx / len;
+    const uy  = dy / len;
+
+    // Find all NPCs in cone — project each NPC onto the cone axis
+    return this.npcs
+      .filter(n => !n.dead)
+      .map(n => {
+        const ex    = n.x - caster.x;
+        const ey    = n.y - caster.y;
+        const dist  = Math.sqrt(ex*ex + ey*ey);
+        const proj  = ex*ux + ey*uy;           // distance along cone axis
+        const perp  = Math.abs(ex*uy - ey*ux); // perpendicular distance
+        const maxPerp = (proj / range) * spread; // spread widens with distance
+        return { npc: n, dist, proj, perp, maxPerp };
+      })
+      .filter(({ dist, proj, perp, maxPerp }) =>
+        proj > 0 && proj <= range && perp <= maxPerp + 0.5 && dist <= range
+      )
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, maxTargets)
+      .map(({ npc }) => npc);
+  }
+
+  // ── Buff ──────────────────────────────────────────────────────────────────
+  _resolveBuff(caster, ability) {
+    this.onEvent({ type: "buff", caster, ability });
+    return true;
+  }
+
+  // ── Taunt ─────────────────────────────────────────────────────────────────
+  _resolveTaunt(caster, ability) {
+    // In multiplayer, server handles actual threat — just fire event
+    this.onEvent({ type: "taunt", caster, ability });
+    return true;
   }
 
   _resolveNPCActions() {
