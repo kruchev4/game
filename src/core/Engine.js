@@ -916,6 +916,38 @@ export class Engine {
     if (event.type === "heal") {
       this.animSystem?.playHeal(event.target?.id ?? "player");
     }
+
+    if (event.type === "aoe") {
+      // AOE visual
+      this.animSystem?.spawnAOE({
+        x:      this.player.x,
+        y:      this.player.y,
+        radius: event.ability?.aoe?.radius ?? 3,
+        color:  event.ability?.id?.includes("holy") || event.ability?.id?.includes("consec")
+          ? "rgba(255,220,50,0.4)"
+          : "rgba(255,100,0,0.4)"
+      });
+      // Send all AOE hits to server in multiplayer
+      if (this.multiplayerSystem?._connected) {
+        this.multiplayerSystem.broadcastState();
+      }
+    }
+
+    if (event.type === "buff" && event.ability?.id === "divine_shield") {
+      this.player.invulnerable      = true;
+      this.player.invulnerableTimer = event.ability.effect?.duration ?? 120;
+      this.combatLog?.push({ text: "Divine Shield activated!", type: "system" });
+      this.animSystem?.playHeal("player");
+    }
+
+    if (event.type === "taunt") {
+      this.combatLog?.push({ text: "You taunt nearby enemies!", type: "system" });
+      this.multiplayerSystem?.sendTaunt(event.ability?.range ?? 6);
+    }
+
+    if (event.type === "rez") {
+      this.combatLog?.push({ text: "Resurrection — targeting fallen allies.", type: "system" });
+    }
     const log = this.combatLog;
 
     switch (event.type) {
@@ -998,6 +1030,17 @@ export class Engine {
       }
       case "combat_end":
         log?.push({ text: "All enemies defeated.", type: "system" });
+        break;
+      case "heal": {
+        const healTarget = event.target?.id === "player" ? "yourself" : (event.target?.name ?? "ally");
+        log?.push({ text: `${event.ability?.name} restores ${event.amount} HP to ${healTarget}!`, type: "heal" });
+        break;
+      }
+      case "aoe":
+        log?.push({ text: `${event.ability?.name} hits ${event.hitCount} target${event.hitCount !== 1 ? "s" : ""}!`, type: "damage_out" });
+        break;
+      case "buff":
+        log?.push({ text: `${event.ability?.name} activated!`, type: "system" });
         break;
       case "effect_applied":
         log?.push({
@@ -1149,6 +1192,7 @@ export class Engine {
       onNPCAttackPlayer: ({ npcId, damage }) => {
         // Server says this NPC attacked us — apply damage locally
         if (this._playerDead) return;
+        if (this.player.invulnerable) return; // Divine Shield active
         const player = this.player;
         player.hp = Math.max(0, player.hp - damage);
         const npc = this.npcs.find(n => n.id === npcId);
@@ -1516,6 +1560,15 @@ export class Engine {
       this.effectSystem?.update();
       this.multiplayerSystem?.update();
       this._tickPlayerResource();
+
+      // Divine Shield — tick invulnerability timer
+      if (this.player.invulnerable) {
+        this.player.invulnerableTimer = (this.player.invulnerableTimer ?? 0) - 1;
+        if (this.player.invulnerableTimer <= 0) {
+          this.player.invulnerable = false;
+          this.combatLog?.push({ text: "Divine Shield faded.", type: "system" });
+        }
+      }
 
       this._autoSaveTick++;
       if (this._autoSaveTick >= this._autoSaveInterval) {
