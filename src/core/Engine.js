@@ -887,13 +887,21 @@ export class Engine {
         });
       }
 
-      this.animSystem?.playAttack("player", target.x - this.player.x, target.y - this.player.y);
+      // Animations — only lunge for melee, projectile for ranged
+      if (ability.type === "melee") {
+        const dx  = target.x - this.player.x;
+        const dy  = target.y - this.player.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        this.animSystem?.playAttack("player", dx/len, dy/len);
+      }
       this.animSystem?.playHit(target.id);
       if (ability.type === "ranged") {
         if (this.player.classId === "ranger") {
           this.animSystem?.spawnArrow(this.player.x, this.player.y, target.x, target.y);
         } else if (this.player.classId === "paladin") {
           this.animSystem?.spawnHolyBolt(this.player.x, this.player.y, target.x, target.y);
+        } else {
+          this.animSystem?.spawnSpellBolt(this.player.x, this.player.y, target.x, target.y);
         }
       }
 
@@ -946,23 +954,27 @@ export class Engine {
 
     // Trigger animations
     if (event.type === "hit") {
-      if (event.attacker && event.target) {
-        const dx = event.target.x - event.attacker.x;
-        const dy = event.target.y - event.attacker.y;
+      const abilityType = event.ability?.type ?? "melee";
+
+      // Lunge animation — only for melee abilities at close range
+      if (abilityType === "melee" && event.attacker && event.target) {
+        const dx  = event.target.x - event.attacker.x;
+        const dy  = event.target.y - event.attacker.y;
         const len = Math.sqrt(dx*dx + dy*dy) || 1;
         this.animSystem?.playAttack(event.attacker.id, dx/len, dy/len);
       }
+
+      // Hit flash on target always
       this.animSystem?.playHit(event.target?.id);
 
-      // Projectiles for ranged abilities
-      if (event.ability?.type === "ranged" && event.attacker && event.target) {
-        if (event.attacker.classId === "ranger" || event.attacker.classId === "paladin") {
-          const isHoly = event.attacker.classId === "paladin";
-          if (isHoly) {
-            this.animSystem?.spawnHolyBolt(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
-          } else {
-            this.animSystem?.spawnArrow(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
-          }
+      // Projectiles for ranged only
+      if (abilityType === "ranged" && event.attacker && event.target) {
+        if (event.attacker.classId === "ranger") {
+          this.animSystem?.spawnArrow(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
+        } else if (event.attacker.classId === "paladin") {
+          this.animSystem?.spawnHolyBolt(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
+        } else {
+          this.animSystem?.spawnSpellBolt(event.attacker.x, event.attacker.y, event.target.x, event.target.y);
         }
       }
     }
