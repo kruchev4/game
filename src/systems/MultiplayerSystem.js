@@ -91,7 +91,12 @@ export class MultiplayerSystem {
     return [...this._remotePlayers.values()];
   }
 
+  sendAbility({ abilityId, targetId, targetType }) {
+    this._send({ type: "use_ability", abilityId, targetId, targetType });
+  }
+
   sendAttack({ npcId, damage, abilityId }) {
+    // Legacy — prefer sendAbility for new code
     this._send({ type: "npc_attack", npcId, damage, abilityId });
   }
 
@@ -172,7 +177,9 @@ export class MultiplayerSystem {
         maxHp:       p.maxHp   ?? 80,
         level:       p.level   ?? 1,
         x:           p.x       ?? 0,
-        y:           p.y       ?? 0
+        y:           p.y       ?? 0,
+        gold:        p.gold    ?? 0,
+        xp:          p.xp      ?? 0
       });
     });
 
@@ -342,15 +349,13 @@ export class MultiplayerSystem {
       }
 
       case "npc_state": {
-        // Server sent full NPC state — sync all NPCs
         this.onNPCState(msg.npcs ?? []);
         break;
       }
 
       case "npc_attack_player": {
-        // Server says an NPC attacked a player
         if (msg.targetToken === this.playerToken) {
-          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage });
+          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage, blocked: msg.blocked });
         }
         break;
       }
@@ -368,15 +373,45 @@ export class MultiplayerSystem {
 
       case "npc_killed": {
         this.onNPCKilled({
-          npcId:       msg.npcId,
-          killerName:  msg.killerName,
-          xpShare:     msg.xpShare,
-          loot:        msg.loot
+          npcId:      msg.npcId,
+          killerName: msg.killerName,
+          xpShare:    msg.xpShare,
+          loot:       msg.loot
         });
         break;
       }
 
-      case "pong": break; // keepalive response
+      case "player_stat_update": {
+        // Server is authoritative — update local player stats
+        if (this.onStatUpdate) {
+          this.onStatUpdate({ hp: msg.hp, maxHp: msg.maxHp, xp: msg.xp, gold: msg.gold });
+        }
+        break;
+      }
+
+      case "ability_result": {
+        // Server confirmed ability fired — trigger animations
+        if (this.onAbilityResult) {
+          this.onAbilityResult(msg);
+        }
+        break;
+      }
+
+      case "player_healed": {
+        if (this.onPlayerHealed) {
+          this.onPlayerHealed(msg);
+        }
+        break;
+      }
+
+      case "buff_applied": {
+        if (this.onBuffApplied) {
+          this.onBuffApplied(msg);
+        }
+        break;
+      }
+
+      case "pong": break;
 
       default:
         console.log("[MP] Unknown message:", msg.type);
