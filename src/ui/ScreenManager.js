@@ -49,6 +49,7 @@ export class ScreenManager {
     this._rerolls = MAX_REROLLS;
     this._newSlot = 0;
 
+    this._selectedServer = null;
     this._overlay  = null;
     this._content  = null;
     this._raf      = null;
@@ -60,8 +61,93 @@ export class ScreenManager {
 
   show() {
     this._build();
-    this._showCharSelect();
     this._startParticles();
+    if (this.servers?.length > 0) {
+      this._showServerSelect();
+    } else {
+      this._showOffline();
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // SERVER SELECT
+  // ─────────────────────────────────────────────
+
+  _showServerSelect() {
+    const serversHtml = this.servers.map(s => {
+      const isCloud = s.ws_url?.includes("onrender") || s.region === "cloud";
+      const ping    = isCloud ? "☁ Cloud" : "🏠 Local";
+      const players = s.players_online ?? 0;
+      const max     = s.max_players ?? "∞";
+      const status  = players >= (s.max_players ?? 999) ? "full" : "open";
+      return `
+        <div class="srv-card ${this._selectedServer?.id === s.id ? "sel" : ""} ${status}" data-id="${s.id}">
+          <div class="srv-hd">
+            <span class="srv-name">${s.name ?? "Game Server"}</span>
+            <span class="srv-tag">${ping}</span>
+          </div>
+          <div class="srv-info">
+            <span class="srv-players">${players} / ${max} players</span>
+            <span class="srv-region">${s.region ?? "unknown"}</span>
+          </div>
+          <div class="srv-url">${s.ws_url?.replace("wss://","").split(".")[0] ?? ""}</div>
+        </div>`;
+    }).join("");
+
+    this._content.innerHTML = `
+      <div style="text-align:center;margin-bottom:28px;">
+        <div class="cs-game-title">Realm of Echoes</div>
+        <div class="cs-screen-title">Choose a Server</div>
+        <div class="cs-divider"><span>✦ select your realm ✦</span></div>
+      </div>
+      <div class="srv-list">${serversHtml}</div>
+      <div style="text-align:center;margin-top:24px;">
+        <button class="btn btn-enter" id="srv-enter" ${!this._selectedServer ? "disabled" : ""}>
+          Enter Realm →
+        </button>
+      </div>
+      <style>
+        .srv-list { display:flex; flex-direction:column; gap:10px; max-width:480px; margin:0 auto; }
+        .srv-card { background:#0d0d18; border:1.5px solid #333355; border-radius:8px; padding:14px 18px; cursor:pointer; transition:border-color .2s; }
+        .srv-card:hover { border-color:#5555aa; }
+        .srv-card.sel { border-color:#f39c12; background:#1a1608; }
+        .srv-card.full { opacity:0.5; cursor:not-allowed; }
+        .srv-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .srv-name { font-family:'Cinzel',serif; color:#e8c84a; font-size:.9rem; }
+        .srv-tag { font-size:.65rem; padding:2px 8px; border-radius:10px; background:#1a1a2e; color:#8888aa; border:1px solid #333355; }
+        .srv-info { display:flex; justify-content:space-between; font-size:.72rem; color:#666688; }
+        .srv-players { color:#88aaff; }
+        .srv-url { font-size:.62rem; color:#444466; margin-top:4px; font-family:monospace; }
+      </style>
+    `;
+
+    this._content.querySelectorAll(".srv-card:not(.full)").forEach(el => {
+      el.addEventListener("click", () => {
+        const id = el.dataset.id;
+        this._selectedServer = this.servers.find(s => s.id === id);
+        this._content.querySelectorAll(".srv-card").forEach(c => c.classList.remove("sel"));
+        el.classList.add("sel");
+        this._content.querySelector("#srv-enter").disabled = false;
+      });
+    });
+
+    this._content.querySelector("#srv-enter")?.addEventListener("click", () => {
+      if (!this._selectedServer) return;
+      this._showCharSelect();
+    });
+  }
+
+  _showOffline() {
+    this._content.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;">
+        <div class="cs-game-title">Realm of Echoes</div>
+        <div style="color:#cc4444;font-size:1.1rem;margin:20px 0;">⚠ No Servers Available</div>
+        <div style="color:#666688;font-size:.85rem;margin-bottom:30px;">
+          All game servers are currently offline.<br>Please try again later.
+        </div>
+        <button class="btn btn-back" onclick="location.reload()">↺ Retry</button>
+      </div>
+    `;
   }
 
   hide() {
@@ -154,7 +240,7 @@ export class ScreenManager {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.dataset.slot);
         this.hide();
-        this.onPlay?.(idx, this.slots[idx]);
+        this.onPlay?.(idx, this.slots[idx], this._selectedServer?.ws_url);
       });
     });
 
@@ -487,7 +573,7 @@ export class ScreenManager {
         raceId:  this._raceId,
         classId: this._classId,
         stats:   { ...this._stats }
-      });
+      }, this._selectedServer?.ws_url);
     });
   }
 
