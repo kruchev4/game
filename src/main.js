@@ -115,6 +115,11 @@ async function start() {
 
     await showScreens();
 
+    // Keep cloud server warm — ping every 14 minutes to prevent Render spin-down
+    setInterval(() => {
+      fetch("https://realm-echoes-broker-2.onrender.com").catch(() => {});
+    }, 14 * 60 * 1000);
+
   } catch (e) {
     console.error("[Realm of Echoes] Startup error:", e);
     const canvas = document.getElementById("game");
