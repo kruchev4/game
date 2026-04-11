@@ -788,7 +788,17 @@ export class Engine {
 
     const target = this._currentTarget;
 
-    // Self-targeted abilities (buffs, heals) don't need a target
+    // ── Abilities that don't need a target ──
+    const selfTargeted = ["buff", "aoe", "taunt"].includes(ability.type)
+      || (ability.type === "heal" && !target)
+      || ability.aoe?.centeredOnSelf;
+
+    if (selfTargeted) {
+      this.combatSystem.queuePlayerAction(abilityId, "player");
+      return;
+    }
+
+    // ── Self type (legacy) ──
     if (ability.type === "self") {
       this._resolveSpecialAbility({ ability, attacker: this.player, target: this.player });
       if (ability.selfEffect) {
@@ -801,25 +811,22 @@ export class Engine {
       return;
     }
 
+    // ── Abilities that need a target ──
     if (!target || target.dead) {
       this.combatLog?.push({ text: "No target.", type: "system" });
       return;
     }
 
-    // In multiplayer — send to server, server resolves damage and broadcasts result
+    // ── Multiplayer — send to server ──
     if (this.multiplayerSystem?._connected) {
-      // Calculate local damage roll for the server to validate
-      const base     = ability.damage?.base ?? 0;
+      const base    = ability.damage?.base ?? 0;
       const variance = ability.damage?.variance ?? 0;
-      const damage   = base + Math.floor(Math.random() * (variance + 1));
-
-      // Apply outgoing damage multiplier from effects
-      const mult         = this.effectSystem?.getDamageMultiplier("player") ?? 1;
-      const finalDamage  = Math.round(damage * mult);
+      const damage  = base + Math.floor(Math.random() * (variance + 1));
+      const mult    = this.effectSystem?.getDamageMultiplier("player") ?? 1;
+      const finalDamage = Math.round(damage * mult);
 
       this.multiplayerSystem.sendAttack({ npcId: target.id, damage: finalDamage, abilityId });
 
-      // Apply onHit effects locally (visual/client side)
       if (ability.onHit) {
         this.effectSystem?.apply(target, ability.onHit.effect, "player", {
           duration:  ability.onHit.duration,
@@ -827,7 +834,6 @@ export class Engine {
         });
       }
 
-      // Animations
       this.animSystem?.playAttack("player", target.x - this.player.x, target.y - this.player.y);
       this.animSystem?.playHit(target.id);
       if (ability.type === "ranged") {
@@ -838,17 +844,12 @@ export class Engine {
         }
       }
 
-      // Special ability handling
-      if (ability.special) {
-        this._resolveSpecialAbility({ ability, attacker: this.player, target });
-      }
-
-      // Start local cooldown so bar reflects state
+      if (ability.special) this._resolveSpecialAbility({ ability, attacker: this.player, target });
       this.combatSystem?.startCooldown("player", abilityId);
       return;
     }
 
-    // Single player — queue through local combat system
+    // ── Single player — queue through local combat system ──
     this.combatSystem.queuePlayerAction(abilityId, target.id);
   }
 
@@ -1229,16 +1230,34 @@ export class Engine {
           this.npcs     = this.npcs.filter(n => n.id !== npcId);
           if (this._currentTarget?.id === npcId) this._setTarget(null);
         }
-        // Award shared XP to ALL players in the world
+
+        // Award shared XP to ALL players
         if (xpShare > 0) this.xpSystem?.awardXP(xpShare);
-        // Award shared gold to ALL players
+
+        // Award shared gold
         if (loot?.gold > 0) this.player.gold = (this.player.gold ?? 0) + loot.gold;
+
+        // Award item drops
+        if (loot?.itemId && loot.itemId !== "nothing" && loot.itemId !== "gold") {
+          const itemDef = this.renderer?.itemDefs?.[loot.itemId];
+          const emptySlot = this.player.bag?.findIndex(s => s === null);
+          if (emptySlot >= 0) {
+            this.player.bag[emptySlot] = { itemId: loot.itemId, qty: loot.qty ?? 1 };
+            this.combatLog?.push({
+              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${itemDef?.name ?? loot.itemId}!`,
+              type: "reward"
+            });
+          }
+        }
+
         // Combat log
         const isKiller = killerName === this.player.name;
+        const goldStr  = loot?.gold > 0 ? `, +${loot.gold} gold` : "";
+        const xpStr    = xpShare > 0 ? `+${xpShare} XP` : "";
         this.combatLog?.push({
           text: isKiller
-            ? `You killed ${npcId}! +${xpShare} XP, +${loot?.gold ?? 0} gold`
-            : `${killerName} killed ${npcId}! +${xpShare} XP, +${loot?.gold ?? 0} gold (shared)`,
+            ? `You killed ${npcId}! ${xpStr}${goldStr}`
+            : `${killerName} killed ${npcId}! ${xpStr}${goldStr} (shared)`,
           type: "reward"
         });
       }
