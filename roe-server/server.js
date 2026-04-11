@@ -747,13 +747,23 @@ let _serverId = null;
 
 async function registerServer() {
   try {
+    // First mark any existing rows with this ws_url as offline (cleanup)
+    await fetch(`${SUPABASE_URL}/rest/v1/game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}`, {
+      method:  "DELETE",
+      headers: {
+        "apikey":        SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      }
+    }).catch(() => {}); // ignore errors
+
+    // Insert fresh row
     const data = await sb("game_servers", {
       method:  "POST",
-      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+      headers: { "Prefer": "return=representation" },
       body:    JSON.stringify({
         name:            SERVER_NAME,
         ws_url:          SERVER_URL,
-        region:          "local",
+        region:          SERVER_URL.includes("onrender") ? "cloud" : "local",
         status:          "online",
         players_online:  0,
         last_heartbeat:  new Date().toISOString()
