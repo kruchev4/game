@@ -2,7 +2,7 @@
   "slash": {
     "id": "slash",
     "name": "Slash",
-    "icon": "\u2694\ufe0f",
+    "icon": "⚔️",
     "description": "A powerful melee strike.",
     "type": "melee",
     "range": 2,
@@ -21,7 +21,7 @@
   "shield_bash": {
     "id": "shield_bash",
     "name": "Shield Bash",
-    "icon": "\ud83d\udee1\ufe0f",
+    "icon": "🛡️",
     "description": "Bash the enemy with your shield, dealing damage and stunning them for 1.5s.",
     "type": "melee",
     "range": 2,
@@ -46,7 +46,7 @@
   "whirlwind": {
     "id": "whirlwind",
     "name": "Whirlwind",
-    "icon": "\ud83c\udf00",
+    "icon": "🌀",
     "description": "Spin and strike all adjacent enemies.",
     "type": "melee",
     "range": 2,
@@ -70,7 +70,7 @@
   "battle_cry": {
     "id": "battle_cry",
     "name": "Battle Cry",
-    "icon": "\ud83d\udcef",
+    "icon": "📯",
     "description": "Let out a fearsome roar, boosting your attack speed by 30% for 8 seconds.",
     "type": "self",
     "range": 0,
@@ -94,7 +94,7 @@
   "charge": {
     "id": "charge",
     "name": "Charge",
-    "icon": "\ud83d\udca8",
+    "icon": "💨",
     "description": "Rush up to 4 tiles and strike, dealing bonus damage.",
     "type": "melee",
     "range": 2,
@@ -115,7 +115,7 @@
   "execute": {
     "id": "execute",
     "name": "Execute",
-    "icon": "\ud83d\udc80",
+    "icon": "💀",
     "description": "Devastating strike. Deals 200% damage to enemies below 25% HP.",
     "type": "melee",
     "range": 2,
@@ -136,7 +136,7 @@
   "taunt": {
     "id": "taunt",
     "name": "Taunt",
-    "icon": "\ud83d\ude24",
+    "icon": "😤",
     "description": "Force all nearby enemies within 6 tiles to target you.",
     "type": "self",
     "range": 0,
@@ -157,7 +157,7 @@
   "second_wind": {
     "id": "second_wind",
     "name": "Second Wind",
-    "icon": "\ud83d\udca8",
+    "icon": "💨",
     "description": "Recover HP equal to 20% of your maximum health.",
     "type": "self",
     "range": 0,
@@ -177,7 +177,7 @@
   "rend": {
     "id": "rend",
     "name": "Rend",
-    "icon": "\ud83e\ude78",
+    "icon": "🩸",
     "description": "Tear into the enemy, causing them to bleed for 3 seconds.",
     "type": "melee",
     "range": 2,
@@ -202,7 +202,7 @@
   "fortify": {
     "id": "fortify",
     "name": "Fortify",
-    "icon": "\ud83c\udff0",
+    "icon": "🏰",
     "description": "Brace yourself, reducing incoming damage by 50% for 3 seconds.",
     "type": "self",
     "range": 0,
@@ -227,7 +227,7 @@
   "shoot": {
     "id": "shoot",
     "name": "Shoot",
-    "icon": "\ud83c\udff9",
+    "icon": "🏹",
     "description": "A steady aimed shot.",
     "type": "ranged",
     "range": 5,
@@ -246,7 +246,7 @@
   "frost_arrow": {
     "id": "frost_arrow",
     "name": "Frost Arrow",
-    "icon": "\u2744\ufe0f",
+    "icon": "❄️",
     "description": "An enchanted arrow that slows the target by 50% for 1.5 seconds.",
     "type": "ranged",
     "range": 5,
@@ -272,7 +272,7 @@
   "multishot": {
     "id": "multishot",
     "name": "Multishot",
-    "icon": "\ud83c\udfaf",
+    "icon": "🎯",
     "description": "Fires arrows at all enemies in a cone. Each arrow deals full damage.",
     "type": "ranged",
     "range": 5,
@@ -297,7 +297,7 @@
   "poison_shot": {
     "id": "poison_shot",
     "name": "Poison Shot",
-    "icon": "\u2620\ufe0f",
+    "icon": "☠️",
     "description": "A venomous arrow that poisons the target, dealing 3 damage every 0.67s for 4 seconds.",
     "type": "ranged",
     "range": 5,
@@ -323,7 +323,7 @@
   "volley": {
     "id": "volley",
     "name": "Volley",
-    "icon": "\ud83c\udf27\ufe0f",
+    "icon": "🌧️",
     "description": "Rain arrows on a target area, hitting all enemies in a 2-tile radius.",
     "type": "ranged",
     "range": 6,
@@ -347,7 +347,7 @@
   "snipe": {
     "id": "snipe",
     "name": "Snipe",
-    "icon": "\ud83d\udd2d",
+    "icon": "🔭",
     "description": "A long-range precision shot. 12 tile range, triple damage, 3 second cast time.",
     "type": "ranged",
     "range": 12,
@@ -368,7 +368,7 @@
   "fire_arrow": {
     "id": "fire_arrow",
     "name": "Fire Arrow",
-    "icon": "\ud83d\udd25",
+    "icon": "🔥",
     "description": "A flaming arrow that burns the target for 3 seconds.",
     "type": "ranged",
     "range": 5,
@@ -394,7 +394,7 @@
   "scatter_shot": {
     "id": "scatter_shot",
     "name": "Scatter Shot",
-    "icon": "\ud83d\udca5",
+    "icon": "💥",
     "description": "Fire a close-range burst that hits all enemies adjacent to you.",
     "type": "ranged",
     "range": 5,
@@ -420,7 +420,7 @@
   "eagles_eye": {
     "id": "eagles_eye",
     "name": "Eagle's Eye",
-    "icon": "\ud83e\udd85",
+    "icon": "🦅",
     "description": "Heighten your senses, increasing range of all shots by 4 for 6 seconds.",
     "type": "self",
     "range": 0,
@@ -444,7 +444,7 @@
   "shadow_step": {
     "id": "shadow_step",
     "name": "Shadow Step",
-    "icon": "\ud83c\udf11",
+    "icon": "🌑",
     "description": "Vanish and reappear behind your target. Next attack crits.",
     "type": "ranged",
     "range": 5,
@@ -469,7 +469,7 @@
   "goblinStab": {
     "id": "goblinStab",
     "name": "Goblin Stab",
-    "icon": "\ud83d\udde1\ufe0f",
+    "icon": "🗡️",
     "description": "A quick dirty jab.",
     "type": "melee",
     "range": 1,
@@ -489,7 +489,7 @@
   "goblinSling": {
     "id": "goblinSling",
     "name": "Goblin Sling",
-    "icon": "\ud83e\udea8",
+    "icon": "🪨",
     "description": "A rock hurled from a sling.",
     "type": "ranged",
     "range": 6,
@@ -504,6 +504,244 @@
       "physical",
       "ranged",
       "npc"
+    ]
+  },
+  "holy_strike": {
+    "id": "holy_strike",
+    "name": "Holy Strike",
+    "icon": "⚔️",
+    "description": "A melee strike infused with holy light. Deals bonus damage to undead.",
+    "type": "melee",
+    "range": 1,
+    "requiresLoS": false,
+    "damage": {
+      "base": 12,
+      "variance": 4
+    },
+    "cooldown": 45,
+    "cost": {
+      "mana": 8
+    },
+    "tags": [
+      "physical",
+      "holy",
+      "melee"
+    ]
+  },
+  "heal": {
+    "id": "heal",
+    "name": "Heal",
+    "icon": "💚",
+    "description": "Restores health to yourself or a nearby ally.",
+    "type": "heal",
+    "range": 5,
+    "requiresLoS": false,
+    "heal": {
+      "base": 25,
+      "variance": 10
+    },
+    "cooldown": 90,
+    "cost": {
+      "mana": 20
+    },
+    "tags": [
+      "holy",
+      "heal"
+    ]
+  },
+  "consecrate": {
+    "id": "consecrate",
+    "name": "Consecrate",
+    "icon": "✨",
+    "description": "Consecrates the ground around you, damaging all nearby enemies.",
+    "type": "aoe",
+    "range": 0,
+    "requiresLoS": false,
+    "damage": {
+      "base": 8,
+      "variance": 3
+    },
+    "cooldown": 120,
+    "cost": {
+      "mana": 25
+    },
+    "aoe": {
+      "shape": "radius",
+      "radius": 3,
+      "centeredOnSelf": true,
+      "maxTargets": 8
+    },
+    "tags": [
+      "holy",
+      "aoe"
+    ]
+  },
+  "divine_shield": {
+    "id": "divine_shield",
+    "name": "Divine Shield",
+    "icon": "🛡️",
+    "description": "Grants brief invulnerability. Cannot attack while shielded.",
+    "type": "buff",
+    "range": 0,
+    "requiresLoS": false,
+    "cooldown": 300,
+    "cost": {
+      "mana": 30
+    },
+    "effect": {
+      "type": "invulnerable",
+      "duration": 120
+    },
+    "tags": [
+      "holy",
+      "buff",
+      "self"
+    ]
+  },
+  "judgment": {
+    "id": "judgment",
+    "name": "Judgment",
+    "icon": "⚡",
+    "description": "Calls down holy judgment on a single target for massive damage.",
+    "type": "ranged",
+    "range": 6,
+    "requiresLoS": true,
+    "damage": {
+      "base": 22,
+      "variance": 8
+    },
+    "cooldown": 160,
+    "cost": {
+      "mana": 30
+    },
+    "tags": [
+      "holy",
+      "ranged"
+    ]
+  },
+  "holy_light": {
+    "id": "holy_light",
+    "name": "Holy Light",
+    "icon": "🌟",
+    "description": "A powerful heal that restores a large amount of health.",
+    "type": "heal",
+    "range": 5,
+    "requiresLoS": false,
+    "heal": {
+      "base": 50,
+      "variance": 15
+    },
+    "cooldown": 200,
+    "cost": {
+      "mana": 45
+    },
+    "tags": [
+      "holy",
+      "heal"
+    ]
+  },
+  "hammer_of_justice": {
+    "id": "hammer_of_justice",
+    "name": "Hammer of Justice",
+    "icon": "🔨",
+    "description": "Throws a holy hammer that stuns the target.",
+    "type": "ranged",
+    "range": 4,
+    "requiresLoS": true,
+    "damage": {
+      "base": 14,
+      "variance": 5
+    },
+    "cooldown": 100,
+    "cost": {
+      "mana": 18
+    },
+    "onHit": {
+      "effect": "stun",
+      "duration": 60
+    },
+    "tags": [
+      "holy",
+      "ranged",
+      "stun"
+    ]
+  },
+  "aura_of_protection": {
+    "id": "aura_of_protection",
+    "name": "Aura of Protection",
+    "icon": "🌐",
+    "description": "Emits a holy aura that reduces damage taken by nearby allies.",
+    "type": "buff",
+    "range": 0,
+    "requiresLoS": false,
+    "cooldown": 240,
+    "cost": {
+      "mana": 35
+    },
+    "effect": {
+      "type": "damage_reduction",
+      "magnitude": 0.25,
+      "duration": 300,
+      "radius": 4
+    },
+    "tags": [
+      "holy",
+      "buff",
+      "aoe"
+    ]
+  },
+  "resurrection": {
+    "id": "resurrection",
+    "name": "Resurrection",
+    "icon": "✝️",
+    "description": "Brings a fallen ally back to life with 50% health.",
+    "type": "rez",
+    "range": 3,
+    "requiresLoS": false,
+    "heal": {
+      "base": 0,
+      "variance": 0,
+      "percentMax": 0.5
+    },
+    "cooldown": 600,
+    "cost": {
+      "mana": 80
+    },
+    "tags": [
+      "holy",
+      "rez"
+    ]
+  },
+  "divine_storm": {
+    "id": "divine_storm",
+    "name": "Divine Storm",
+    "icon": "⛈️",
+    "description": "Unleashes a storm of holy energy hitting all nearby enemies and healing nearby allies.",
+    "type": "aoe",
+    "range": 0,
+    "requiresLoS": false,
+    "damage": {
+      "base": 12,
+      "variance": 5
+    },
+    "heal": {
+      "base": 10,
+      "variance": 4
+    },
+    "cooldown": 250,
+    "cost": {
+      "mana": 50
+    },
+    "aoe": {
+      "shape": "radius",
+      "radius": 4,
+      "centeredOnSelf": true,
+      "maxTargets": 10
+    },
+    "tags": [
+      "holy",
+      "aoe",
+      "heal"
     ]
   }
 }
