@@ -136,5 +136,75 @@ const seedLoot = db.transaction(() => {
 seedLoot();
 console.log(`[Seed] ${lootTables.length} loot tables, ${lootEntries.length} entries, ${monsterLootLinks.length} monster links`);
 
+
+// ── Spawn Groups ──────────────────────────────────────────────────────────
+const insertSpawnGroup = db.prepare(`
+  INSERT OR REPLACE INTO spawn_groups (id, world_id, name, kind, respawn_seconds, enabled)
+  VALUES (@id, @world_id, @name, @kind, @respawn_seconds, @enabled)
+`);
+
+const insertSpawnMember = db.prepare(`
+  INSERT OR REPLACE INTO spawn_group_monsters (id, spawn_group_id, monster_id, x, y, is_boss, roam_radius)
+  VALUES (@id, @spawn_group_id, @monster_id, @x, @y, @is_boss, @roam_radius)
+`);
+
+// Deduplicated spawn groups — one of each camp
+const spawnGroups = [
+  { id:"6ebd8fe3-c4e8-4ffe-888d-1cbea5914712", world_id:"overworld_C", name:"Goblin Road Camp",  kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"269585b4-7703-49f7-b45b-cfef2bb7695b", world_id:"overworld_C", name:"Goblin Camp Ridge", kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", world_id:"overworld_C", name:"Goblin Camp North", kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"ac51844f-d565-405f-95f2-266772c24458", world_id:"overworld_C", name:"Goblin Camp East",  kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"76e8a304-0810-4b4b-a95f-4f2b6fdc95c7", world_id:"overworld_C", name:"Goblin Camp South", kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"3c425f39-dd08-45c3-89d3-0d20fe498d74", world_id:"overworld_C", name:"Goblin Camp West",  kind:"static", respawn_seconds:120, enabled:1 },
+  { id:"17377a68-a6a5-4229-bdde-ae65413f34c6", world_id:"overworld_C", name:"Goblin Camp Hills", kind:"static", respawn_seconds:120, enabled:1 },
+];
+
+// Clean monsters per group — one set each, no duplicates
+const spawnMembers = [
+  // Goblin Road Camp
+  { id:"sg001", spawn_group_id:"6ebd8fe3-c4e8-4ffe-888d-1cbea5914712", monster_id:"goblinMelee",  x:120, y:88,  is_boss:0, roam_radius:4 },
+  { id:"sg002", spawn_group_id:"6ebd8fe3-c4e8-4ffe-888d-1cbea5914712", monster_id:"goblinArcher", x:124, y:90,  is_boss:0, roam_radius:4 },
+  { id:"sg003", spawn_group_id:"6ebd8fe3-c4e8-4ffe-888d-1cbea5914712", monster_id:"goblinMelee",  x:122, y:92,  is_boss:0, roam_radius:4 },
+  // Goblin Camp Ridge
+  { id:"sg004", spawn_group_id:"269585b4-7703-49f7-b45b-cfef2bb7695b", monster_id:"goblinMelee",  x:145, y:102, is_boss:0, roam_radius:4 },
+  { id:"sg005", spawn_group_id:"269585b4-7703-49f7-b45b-cfef2bb7695b", monster_id:"goblinArcher", x:146, y:103, is_boss:0, roam_radius:4 },
+  { id:"sg006", spawn_group_id:"269585b4-7703-49f7-b45b-cfef2bb7695b", monster_id:"goblinArcher", x:148, y:101, is_boss:0, roam_radius:4 },
+  // Goblin Camp North
+  { id:"sg007", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinMelee",  x:110, y:65,  is_boss:0, roam_radius:4 },
+  { id:"sg008", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinMelee",  x:111, y:66,  is_boss:0, roam_radius:4 },
+  { id:"sg009", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinMelee",  x:112, y:64,  is_boss:0, roam_radius:4 },
+  { id:"sg010", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinArcher", x:113, y:65,  is_boss:0, roam_radius:4 },
+  { id:"sg011", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinArcher", x:114, y:66,  is_boss:0, roam_radius:4 },
+  { id:"sg012", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinArcher", x:112, y:67,  is_boss:0, roam_radius:4 },
+  { id:"sg013", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinMelee",  x:115, y:65,  is_boss:0, roam_radius:4 },
+  { id:"sg014", spawn_group_id:"89a85e85-13a5-471a-9c87-f36e72fa6f11", monster_id:"goblinMelee",  x:111, y:68,  is_boss:0, roam_radius:4 },
+  // Goblin Camp East
+  { id:"sg015", spawn_group_id:"ac51844f-d565-405f-95f2-266772c24458", monster_id:"goblinMelee",  x:160, y:80,  is_boss:0, roam_radius:4 },
+  { id:"sg016", spawn_group_id:"ac51844f-d565-405f-95f2-266772c24458", monster_id:"goblinMelee",  x:162, y:82,  is_boss:0, roam_radius:4 },
+  { id:"sg017", spawn_group_id:"ac51844f-d565-405f-95f2-266772c24458", monster_id:"goblinArcher", x:164, y:80,  is_boss:0, roam_radius:4 },
+  // Goblin Camp South
+  { id:"sg018", spawn_group_id:"76e8a304-0810-4b4b-a95f-4f2b6fdc95c7", monster_id:"goblinMelee",  x:130, y:120, is_boss:0, roam_radius:4 },
+  { id:"sg019", spawn_group_id:"76e8a304-0810-4b4b-a95f-4f2b6fdc95c7", monster_id:"goblinMelee",  x:132, y:122, is_boss:0, roam_radius:4 },
+  { id:"sg020", spawn_group_id:"76e8a304-0810-4b4b-a95f-4f2b6fdc95c7", monster_id:"goblinArcher", x:134, y:120, is_boss:0, roam_radius:4 },
+  // Goblin Camp West
+  { id:"sg021", spawn_group_id:"3c425f39-dd08-45c3-89d3-0d20fe498d74", monster_id:"goblinMelee",  x:90,  y:90,  is_boss:0, roam_radius:4 },
+  { id:"sg022", spawn_group_id:"3c425f39-dd08-45c3-89d3-0d20fe498d74", monster_id:"goblinMelee",  x:92,  y:92,  is_boss:0, roam_radius:4 },
+  { id:"sg023", spawn_group_id:"3c425f39-dd08-45c3-89d3-0d20fe498d74", monster_id:"goblinArcher", x:94,  y:90,  is_boss:0, roam_radius:4 },
+  // Goblin Camp Hills
+  { id:"sg024", spawn_group_id:"17377a68-a6a5-4229-bdde-ae65413f34c6", monster_id:"goblinMelee",  x:105, y:75,  is_boss:0, roam_radius:4 },
+  { id:"sg025", spawn_group_id:"17377a68-a6a5-4229-bdde-ae65413f34c6", monster_id:"goblinMelee",  x:107, y:77,  is_boss:0, roam_radius:4 },
+  { id:"sg026", spawn_group_id:"17377a68-a6a5-4229-bdde-ae65413f34c6", monster_id:"goblinArcher", x:109, y:75,  is_boss:0, roam_radius:4 },
+  { id:"sg027", spawn_group_id:"17377a68-a6a5-4229-bdde-ae65413f34c6", monster_id:"goblinMelee",  x:106, y:79,  is_boss:0, roam_radius:4 },
+];
+
+const seedSpawns = db.transaction(() => {
+  db.prepare("DELETE FROM spawn_group_monsters").run();
+  db.prepare("DELETE FROM spawn_groups").run();
+  for (const g of spawnGroups) insertSpawnGroup.run(g);
+  for (const m of spawnMembers) insertSpawnMember.run(m);
+});
+seedSpawns();
+console.log(`[Seed] ${spawnGroups.length} spawn groups, ${spawnMembers.length} monsters inserted`);
+
 db.close();
 console.log("[Seed] Database ready at", DB_PATH);
