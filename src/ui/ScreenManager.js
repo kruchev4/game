@@ -22,8 +22,9 @@ const RACES = [
 ];
 
 const CLASS_META = {
-  fighter: { icon: "⚔️",  role: "Melee DPS",  tags: ["strength","armor","melee"],   primaryStat: "STR" },
-  ranger:  { icon: "🏹",  role: "Ranged DPS", tags: ["dexterity","ranged","nature"], primaryStat: "DEX" },
+  fighter: { icon: "⚔️",  role: "Melee DPS",    tags: ["strength","armor","melee"],        primaryStat: "STR" },
+  ranger:  { icon: "🏹",  role: "Ranged DPS",   tags: ["dexterity","ranged","nature"],      primaryStat: "DEX" },
+  paladin: { icon: "🛡️", role: "Support Melee", tags: ["strength","holy","heal","support"], primaryStat: "STR" },
 };
 
 const STAT_NAMES  = ["STR","DEX","INT","CON","WIS","CHA"];
@@ -49,7 +50,7 @@ export class ScreenManager {
     this._newSlot = 0;
 
     this._overlay  = null;
-    this._content  = null;   // #roe-content — only this changes
+    this._content  = null;
     this._raf      = null;
   }
 
@@ -71,24 +72,21 @@ export class ScreenManager {
   }
 
   // ─────────────────────────────────────────────
-  // DOM SETUP — called once
+  // DOM SETUP
   // ─────────────────────────────────────────────
 
   _build() {
-    // Remove any stale overlay
     document.getElementById("roe-screen")?.remove();
 
     this._overlay = document.createElement("div");
     this._overlay.id = "roe-screen";
     document.body.appendChild(this._overlay);
 
-    // Particle canvas — behind everything, never removed
     const pc = document.createElement("canvas");
     pc.id = "roe-particles";
     this._overlay.appendChild(pc);
     this._particleCanvas = pc;
 
-    // Content area — only innerHTML changes
     this._content = document.createElement("div");
     this._content.id = "roe-content";
     this._overlay.appendChild(this._content);
@@ -152,7 +150,6 @@ export class ScreenManager {
       </div>
     `;
 
-    // Play buttons
     this._content.querySelectorAll(".cs-play-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.dataset.slot);
@@ -161,7 +158,6 @@ export class ScreenManager {
       });
     });
 
-    // Empty slot — new character
     this._content.querySelectorAll(".char-slot.empty").forEach(el => {
       el.addEventListener("click", () => {
         this._newSlot = parseInt(el.dataset.new);
@@ -169,28 +165,24 @@ export class ScreenManager {
       });
     });
 
-    // Delete buttons
     this._content.querySelectorAll(".cs-del-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         this._showDeleteConfirm(parseInt(btn.dataset.del));
       });
     });
 
-    // New character button
     this._content.querySelector("#cs-new-btn")?.addEventListener("click", () => {
       const idx = this.slots.findIndex(s => s === null);
       this._newSlot = idx >= 0 ? idx : 0;
       this._startCreation();
     });
 
-    // Token copy
     this._content.querySelector("#cs-copy-btn")?.addEventListener("click", () => {
       navigator.clipboard?.writeText(playerToken);
       const el = this._content.querySelector("#cs-token-val");
       if (el) { el.textContent = "Copied!"; setTimeout(() => el.textContent = shortToken, 1500); }
     });
 
-    // Token import
     this._content.querySelector("#cs-import-btn")?.addEventListener("click", () => {
       const token = prompt("Paste your Player ID:");
       if (token?.trim()) { localStorage.setItem("roe_player_token", token.trim()); location.reload(); }
@@ -320,7 +312,7 @@ export class ScreenManager {
       .filter(([id]) => CLASS_META[id])
       .map(([id, def]) => {
         const m     = CLASS_META[id];
-        const abils = (def.abilities ?? []).map(a => this.abilities[a]?.name ?? a).join(", ");
+        const abils = (def.abilities ?? []).slice(0, 4).map(a => this.abilities[a]?.name ?? a).join(", ");
         const tags  = m.tags.map((t,i) => `<span class="ctag ${i===0?"pri":""}">${t}</span>`).join("");
         return `
           <div class="clcard ${this._classId === id ? "sel" : ""}" data-class="${id}">
@@ -328,7 +320,7 @@ export class ScreenManager {
             <div class="cl-role">${m.role} · ${m.primaryStat}</div>
             <div class="cl-desc">${def.description}</div>
             <div class="cl-tags">${tags}</div>
-            <div class="cl-abilities">Abilities: <span>${abils}</span></div>
+            <div class="cl-abilities">Abilities: <span>${abils}…</span></div>
           </div>`;
       }).join("");
 
@@ -453,6 +445,12 @@ export class ScreenManager {
       return `<div class="csm"><div class="csm-n">${n}</div><div class="csm-v">${v}</div><div class="csm-m">${m>=0?"+":""}${m}</div></div>`;
     }).join("");
 
+    // Resource label for review
+    const res = cd.resource;
+    const resLine = res
+      ? `<div class="sh-row"><span class="sh-k">Resource</span><span class="sh-v" style="color:${res.color ?? '#aaa'}">${res.label} (${res.max})</span></div>`
+      : "";
+
     this._step$('#cc-step').innerHTML = `
       <div class="card"><div class="card-inner">
         <div class="ctitle">IV — Character Sheet</div>
@@ -462,6 +460,7 @@ export class ScreenManager {
             <div class="portrait-name">${this._esc(this._name)}</div>
             <div class="portrait-sub">${race?.name ?? ""} ${cd.name ?? ""}</div>
             <div class="portrait-sub" style="color:var(--gold-b)">${race?.bonus ?? ""}</div>
+            <div class="portrait-sub" style="margin-top:6px;font-size:.7rem;color:#888">${cm.role ?? ""}</div>
           </div>
           <div>
             <div class="sh-row"><span class="sh-k">Name</span><span class="sh-v gold">${this._esc(this._name)}</span></div>
@@ -470,6 +469,7 @@ export class ScreenManager {
             <div class="sh-row"><span class="sh-k">Level</span><span class="sh-v">1</span></div>
             <div class="sh-row"><span class="sh-k">Hit Points</span><span class="sh-v gold">${cd.baseStats?.hp ?? "—"}</span></div>
             <div class="sh-row"><span class="sh-k">Gold</span><span class="sh-v gold">50 gp</span></div>
+            ${resLine}
             <div class="csm-grid">${cells}</div>
           </div>
         </div>
