@@ -73,11 +73,6 @@ async function start() {
         fetchAvailableServers()
       ]);
 
-      // Auto-select first available server — server selection UI can come later
-      const serverUrl = servers?.[0]?.ws_url ?? null;
-      if (serverUrl) console.log(`[main] Using server: ${serverUrl}`);
-      else           console.warn("[main] No servers found — playing offline");
-
       const mgr = new ScreenManager({
         slots,
         servers,
@@ -86,13 +81,12 @@ async function start() {
         abilities
       });
 
-      mgr.onPlay = async (slotIndex, saveData) => {
+      mgr.onPlay = async (slotIndex, saveData, serverUrl) => {
         await launchGame({
           name:          saveData.name,
           raceId:        saveData.raceId,
           classId:       saveData.classId,
           stats:         saveData.stats,
-          // Full save data for inventory/progress restoration
           gold:          saveData.gold,
           xp:            saveData.xp,
           level:         saveData.level,
@@ -105,7 +99,7 @@ async function start() {
         }, slotIndex + 1, serverUrl);
       };
 
-      mgr.onCreate = async (slotIndex, character) => {
+      mgr.onCreate = async (slotIndex, character, serverUrl) => {
         await saveProvider.save(slotIndex + 1, {
           ...character,
           position:  { worldId: WORLD_ID, x: null, y: null },
