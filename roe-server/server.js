@@ -747,30 +747,45 @@ let _serverId = null;
 
 async function registerServer() {
   try {
-    // First mark any existing rows with this ws_url as offline (cleanup)
-    await fetch(`${SUPABASE_URL}/rest/v1/game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}`, {
-      method:  "DELETE",
-      headers: {
-        "apikey":        SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      }
-    }).catch(() => {}); // ignore errors
+    // PATCH if exists, POST if not — match on ws_url
+    const existing = await sb(`game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}&select=id`);
 
-    // Insert fresh row
-    const data = await sb("game_servers", {
-      method:  "POST",
-      headers: { "Prefer": "return=representation" },
-      body:    JSON.stringify({
-        name:            SERVER_NAME,
-        ws_url:          SERVER_URL,
-        region:          SERVER_URL.includes("onrender") ? "cloud" : "local",
-        status:          "online",
-        players_online:  0,
-        last_heartbeat:  new Date().toISOString()
-      })
-    });
-    _serverId = Array.isArray(data) ? data[0]?.id : data?.id;
-    console.log(`[Server] Registered with Supabase — id: ${_serverId}`);
+    if (existing?.length) {
+      // Update existing row
+      _serverId = existing[0].id;
+      await fetch(`${SUPABASE_URL}/rest/v1/game_servers?id=eq.${_serverId}`, {
+        method: "PATCH",
+        headers: {
+          "apikey":        SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type":  "application/json"
+        },
+        body: JSON.stringify({
+          name:           SERVER_NAME,
+          status:         "online",
+          players_online: 0,
+          last_heartbeat: new Date().toISOString(),
+          region:         SERVER_URL.includes("onrender") ? "cloud" : "local"
+        })
+      });
+      console.log(`[Server] Re-registered (existing) — id: ${_serverId}`);
+    } else {
+      // Insert new row
+      const data = await sb("game_servers", {
+        method:  "POST",
+        headers: { "Prefer": "return=representation" },
+        body:    JSON.stringify({
+          name:           SERVER_NAME,
+          ws_url:         SERVER_URL,
+          region:         SERVER_URL.includes("onrender") ? "cloud" : "local",
+          status:         "online",
+          players_online: 0,
+          last_heartbeat: new Date().toISOString()
+        })
+      });
+      _serverId = Array.isArray(data) ? data[0]?.id : data?.id;
+      console.log(`[Server] Registered (new) — id: ${_serverId}`);
+    }
   } catch (e) {
     console.warn("[Server] Registration failed:", e.message);
   }
