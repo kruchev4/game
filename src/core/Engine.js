@@ -870,43 +870,39 @@ export class Engine {
       return;
     }
 
-    // ── Multiplayer — send to server ──
+    // ── Multiplayer — send ability intent to server ──
     if (this.multiplayerSystem?._connected) {
-      const base     = ability.damage?.base ?? 0;
-      const variance = ability.damage?.variance ?? 0;
-      const damage   = base + Math.floor(Math.random() * (variance + 1));
-      const mult     = this.effectSystem?.getDamageMultiplier("player") ?? 1;
-      const finalDamage = Math.round(damage * mult);
+      // Server rolls damage, validates range, applies effects
+      this.multiplayerSystem.sendAbility({
+        abilityId,
+        targetId:   target?.id ?? null,
+        targetType: target?.type ?? null
+      });
 
-      this.multiplayerSystem.sendAttack({ npcId: target.id, damage: finalDamage, abilityId });
-
-      if (ability.onHit) {
-        this.effectSystem?.apply(target, ability.onHit.effect, "player", {
-          duration:  ability.onHit.duration,
-          magnitude: ability.onHit.magnitude
-        });
-      }
-
-      // Animations — only lunge for melee, projectile for ranged
+      // Local animations only — no damage rolls
       if (ability.type === "melee") {
         const dx  = target.x - this.player.x;
         const dy  = target.y - this.player.y;
         const len = Math.sqrt(dx*dx + dy*dy) || 1;
         this.animSystem?.playAttack("player", dx/len, dy/len);
       }
-      this.animSystem?.playHit(target.id);
       if (ability.type === "ranged") {
         if (this.player.classId === "ranger") {
           this.animSystem?.spawnArrow(this.player.x, this.player.y, target.x, target.y);
         } else if (this.player.classId === "paladin") {
           this.animSystem?.spawnHolyBolt(this.player.x, this.player.y, target.x, target.y);
-        } else {
-          this.animSystem?.spawnSpellBolt(this.player.x, this.player.y, target.x, target.y);
         }
       }
-
-      if (ability.special) this._resolveSpecialAbility({ ability, attacker: this.player, target });
-      this.combatSystem?.startCooldown("player", abilityId);
+      if (["aoe", "consecrate", "divine_storm"].includes(abilityId)) {
+        this.animSystem?.spawnAOE({
+          x: this.player.x, y: this.player.y,
+          radius: ability.aoe?.radius ?? 3,
+          color: "rgba(255,220,50,0.4)"
+        });
+      }
+      if (ability.type === "heal") {
+        this.animSystem?.playHeal(target?.id ?? "player");
+      }
       return;
     }
 
@@ -1255,22 +1251,22 @@ export class Engine {
         if (this.combatSystem) this.combatSystem.npcs = this.npcs;
       },
 
-      onNPCAttackPlayer: ({ npcId, damage }) => {
-        // Server says this NPC attacked us — apply damage locally
+      onNPCAttackPlayer: ({ npcId, damage, blocked }) => {
         if (this._playerDead) return;
-        if (this.player.invulnerable) return; // Divine Shield active
-        const player = this.player;
-        player.hp = Math.max(0, player.hp - damage);
-        const npc = this.npcs.find(n => n.id === npcId);
-        this.combatLog?.push({
-          text: `${npc?.classId ?? "Monster"} hits you for ${damage}!`,
-          type: "damage"
-        });
-        if (player.hp <= 0) {
-          this._onPlayerDeath();
+        if (blocked) {
+          this.combatLog?.push({ text: "Attack blocked by Divine Shield!", type: "system" });
+          return;
         }
-        // Broadcast updated HP
-        this.multiplayerSystem?.broadcastState();
+        // Server is now authoritative for player HP
+        // player_stat_update will set the actual HP — this just shows the log
+        const npc = this.npcs.find(n => n.id === npcId);
+        if (damage > 0) {
+          this.combatLog?.push({
+            text: `${npc?.name ?? npc?.classId ?? "Monster"} hits you for ${damage}!`,
+            type: "damage"
+          });
+          this.animSystem?.playHit("player");
+        }
       },
 
       onNPCDamaged: ({ npcId, hp, damage, attackerName }) => {
@@ -1327,6 +1323,63 @@ export class Engine {
         });
       }
     });
+
+    // ── New server-authoritative callbacks ────────────────────────────────
+    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
+      // Server sent authoritative player stats — apply directly
+      if (hp      !== undefined) this.player.hp    = hp;
+      if (maxHp   !== undefined) this.player.maxHp = maxHp;
+      if (xp      !== undefined) this.player.xp    = xp;
+      if (gold    !== undefined) this.player.gold   = gold;
+
+      // Check for death
+      if (hp <= 0 && !this._playerDead) {
+        this._onPlayerDeath();
+      }
+
+      // Check for level up
+      if (xp !== undefined) {
+        this.xpSystem?._checkLevelUp?.();
+      }
+    };
+
+    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit }) => {
+      if (outOfRange) {
+        this.combatLog?.push({ text: "Out of range.", type: "system" });
+        return;
+      }
+      if (aoe) {
+        this.combatLog?.push({ text: `${abilityId} hit ${targetsHit} target${targetsHit !== 1 ? "s" : ""}!`, type: "damage_out" });
+        return;
+      }
+      if (damage > 0) {
+        const npc = this.npcs.find(n => n.id === targetId);
+        this.combatLog?.push({
+          text: `${abilityId} hits ${npc?.name ?? targetId} for ${damage}!`,
+          type: "damage_out"
+        });
+        this.animSystem?.playHit(targetId);
+      }
+    };
+
+    this.multiplayerSystem.onPlayerHealed = ({ healerToken, targetToken, amount }) => {
+      const isSelf = targetToken === this.multiplayerSystem.playerToken;
+      if (isSelf) {
+        this.animSystem?.playHeal("player");
+        this.combatLog?.push({ text: `Healed for ${amount} HP!`, type: "heal" });
+      } else {
+        this.animSystem?.playHeal(`remote_${targetToken}`);
+      }
+    };
+
+    this.multiplayerSystem.onBuffApplied = ({ abilityId, duration }) => {
+      if (abilityId === "divine_shield") {
+        this.player.invulnerable      = true;
+        this.player.invulnerableTimer = Math.floor(duration / 50); // ms to ticks
+        this.combatLog?.push({ text: "Divine Shield activated!", type: "system" });
+        this.animSystem?.playHeal("player");
+      }
+    };
 
     try {
       this.multiplayerSystem.join();
