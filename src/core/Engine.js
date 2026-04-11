@@ -740,6 +740,21 @@ export class Engine {
         }
       }
 
+      // Friendly player click — target for heals/buffs
+      // Check self first, then remote players
+      if (Math.abs(this.player.x - worldTile.x) <= 1 && Math.abs(this.player.y - worldTile.y) <= 1) {
+        this._setTarget(this.player);
+        return;
+      }
+      const remotePlayers = this.multiplayerSystem?.getRemotePlayers() ?? [];
+      const clickedFriend = remotePlayers.find(p =>
+        Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
+      );
+      if (clickedFriend) {
+        this._setTarget(clickedFriend);
+        return;
+      }
+
       // NPC click — target the NPC
       const clickedNPC = this.npcs.find(n =>
         !n.dead &&
@@ -766,10 +781,17 @@ export class Engine {
   // TARGETING
   // ─────────────────────────────────────────────
 
-  _setTarget(npc) {
-    this._currentTarget          = npc;
-    this.renderer.currentTarget  = npc;
-    console.log(npc ? `[Target] ${npc.id}` : "[Target] cleared");
+  _setTarget(entity) {
+    this._currentTarget         = entity;
+    this.renderer.currentTarget = entity;
+    if (entity) {
+      const label = entity.id === "player" ? "yourself"
+        : entity.isRemote ? (entity.name ?? "ally")
+        : entity.id;
+      console.log(`[Target] ${label}`);
+    } else {
+      console.log("[Target] cleared");
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -786,15 +808,46 @@ export class Engine {
     const ability = this._abilities[abilityId];
     if (!ability) return;
 
+    // ── Mana/resource cost check ──
+    const manaCost = ability.cost?.mana ?? 0;
+    if (manaCost > 0) {
+      const def = this.player.resourceDef;
+      if (def?.type === "mana" || def?.type === "energy") {
+        if ((this.player.resource ?? 0) < manaCost) {
+          this.combatLog?.push({ text: `Not enough ${def.label ?? "mana"}!`, type: "system" });
+          return;
+        }
+        this.player.resource = Math.max(0, this.player.resource - manaCost);
+      }
+    }
+
     const target = this._currentTarget;
 
+    // ── Friendly targeting — heal/rez/buff can target remote players ──
+    const isFriendly = ability.type === "heal" || ability.type === "rez"
+                    || ability.type === "buff"  || ability.type === "taunt";
+
     // ── Abilities that don't need a target ──
-    const selfTargeted = ["buff", "aoe", "taunt"].includes(ability.type)
-      || (ability.type === "heal" && !target)
-      || ability.aoe?.centeredOnSelf;
+    const selfTargeted = ["buff", "taunt"].includes(ability.type)
+      || ability.aoe?.centeredOnSelf
+      || (ability.type === "aoe" && !target)
+      || (ability.type === "heal" && (!target || target.type === "player"));
 
     if (selfTargeted) {
       this.combatSystem.queuePlayerAction(abilityId, "player");
+      return;
+    }
+
+    // ── Friendly target (remote player) ──
+    if (isFriendly && target?.isRemote) {
+      this.combatSystem.queuePlayerAction(abilityId, target.playerToken);
+      // Also broadcast heal intent to server
+      if (ability.type === "heal") {
+        const healBase = ability.heal?.base ?? 25;
+        const healVar  = ability.heal?.variance ?? 10;
+        const amount   = healBase + Math.floor(Math.random() * (healVar + 1));
+        this.multiplayerSystem?.sendHealThreat(target.playerToken, amount);
+      }
       return;
     }
 
@@ -811,7 +864,7 @@ export class Engine {
       return;
     }
 
-    // ── Abilities that need a target ──
+    // ── Abilities that need an enemy target ──
     if (!target || target.dead) {
       this.combatLog?.push({ text: "No target.", type: "system" });
       return;
@@ -819,10 +872,10 @@ export class Engine {
 
     // ── Multiplayer — send to server ──
     if (this.multiplayerSystem?._connected) {
-      const base    = ability.damage?.base ?? 0;
+      const base     = ability.damage?.base ?? 0;
       const variance = ability.damage?.variance ?? 0;
-      const damage  = base + Math.floor(Math.random() * (variance + 1));
-      const mult    = this.effectSystem?.getDamageMultiplier("player") ?? 1;
+      const damage   = base + Math.floor(Math.random() * (variance + 1));
+      const mult     = this.effectSystem?.getDamageMultiplier("player") ?? 1;
       const finalDamage = Math.round(damage * mult);
 
       this.multiplayerSystem.sendAttack({ npcId: target.id, damage: finalDamage, abilityId });
