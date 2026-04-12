@@ -91,6 +91,10 @@ export class MultiplayerSystem {
     return [...this._remotePlayers.values()];
   }
 
+  send(msg) {
+    this._send(msg);
+  }
+
   sendAbility({ abilityId, targetId, targetType }) {
     this._send({ type: "use_ability", abilityId, targetId, targetType });
   }
