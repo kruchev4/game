@@ -1,0 +1,156 @@
+{
+  "gold_coin": {
+    "id": "gold_coin",
+    "name": "Gold",
+    "type": "currency",
+    "icon": "🪙",
+    "stackable": true,
+    "value": 1,
+    "description": "The common currency of the realm."
+  },
+
+  "health_potion_small": {
+    "id": "health_potion_small",
+    "name": "Minor Healing Potion",
+    "type": "consumable",
+    "icon": "🧪",
+    "stackable": true,
+    "value": 25,
+    "description": "Restores 20 HP when consumed.",
+    "onUse": { "effect": "heal", "amount": 20 }
+  },
+
+  "health_potion": {
+    "id": "health_potion",
+    "name": "Healing Potion",
+    "type": "consumable",
+    "icon": "❤️",
+    "stackable": true,
+    "value": 50,
+    "description": "Restores 50 HP when consumed.",
+    "onUse": { "effect": "heal", "amount": 50 }
+  },
+
+  "mana_potion_small": {
+    "id": "mana_potion_small",
+    "name": "Minor Mana Potion",
+    "type": "consumable",
+    "icon": "💧",
+    "stackable": true,
+    "value": 25,
+    "description": "Restores 20 Mana when consumed.",
+    "onUse": { "effect": "restore_resource", "amount": 20 }
+  },
+
+  "mana_potion": {
+    "id": "mana_potion",
+    "name": "Mana Potion",
+    "type": "consumable",
+    "icon": "🔵",
+    "stackable": true,
+    "value": 50,
+    "description": "Restores 50 Mana when consumed.",
+    "onUse": { "effect": "restore_resource", "amount": 50 }
+  },
+
+  "goblin_dagger": {
+    "id": "goblin_dagger",
+    "name": "Goblin Dagger",
+    "type": "equipment",
+    "slot": "mainhand",
+    "icon": "🗡️",
+    "stackable": false,
+    "value": 15,
+    "rarity": "common",
+    "description": "A crude but sharp blade favoured by goblins.",
+    "stats": { "str": 1, "attackBonus": 1 }
+  },
+
+  "leather_cap": {
+    "id": "leather_cap",
+    "name": "Leather Cap",
+    "type": "equipment",
+    "slot": "head",
+    "icon": "🪖",
+    "stackable": false,
+    "value": 20,
+    "rarity": "common",
+    "description": "Basic head protection made from cured leather.",
+    "stats": { "armor": 1 }
+  },
+
+  "leather_vest": {
+    "id": "leather_vest",
+    "name": "Leather Vest",
+    "type": "equipment",
+    "slot": "chest",
+    "icon": "🥋",
+    "stackable": false,
+    "value": 35,
+    "rarity": "common",
+    "description": "A simple vest offering modest protection.",
+    "stats": { "armor": 2, "con": 1 }
+  },
+
+  "worn_boots": {
+    "id": "worn_boots",
+    "name": "Worn Boots",
+    "type": "equipment",
+    "slot": "boots",
+    "icon": "👢",
+    "stackable": false,
+    "value": 10,
+    "rarity": "common",
+    "description": "Scuffed boots that have seen better days.",
+    "stats": { "armor": 1 }
+  },
+
+  "shortbow": {
+    "id": "shortbow",
+    "name": "Shortbow",
+    "type": "equipment",
+    "slot": "mainhand",
+    "icon": "🏹",
+    "stackable": false,
+    "value": 40,
+    "rarity": "common",
+    "description": "A light bow suited for quick ranged attacks.",
+    "stats": { "dex": 1, "attackBonus": 2, "rangeBonus": 1 }
+  },
+
+  "goblin_sling": {
+    "id": "goblin_sling",
+    "name": "Goblin Sling",
+    "type": "equipment",
+    "slot": "mainhand",
+    "icon": "🪃",
+    "stackable": false,
+    "value": 8,
+    "rarity": "common",
+    "description": "A simple sling used by goblin archers.",
+    "stats": { "dex": 1, "attackBonus": 1 }
+  },
+
+  "iron_ring": {
+    "id": "iron_ring",
+    "name": "Iron Ring",
+    "type": "equipment",
+    "slot": "ring1",
+    "icon": "💍",
+    "stackable": false,
+    "value": 30,
+    "rarity": "uncommon",
+    "description": "A plain iron ring that oddly sharpens the mind.",
+    "stats": { "int": 2 }
+  },
+
+  "goblin_ear": {
+    "id": "goblin_ear",
+    "name": "Goblin Ear",
+    "type": "junk",
+    "icon": "👂",
+    "stackable": true,
+    "value": 2,
+    "description": "Proof of your goblin-slaying exploits. Worth a few coins."
+  }
+}
