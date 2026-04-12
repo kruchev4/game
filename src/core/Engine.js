@@ -808,6 +808,13 @@ export class Engine {
     const ability = this._abilities[abilityId];
     if (!ability) return;
 
+    // ── Client-side cooldown check (UI only — server also enforces) ──
+    const cd = this.combatSystem?.getCooldown?.("player", abilityId);
+    if (cd?.remaining > 0) {
+      this.combatLog?.push({ text: `${ability.name} is on cooldown.`, type: "system" });
+      return;
+    }
+
     // ── Mana/resource cost check ──
     const manaCost = ability.cost?.mana ?? 0;
     if (manaCost > 0) {
@@ -822,91 +829,53 @@ export class Engine {
     }
 
     const target = this._currentTarget;
+    const type   = ability.type ?? "melee";
 
-    // ── Friendly targeting — heal/rez/buff can target remote players ──
-    const isFriendly = ability.type === "heal" || ability.type === "rez"
-                    || ability.type === "buff"  || ability.type === "taunt";
+    // ── Multiplayer — ALL abilities go to server ──
+    if (this.multiplayerSystem?._connected) {
+      // Determine target for server
+      let targetId   = null;
+      let targetType = null;
 
-    // ── Abilities that don't need a target ──
-    const selfTargeted = ["buff", "taunt"].includes(ability.type)
+      if (["buff", "taunt"].includes(type) || ability.aoe?.centeredOnSelf) {
+        targetId = "self";
+      } else if (type === "aoe") {
+        targetId = "aoe";
+      } else if (type === "heal") {
+        targetId   = target?.isRemote ? target.playerToken : "self";
+        targetType = "player";
+      } else if (target) {
+        targetId   = target.id;
+        targetType = target.type;
+      } else {
+        this.combatLog?.push({ text: "No target.", type: "system" });
+        return;
+      }
+
+      // Send to server — server validates range, rolls damage, applies effects
+      this.multiplayerSystem.sendAbility({ abilityId, targetId, targetType });
+
+      // Start local cooldown for UI feedback
+      this.combatSystem?._startCooldown?.("player", abilityId);
+      return;
+    }
+
+    // ── Single player — queue through local combat system ──
+    const selfTargeted = ["buff", "taunt"].includes(type)
       || ability.aoe?.centeredOnSelf
-      || (ability.type === "aoe" && !target)
-      || (ability.type === "heal" && (!target || target.type === "player"));
+      || (type === "aoe" && !target)
+      || (type === "heal" && (!target || target.type === "player"));
 
     if (selfTargeted) {
       this.combatSystem.queuePlayerAction(abilityId, "player");
       return;
     }
 
-    // ── Friendly target (remote player) ──
-    if (isFriendly && target?.isRemote) {
-      this.combatSystem.queuePlayerAction(abilityId, target.playerToken);
-      // Also broadcast heal intent to server
-      if (ability.type === "heal") {
-        const healBase = ability.heal?.base ?? 25;
-        const healVar  = ability.heal?.variance ?? 10;
-        const amount   = healBase + Math.floor(Math.random() * (healVar + 1));
-        this.multiplayerSystem?.sendHealThreat(target.playerToken, amount);
-      }
-      return;
-    }
-
-    // ── Self type (legacy) ──
-    if (ability.type === "self") {
-      this._resolveSpecialAbility({ ability, attacker: this.player, target: this.player });
-      if (ability.selfEffect) {
-        this.effectSystem?.apply(this.player, ability.selfEffect.effect, "player", {
-          duration:  ability.selfEffect.duration,
-          magnitude: ability.selfEffect.magnitude
-        });
-      }
-      this.combatSystem?._startCooldown?.("player", abilityId);
-      return;
-    }
-
-    // ── Abilities that need an enemy target ──
     if (!target || target.dead) {
       this.combatLog?.push({ text: "No target.", type: "system" });
       return;
     }
 
-    // ── Multiplayer — send ability intent to server ──
-    if (this.multiplayerSystem?._connected) {
-      // Server rolls damage, validates range, applies effects
-      this.multiplayerSystem.sendAbility({
-        abilityId,
-        targetId:   target?.id ?? null,
-        targetType: target?.type ?? null
-      });
-
-      // Local animations only — no damage rolls
-      if (ability.type === "melee") {
-        const dx  = target.x - this.player.x;
-        const dy  = target.y - this.player.y;
-        const len = Math.sqrt(dx*dx + dy*dy) || 1;
-        this.animSystem?.playAttack("player", dx/len, dy/len);
-      }
-      if (ability.type === "ranged") {
-        if (this.player.classId === "ranger") {
-          this.animSystem?.spawnArrow(this.player.x, this.player.y, target.x, target.y);
-        } else if (this.player.classId === "paladin") {
-          this.animSystem?.spawnHolyBolt(this.player.x, this.player.y, target.x, target.y);
-        }
-      }
-      if (["aoe", "consecrate", "divine_storm"].includes(abilityId)) {
-        this.animSystem?.spawnAOE({
-          x: this.player.x, y: this.player.y,
-          radius: ability.aoe?.radius ?? 3,
-          color: "rgba(255,220,50,0.4)"
-        });
-      }
-      if (ability.type === "heal") {
-        this.animSystem?.playHeal(target?.id ?? "player");
-      }
-      return;
-    }
-
-    // ── Single player — queue through local combat system ──
     this.combatSystem.queuePlayerAction(abilityId, target.id);
   }
 
@@ -1291,21 +1260,18 @@ export class Engine {
           this.npcs     = this.npcs.filter(n => n.id !== npcId);
           if (this._currentTarget?.id === npcId) this._setTarget(null);
         }
+        this.animSystem?.playDying(npcId);
 
-        // Award shared XP to ALL players
-        if (xpShare > 0) this.xpSystem?.awardXP(xpShare);
+        // XP and gold are applied via player_stat_update (server authoritative)
+        // We only handle item drops and the combat log here
 
-        // Award shared gold
-        if (loot?.gold > 0) this.player.gold = (this.player.gold ?? 0) + loot.gold;
-
-        // Award item drops
+        // Item drops — add to bag
         if (loot?.itemId && loot.itemId !== "nothing" && loot.itemId !== "gold") {
-          const itemDef = this.renderer?.itemDefs?.[loot.itemId];
           const emptySlot = this.player.bag?.findIndex(s => s === null);
           if (emptySlot >= 0) {
             this.player.bag[emptySlot] = { itemId: loot.itemId, qty: loot.qty ?? 1 };
             this.combatLog?.push({
-              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${itemDef?.name ?? loot.itemId}!`,
+              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${loot.itemId}!`,
               type: "reward"
             });
           }
@@ -1326,39 +1292,87 @@ export class Engine {
 
     // ── New server-authoritative callbacks ────────────────────────────────
     this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
-      // Server sent authoritative player stats — apply directly
       if (hp      !== undefined) this.player.hp    = hp;
       if (maxHp   !== undefined) this.player.maxHp = maxHp;
       if (xp      !== undefined) this.player.xp    = xp;
       if (gold    !== undefined) this.player.gold   = gold;
 
-      // Check for death
-      if (hp <= 0 && !this._playerDead) {
+      // Don't trigger death during invulnerability window (e.g. just respawned)
+      if (hp <= 0 && !this._playerDead && !this.player.invulnerable) {
         this._onPlayerDeath();
       }
 
-      // Check for level up
       if (xp !== undefined) {
         this.xpSystem?._checkLevelUp?.();
       }
     };
 
-    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit }) => {
+    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit, heal }) => {
       if (outOfRange) {
         this.combatLog?.push({ text: "Out of range.", type: "system" });
         return;
       }
+
+      const ability = this._abilities[abilityId];
+      const type    = ability?.type ?? "melee";
+      const target  = this.npcs.find(n => n.id === targetId);
+
+      // Melee — lunge animation
+      if (type === "melee" && target) {
+        const dx  = target.x - this.player.x;
+        const dy  = target.y - this.player.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        this.animSystem?.playAttack("player", dx/len, dy/len);
+        this.animSystem?.playHit(targetId);
+      }
+
+      // Ranged — projectile animation
+      if (type === "ranged" && target) {
+        if (this.player.classId === "ranger") {
+          this.animSystem?.spawnArrow(this.player.x, this.player.y, target.x, target.y);
+        } else if (this.player.classId === "paladin") {
+          this.animSystem?.spawnHolyBolt(this.player.x, this.player.y, target.x, target.y);
+        }
+        this.animSystem?.playHit(targetId);
+      }
+
+      // AOE — multishot arrows or AOE circle
       if (aoe) {
-        this.combatLog?.push({ text: `${abilityId} hit ${targetsHit} target${targetsHit !== 1 ? "s" : ""}!`, type: "damage_out" });
+        const isMultishot = abilityId === "multishot" || abilityId === "volley";
+        if (isMultishot && this.player.classId === "ranger") {
+          const nearbyNPCs = this.npcs.filter(n => !n.dead).slice(0, targetsHit ?? 3);
+          for (const n of nearbyNPCs) {
+            this.animSystem?.spawnArrow(this.player.x, this.player.y, n.x, n.y);
+            this.animSystem?.playHit(n.id);
+          }
+        } else {
+          this.animSystem?.spawnAOE({
+            x: this.player.x, y: this.player.y,
+            radius: ability?.range ?? 3,
+            color:  abilityId.includes("holy") || abilityId.includes("consec") || abilityId.includes("divine")
+              ? "rgba(255,220,50,0.4)" : "rgba(255,100,0,0.4)"
+          });
+        }
+        this.combatLog?.push({
+          text: `${ability?.name ?? abilityId} hit ${targetsHit ?? 0} target${targetsHit !== 1 ? "s" : ""}!`,
+          type: "damage_out"
+        });
         return;
       }
+
+      // Heal
+      if (heal > 0) {
+        this.animSystem?.playHeal(targetId === "self" ? "player" : targetId);
+        return;
+      }
+
+      // Damage log
       if (damage > 0) {
         const npc = this.npcs.find(n => n.id === targetId);
         this.combatLog?.push({
-          text: `${abilityId} hits ${npc?.name ?? targetId} for ${damage}!`,
+          text: `${ability?.name ?? abilityId} hits ${npc?.name ?? npc?.classId ?? targetId} for ${damage}!`,
           type: "damage_out"
         });
-        this.animSystem?.playHit(targetId);
       }
     };
 
@@ -1559,6 +1573,13 @@ export class Engine {
     p.moveTarget = null;
     p.movePath   = null;
 
+    // Tell server we respawned — resets HP server-side
+    this.multiplayerSystem?.send({ type: "respawn" });
+
+    // Brief invulnerability window so server NPC attacks don't instant-kill
+    p.invulnerable      = true;
+    p.invulnerableTimer = 120; // 6 seconds at 20 ticks/sec
+
     // Respawn at inn if set, otherwise world spawn
     if (this._respawnPoint && this._respawnPoint.worldId !== this._currentWorldId) {
       await this.transition({
@@ -1584,7 +1605,7 @@ export class Engine {
     }
     this.combatSystem?.reset?.();
     this.renderer.camera.centerOn(p.x, p.y, this.world);
-    this.combatLog?.push({ text: "You have returned.", type: "system" });
+    this.combatLog?.push({ text: "You have returned. (Invulnerable for 6s)", type: "system" });
   }
   // ─────────────────────────────────────────────
   // RESOURCE
