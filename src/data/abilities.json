@@ -1,0 +1,88 @@
+{
+  "slash": {
+    "id": "slash",
+    "name": "Slash",
+    "description": "A basic melee strike.",
+    "type": "melee",
+    "range": 1,
+    "requiresLoS": false,
+    "damage": { "base": 8, "variance": 4 },
+    "cooldown": 60,
+    "cost": {},
+    "tags": ["physical", "melee"]
+  },
+
+  "shoot": {
+    "id": "shoot",
+    "name": "Shoot",
+    "description": "A steady ranged shot.",
+    "type": "ranged",
+    "range": 8,
+    "requiresLoS": true,
+    "damage": { "base": 6, "variance": 3 },
+    "cooldown": 80,
+    "cost": {},
+    "tags": ["physical", "ranged"]
+  },
+
+  "frostArrow": {
+    "id": "frostArrow",
+    "name": "Frost Arrow",
+    "description": "An enchanted arrow that slows the target on hit.",
+    "type": "ranged",
+    "range": 7,
+    "requiresLoS": true,
+    "damage": { "base": 5, "variance": 2 },
+    "cooldown": 100,
+    "cost": {},
+    "onHit": {
+      "effect": "slow",
+      "duration": 60,
+      "magnitude": 0.5
+    },
+    "tags": ["magical", "ranged", "cold"]
+  },
+
+  "multishot": {
+    "id": "multishot",
+    "name": "Multishot",
+    "description": "Fires three arrows in a spread. Hits all targets in a cone.",
+    "type": "ranged",
+    "range": 6,
+    "requiresLoS": true,
+    "damage": { "base": 4, "variance": 2 },
+    "cooldown": 120,
+    "cost": {},
+    "aoe": {
+      "shape": "cone",
+      "spread": 2
+    },
+    "tags": ["physical", "ranged", "aoe"]
+  },
+
+  "goblinStab": {
+    "id": "goblinStab",
+    "name": "Goblin Stab",
+    "description": "A quick dirty jab from a goblin knife.",
+    "type": "melee",
+    "range": 1,
+    "requiresLoS": false,
+    "damage": { "base": 4, "variance": 3 },
+    "cooldown": 70,
+    "cost": {},
+    "tags": ["physical", "melee", "npc"]
+  },
+
+  "goblinSling": {
+    "id": "goblinSling",
+    "name": "Goblin Sling",
+    "description": "A rock hurled from a sling. Short ranged but effective.",
+    "type": "ranged",
+    "range": 5,
+    "requiresLoS": true,
+    "damage": { "base": 3, "variance": 2 },
+    "cooldown": 90,
+    "cost": {},
+    "tags": ["physical", "ranged", "npc"]
+  }
+}
