@@ -19,8 +19,84 @@ import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
 import { MultiplayerSystem }         from "./systems/MultiplayerSystem.js";
 import { fetchAvailableServers }     from "./adapters/ServerDirectory.js";
+import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 const WORLD_ID = "overworld_C";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── Load game data from Supabase (single source of truth) ─────────────────
+async function loadGameData() {
+  const [abilitiesRes, classesRes, itemsRes] = await Promise.all([
+    supabase.from("abilities").select("*"),
+    supabase.from("classes").select("*"),
+    supabase.from("items").select("*")
+  ]);
+
+  // Convert abilities array to map keyed by id
+  const abilities = {};
+  for (const row of abilitiesRes.data ?? []) {
+    abilities[row.id] = {
+      id:          row.id,
+      name:        row.name,
+      type:        row.type,
+      range:       row.range,
+      cooldown:    row.cooldown,
+      requiresLoS: row.type === "ranged",
+      damage:      { base: row.damage_min, variance: row.damage_max - row.damage_min },
+      heal:        row.heal_min > 0 ? { base: row.heal_min, variance: row.heal_max - row.heal_min } : undefined,
+      aoe:         row.targets > 1 ? { maxTargets: row.targets, shape: row.type === "aoe" ? "radius" : "cone", centeredOnSelf: row.type === "aoe" } : undefined,
+      cost:        row.mana_cost > 0 ? { mana: row.mana_cost } : {},
+      icon:        row.icon,
+      description: row.description,
+      tags:        []
+    };
+  }
+
+  // Convert classes array to map keyed by id
+  const classes = {};
+  for (const row of classesRes.data ?? []) {
+    classes[row.id] = {
+      id:          row.id,
+      name:        row.name,
+      description: row.description,
+      icon:        row.icon,
+      role:        row.role,
+      baseStats:   { hp: row.base_hp, str: 14, dex: 12, int: 10, con: 12, wis: 10, cha: 10 },
+      actionSpeed: row.action_speed,
+      abilities:   row.abilities ?? [],
+      color:       row.color,
+      resource: {
+        type:    row.resource_type,
+        label:   row.resource_type === "rage" ? "Rage" : "Mana",
+        color:   row.resource_type === "rage" ? "#cc2222" : "#3366ff",
+        max:     row.resource_max,
+        startAt: row.resource_type === "rage" ? 0 : row.resource_max,
+        regenPerTick: row.resource_type === "mana" ? 0.05 : 0
+      }
+    };
+  }
+
+  // Items map
+  const items = {};
+  for (const row of itemsRes.data ?? []) {
+    items[row.id] = row;
+  }
+
+  console.log(`[main] Loaded ${Object.keys(abilities).length} abilities, ${Object.keys(classes).length} classes, ${Object.keys(items).length} items from Supabase`);
+
+  // Fall back to local JSON if Supabase failed
+  if (!Object.keys(abilities).length || !Object.keys(classes).length) {
+    console.warn("[main] Supabase data empty — falling back to local JSON");
+    const [ar, cr] = await Promise.all([
+      fetch("./src/data/abilities.json").then(r => r.json()),
+      fetch("./src/data/classes.json").then(r => r.json())
+    ]);
+    return { abilities: ar, classes: cr, items };
+  }
+
+  return { abilities, classes, items };
+}
 
 // ── Entry point ───────────────────────────────────────────────────────────
 
@@ -33,16 +109,8 @@ async function start() {
     const worldProvider = new SupabaseOverworldProvider();
     const saveProvider  = new SaveProvider();
 
-    const [abilitiesRes, classesRes] = await Promise.all([
-      fetch("./src/data/abilities.json"),
-      fetch("./src/data/classes.json")
-    ]);
-
-    if (!abilitiesRes.ok) throw new Error(`Failed to load abilities.json: ${abilitiesRes.status}`);
-    if (!classesRes.ok)   throw new Error(`Failed to load classes.json: ${classesRes.status}`);
-
-    const abilities = await abilitiesRes.json();
-    const classes   = await classesRes.json();
+    // Load all game data from Supabase (single source of truth)
+    const { abilities, classes, items } = await loadGameData();
 
     // ── Launch engine ─────────────────────────────────────────────────────
     async function launchGame(character, saveSlot, serverUrl = null) {
