@@ -802,7 +802,12 @@ export class Engine {
     const classDef = this._classes[this._playerClassId];
     if (!classDef) return;
 
-    const abilityId = classDef.abilities?.[slotIndex];
+    // Use player.abilities (customised bar) — falls back to class defaults
+    const abilityBar = this.player.abilities?.length
+      ? this.player.abilities
+      : classDef.abilities ?? [];
+
+    const abilityId = abilityBar[slotIndex];
     if (!abilityId) return;
 
     const ability = this._abilities[abilityId];
