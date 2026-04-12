@@ -77,26 +77,45 @@ const players = new Map(); // token    -> PlayerSession
 /** @type {Map<string, MonsterDef>} */
 const monsterDefs = new Map();
 
-function loadMonsterDefs() {
-  const rows = db.prepare("SELECT * FROM monsters").all();
-  for (const row of rows) {
-    monsterDefs.set(row.id, {
-      id:          row.id,
-      name:        row.name,
-      icon:        row.icon,
-      hp:          row.hp,
-      damageMin:   row.damage_min,
-      damageMax:   row.damage_max,
-      speed:       row.speed,
-      perception:  row.perception,
-      roamRadius:  row.roam_radius,
-      attackRange: row.attack_range,
-      xpValue:     row.xp_value,
-      isBoss:      row.is_boss === 1,
-      tags:        []
-    });
+const MONSTER_FALLBACK = [
+  { id:"goblinMelee",  name:"Goblin Warrior", icon:"👺", hp:30,  damage_min:4,  damage_max:9,  speed:3, perception:7,  roam_radius:4, attack_range:1, xp_value:25,  is_boss:false },
+  { id:"goblinArcher", name:"Goblin Archer",  icon:"🏹", hp:22,  damage_min:5,  damage_max:10, speed:2, perception:8,  roam_radius:4, attack_range:6, xp_value:28,  is_boss:false },
+  { id:"zombie",       name:"Zombie",         icon:"🧟", hp:35,  damage_min:5,  damage_max:10, speed:2, perception:5,  roam_radius:3, attack_range:1, xp_value:30,  is_boss:false },
+  { id:"skeleton",     name:"Skeleton",       icon:"💀", hp:25,  damage_min:4,  damage_max:9,  speed:3, perception:7,  roam_radius:4, attack_range:1, xp_value:28,  is_boss:false },
+  { id:"wraith",       name:"Wraith",         icon:"👻", hp:28,  damage_min:6,  damage_max:12, speed:4, perception:8,  roam_radius:4, attack_range:4, xp_value:40,  is_boss:false },
+  { id:"necromancer",  name:"Necromancer",    icon:"🧙", hp:22,  damage_min:8,  damage_max:16, speed:2, perception:9,  roam_radius:3, attack_range:6, xp_value:60,  is_boss:false },
+  { id:"lich",         name:"Lich",           icon:"💀", hp:200, damage_min:18, damage_max:28, speed:2, perception:10, roam_radius:2, attack_range:5, xp_value:300, is_boss:true  },
+];
+
+function _rowToMonster(row) {
+  return {
+    id:          row.id,
+    name:        row.name,
+    icon:        row.icon        ?? "👾",
+    hp:          row.hp,
+    damageMin:   row.damage_min,
+    damageMax:   row.damage_max,
+    speed:       row.speed       ?? 2,
+    perception:  row.perception  ?? 5,
+    roamRadius:  row.roam_radius ?? 3,
+    attackRange: row.attack_range ?? 1,
+    xpValue:     row.xp_value    ?? 0,
+    isBoss:      row.is_boss     === true || row.is_boss === 1,
+    tags:        row.tags        ?? []
+  };
+}
+
+async function loadMonsterDefs() {
+  try {
+    const rows = await sb("monsters?select=*&order=id");
+    if (!rows?.length) throw new Error("Empty response");
+    for (const row of rows) monsterDefs.set(row.id, _rowToMonster(row));
+    console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from Supabase`);
+  } catch (e) {
+    console.warn(`[Server] Monster load failed (${e.message}) — using fallback`);
+    for (const row of MONSTER_FALLBACK) monsterDefs.set(row.id, _rowToMonster(row));
+    console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from fallback`);
   }
-  console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from local DB`);
 }
 
 
@@ -104,24 +123,32 @@ function loadMonsterDefs() {
 /** @type {Map<string, object>} */
 const abilityDefs = new Map();
 
-function loadAbilityDefs() {
-  const rows = db.prepare("SELECT * FROM abilities").all();
-  for (const row of rows) {
-    abilityDefs.set(row.id, {
-      id:         row.id,
-      name:       row.name,
-      classId:    row.class_id,
-      type:       row.type,
-      damageMin:  row.damage_min,
-      damageMax:  row.damage_max,
-      range:      row.range,
-      cooldown:   row.cooldown,
-      targets:    row.targets,
-      healMin:    row.heal_min,
-      healMax:    row.heal_max
-    });
+function _rowToAbility(row) {
+  return {
+    id:        row.id,
+    name:      row.name,
+    classId:   row.class_id,
+    type:      row.type      ?? "melee",
+    damageMin: row.damage_min ?? 0,
+    damageMax: row.damage_max ?? 0,
+    range:     row.range      ?? 1,
+    cooldown:  row.cooldown   ?? 40,
+    targets:   row.targets    ?? 1,
+    healMin:   row.heal_min   ?? 0,
+    healMax:   row.heal_max   ?? 0,
+    manaCost:  row.mana_cost  ?? 0
+  };
+}
+
+async function loadAbilityDefs() {
+  try {
+    const rows = await sb("abilities?select=*&order=id");
+    if (!rows?.length) throw new Error("Empty response");
+    for (const row of rows) abilityDefs.set(row.id, _rowToAbility(row));
+    console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from Supabase`);
+  } catch (e) {
+    console.warn(`[Server] Ability load failed (${e.message}) — server will use generic damage`);
   }
-  console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from local DB`);
 }
 
 // ── Spawn group loader — called per world ─────────────────────────────────
@@ -187,6 +214,17 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
+  // Check and deduct mana cost (server validates resource)
+  const manaCost = ability.manaCost ?? 0;
+  if (manaCost > 0) {
+    const currentMana = session.mana ?? session.maxMana ?? 100;
+    if (currentMana < manaCost) {
+      _send(session.ws, { type: "ability_result", abilityId, noMana: true });
+      return;
+    }
+    session.mana = Math.max(0, currentMana - manaCost);
+  }
+
   // Try DB first, fall back to a generic ability
   const ability = abilityDefs.get(abilityId) ?? {
     id: abilityId, type: "melee", damageMin: 5, damageMax: 10,
@@ -196,10 +234,12 @@ function _resolveAbility(session, world, msg) {
   // Start cooldown immediately
   session.cooldowns[abilityId] = ability.cooldown ?? 40;
 
-  const type = ability.type ?? "melee";
+  const type   = ability.type ?? "melee";
+  // Multishot and volley are ranged but hit multiple targets
+  const isMultiTarget = (ability.targets ?? 1) > 1;
 
-  // ── AOE / Consecrate / Divine Storm ──────────────────────────────────────
-  if (type === "aoe") {
+  // ── AOE / Multishot / Consecrate / Divine Storm ───────────────────────────
+  if (type === "aoe" || isMultiTarget) {
     const radius     = ability.range ?? 3;
     const maxTargets = ability.targets ?? 6;
     const npcsHit    = [...world.npcs.values()]
@@ -367,11 +407,12 @@ wss.on("connection", (ws) => {
           level:    level   ?? 1,
           x:        x       ?? 0,
           y:        y       ?? 0,
-          gold:     msg.gold  ?? 0,
-          xp:       msg.xp    ?? 0,
+          gold:     msg.gold    ?? 0,
+          xp:       msg.xp      ?? 0,
+          mana:     msg.mana    ?? 100,
+          maxMana:  msg.maxMana ?? 100,
           state:    "idle",
           lastSeen: Date.now(),
-          // Ability cooldowns { abilityId -> ticksRemaining }
           cooldowns: {}
         };
         players.set(playerToken, session);
@@ -499,6 +540,26 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case "respawn": {
+        // Player respawned — reset HP on server
+        if (!session) break;
+        session.hp       = session.maxHp;
+        session.buffActive    = null;
+        session.buffExpiresAt = 0;
+        // Clear all cooldowns
+        session.cooldowns = {};
+        // Send fresh stat update back
+        _send(ws, {
+          type:  "player_stat_update",
+          hp:    session.hp,
+          maxHp: session.maxHp,
+          xp:    session.xp,
+          gold:  session.gold
+        });
+        console.log(`[Server] ${session.name} respawned`);
+        break;
+      }
+
       case "ping": {
         if (session) session.lastSeen = Date.now();
         _send(ws, { type: "pong" });
@@ -529,10 +590,14 @@ setInterval(() => {
       _removePlayer(token);
       continue;
     }
-    // Tick player cooldowns
+    // Tick player cooldowns and regen mana
     for (const abilityId of Object.keys(s.cooldowns ?? {})) {
       s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - 1);
       if (s.cooldowns[abilityId] === 0) delete s.cooldowns[abilityId];
+    }
+    // Mana regen — 0.5 mana per tick = 10 mana/sec
+    if (s.mana !== undefined && s.maxMana) {
+      s.mana = Math.min(s.maxMana, (s.mana ?? 0) + 0.5);
     }
   }
 
@@ -913,18 +978,19 @@ class WorldInstance {
   }
 
   _rollLoot(npc) {
+    // Simple guaranteed gold drop + loot table roll
+    const baseGold = npc.isBoss
+      ? 50 + Math.floor(Math.random() * 100)
+      : 3  + Math.floor(Math.random() * 10);
+
     // Look up loot table for this monster
+    const monsterId = npc.monsterId ?? npc.id.split("_")[0];
     const link = db.prepare(
       "SELECT loot_table_id FROM monster_loot WHERE monster_id = ?"
-    ).get(npc.monsterId);
-
-    console.log(`[Loot] ${npc.id} monsterId=${npc.monsterId} link=${link?.loot_table_id ?? "none"}`);
+    ).get(monsterId);
 
     if (!link) {
-      // Fallback — simple gold drop
-      return { gold: npc.isBoss
-        ? 50 + Math.floor(Math.random() * 100)
-        : 2  + Math.floor(Math.random() * 8) };
+      return { gold: baseGold };
     }
 
     // Get weighted entries
@@ -943,14 +1009,14 @@ class WorldInstance {
       if (roll <= 0) { chosen = entry; break; }
     }
 
-    if (chosen.item_id === "nothing") return { gold: 0 };
+    if (chosen.item_id === "nothing") return { gold: baseGold };
 
-    const gold = chosen.gold_min > 0
+    const rolledGold = chosen.gold_min > 0
       ? chosen.gold_min + Math.floor(Math.random() * (chosen.gold_max - chosen.gold_min + 1))
       : 0;
 
     return {
-      gold,
+      gold: baseGold + rolledGold,
       itemId: chosen.item_id !== "gold" ? chosen.item_id : null,
       qty:    chosen.qty_min + Math.floor(Math.random() * (chosen.qty_max - chosen.qty_min + 1))
     };
@@ -1118,10 +1184,12 @@ function _removePlayer(token) {
 
 // ── Startup ───────────────────────────────────────────────────────────────
 (async () => {
-  // Init local DB first — required for monster/spawn data
+  // Load game data from Supabase (source of truth)
+  await loadMonsterDefs();
+  await loadAbilityDefs();
+
+  // Init local DB for spawn groups only
   initDB();
-  loadMonsterDefs();
-  loadAbilityDefs();
 
   try {
     await registerServer();
