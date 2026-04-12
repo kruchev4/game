@@ -214,25 +214,26 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
-  // Check and deduct mana cost (server validates resource)
+  // Look up ability — must come before any ability.x reference
+  const ability = abilityDefs.get(abilityId) ?? {
+    id: abilityId, type: "melee", damageMin: 5, damageMax: 10,
+    range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0, manaCost: 0
+  };
+
+  // Start cooldown immediately
+  session.cooldowns[abilityId] = ability.cooldown ?? 40;
+
+  // Check and deduct mana cost
   const manaCost = ability.manaCost ?? 0;
   if (manaCost > 0) {
     const currentMana = session.mana ?? session.maxMana ?? 100;
     if (currentMana < manaCost) {
+      delete session.cooldowns[abilityId]; // don't waste cooldown if no mana
       _send(session.ws, { type: "ability_result", abilityId, noMana: true });
       return;
     }
     session.mana = Math.max(0, currentMana - manaCost);
   }
-
-  // Try DB first, fall back to a generic ability
-  const ability = abilityDefs.get(abilityId) ?? {
-    id: abilityId, type: "melee", damageMin: 5, damageMax: 10,
-    range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0
-  };
-
-  // Start cooldown immediately
-  session.cooldowns[abilityId] = ability.cooldown ?? 40;
 
   const type   = ability.type ?? "melee";
   // Multishot and volley are ranged but hit multiple targets
