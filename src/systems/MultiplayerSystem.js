@@ -1,1135 +1,467 @@
 /**
- * Realm of Echoes — Authoritative Game Server
+ * MultiplayerSystem.js
  *
- * Run:  node server.js
- *
- * Data ownership:
- *   Supabase  — monsters, spawn_groups, spawn_group_monsters, worlds, saves
- *   Server    — NPC simulation, combat resolution, player presence, loot
- *   Clients   — rendering, input, UI
+ * Connects to the Node.js game server via WebSocket.
+ * Handles player presence, movement sync, and co-op combat.
  */
 
-require("dotenv").config();
-const { WebSocketServer, WebSocket } = require("ws");
-const Database = require("better-sqlite3");
-const path     = require("path");
-const fs       = require("fs");
+const MOVE_MS      = 100;   // broadcast position every 100ms
+const PING_MS      = 5000;  // keepalive ping every 5s
 
-// ── Config ────────────────────────────────────────────────────────────────
-const PORT         = process.env.PORT         || 8080;
-const SERVER_NAME  = process.env.SERVER_NAME  || "Local Server";
-const SERVER_URL   = process.env.SERVER_URL   || "ws://localhost:8080";
-const MAX_PLAYERS  = process.env.MAX_PLAYERS  || 10;
+export class MultiplayerSystem {
+  constructor({ serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+    this.serverUrl    = serverUrl;
+    this.player       = player;
+    this.worldId      = worldId;
+    this.playerToken  = playerToken;
+    this.onPlayerJoin      = onPlayerJoin      ?? (() => {});
+    this.onPlayerLeave     = onPlayerLeave     ?? (() => {});
+    this.onPlayerUpdate    = onPlayerUpdate    ?? (() => {});
+    this.onNPCDamaged      = onNPCDamaged      ?? (() => {});
+    this.onNPCKilled       = onNPCKilled       ?? (() => {});
+    this.onNPCState        = onNPCState        ?? (() => {});
+    this.onNPCAttackPlayer = onNPCAttackPlayer ?? (() => {});
 
-const SUPABASE_URL      = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY;
-
-const TICK_MS              = 50;   // 20 ticks/sec
-const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
-const PING_INTERVAL_MS     = 10000;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error("[Server] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment");
-  process.exit(1);
-}
-
-// ── Local SQLite database ────────────────────────────────────────────────────
-const DB_PATH = path.join(__dirname, "db", "roe_server.db");
-let db = null;
-
-function initDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    console.error("[Server] Database not found at", DB_PATH);
-    console.error("[Server] Run: node db/seed.js");
-    process.exit(1);
+    this._ws             = null;
+    this._remotePlayers  = new Map(); // token -> entity
+    this._moveTimer      = 0;
+    this._pingTimer      = 0;
+    this._connected      = false;
+    this._reconnectDelay = 2000;
+    this._dead           = false;    // set true on leave() to stop reconnects
   }
-  db = new Database(DB_PATH, { readonly: true });
-  db.pragma("journal_mode = WAL");
-  console.log("[Server] Local database loaded from", DB_PATH);
-}
 
-// ── Supabase REST helper (client-facing only — saves, worlds, registry) ───────
-async function sb(path, opts = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      "apikey":        SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type":  "application/json",
-      "Accept":        "application/json",
-      ...(opts.headers ?? {})
+  // ─────────────────────────────────────────────
+  // LIFECYCLE
+  // ─────────────────────────────────────────────
+
+  join() {
+    this._dead = false;
+    this._connect();
+    window.addEventListener("beforeunload", () => this.leave());
+  }
+
+  leave() {
+    this._dead = true;
+    if (this._ws) {
+      this._send({ type: "leave" });
+      this._ws.close();
+      this._ws = null;
     }
-  });
-  if (res.status === 204) return null;
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase ${path}: ${res.status} ${text}`);
+    for (const token of this._remotePlayers.keys()) {
+      this.onPlayerLeave(token);
+    }
+    this._remotePlayers.clear();
+    this._connected = false;
   }
-  return res.json();
-}
 
-// ── State ─────────────────────────────────────────────────────────────────
-const worlds  = new Map(); // worldId  -> WorldInstance
-const players = new Map(); // token    -> PlayerSession
+  // ─────────────────────────────────────────────
+  // UPDATE — call once per frame
+  // ─────────────────────────────────────────────
 
-// ── Monster cache — loaded once on startup ────────────────────────────────
-/** @type {Map<string, MonsterDef>} */
-const monsterDefs = new Map();
+  update(dt = 1) {
+    if (!this._connected) return;
 
-function loadMonsterDefs() {
-  const rows = db.prepare("SELECT * FROM monsters").all();
-  for (const row of rows) {
-    monsterDefs.set(row.id, {
-      id:          row.id,
-      name:        row.name,
-      icon:        row.icon,
-      hp:          row.hp,
-      damageMin:   row.damage_min,
-      damageMax:   row.damage_max,
-      speed:       row.speed,
-      perception:  row.perception,
-      roamRadius:  row.roam_radius,
-      attackRange: row.attack_range,
-      xpValue:     row.xp_value,
-      isBoss:      row.is_boss === 1,
-      tags:        []
+    const frameMs = dt * (1000 / 60);
+
+    // Position broadcast
+    this._moveTimer += frameMs;
+    if (this._moveTimer >= MOVE_MS) {
+      this._moveTimer = 0;
+      this._broadcastMove();
+    }
+
+    // Keepalive ping
+    this._pingTimer += frameMs;
+    if (this._pingTimer >= PING_MS) {
+      this._pingTimer = 0;
+      this._send({ type: "ping" });
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // COMBAT API — called by Engine
+  // ─────────────────────────────────────────────
+
+  /**
+   * Tell server this player attacked an NPC.
+   * Server resolves damage and broadcasts result to all clients.
+   */
+  getRemotePlayers() {
+    return [...this._remotePlayers.values()];
+  }
+
+  sendAbility({ abilityId, targetId, targetType }) {
+    this._send({ type: "use_ability", abilityId, targetId, targetType });
+  }
+
+  sendAttack({ npcId, damage, abilityId }) {
+    // Legacy — prefer sendAbility for new code
+    this._send({ type: "npc_attack", npcId, damage, abilityId });
+  }
+
+  sendTaunt(radius = 6) {
+    this._send({ type: "taunt", radius });
+  }
+
+  sendHealThreat(targetToken, amount) {
+    this._send({ type: "heal_threat", targetToken, amount });
+  }
+
+  /**
+   * Register an NPC with the server so it can track HP.
+   * Call when spawning NPCs.
+   */
+  registerNPC(npc) {
+    this._send({
+      type: "npc_register",
+      npc: {
+        id:       npc.id,
+        classId:  npc.classId,
+        hp:       npc.hp,
+        maxHp:    npc.maxHp,
+        xpValue:  npc.xpValue ?? 30,
+      }
     });
   }
-  console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from local DB`);
-}
 
-
-// ── Ability cache ────────────────────────────────────────────────────────────
-/** @type {Map<string, object>} */
-const abilityDefs = new Map();
-
-function loadAbilityDefs() {
-  const rows = db.prepare("SELECT * FROM abilities").all();
-  for (const row of rows) {
-    abilityDefs.set(row.id, {
-      id:         row.id,
-      name:       row.name,
-      classId:    row.class_id,
-      type:       row.type,
-      damageMin:  row.damage_min,
-      damageMax:  row.damage_max,
-      range:      row.range,
-      cooldown:   row.cooldown,
-      targets:    row.targets,
-      healMin:    row.heal_min,
-      healMax:    row.heal_max
+  /**
+   * Broadcast state change (HP, level etc) to other players.
+   */
+  broadcastState() {
+    const p = this.player;
+    this._send({
+      type:  "state_update",
+      hp:    Math.ceil(p.hp),
+      maxHp: p.maxHp,
+      level: p.level
     });
   }
-  console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from local DB`);
-}
 
-// ── Spawn group loader — called per world ─────────────────────────────────
-/**
- * Load all spawn groups + their monsters for a given worldId.
- * Returns array of { group, monsters[] } ready for NPC instantiation.
- */
-function loadSpawnGroups(worldId) {
-  // Load enabled spawn groups for this world
-  const groups = db.prepare(
-    "SELECT * FROM spawn_groups WHERE world_id = ? AND enabled = 1"
-  ).all(worldId);
-  if (!groups.length) return [];
+  // ─────────────────────────────────────────────
+  // WEBSOCKET
+  // ─────────────────────────────────────────────
 
-  // Load all monsters for those groups
-  const placeholders = groups.map(() => "?").join(",");
-  const members = db.prepare(
-    `SELECT * FROM spawn_group_monsters WHERE spawn_group_id IN (${placeholders})`
-  ).all(...groups.map(g => g.id));
+  _connect() {
+    if (this._dead) return;
+    if (!this.serverUrl) {
+      console.log("[MP] No server URL configured — multiplayer disabled");
+      return;
+    }
 
-  // Index by group
-  const byGroup = new Map();
-  for (const m of members) {
-    if (!byGroup.has(m.spawn_group_id)) byGroup.set(m.spawn_group_id, []);
-    byGroup.get(m.spawn_group_id).push(m);
-  }
+    console.log(`[MP] Connecting to ${this.serverUrl}...`);
 
-  return groups.map(g => ({
-    group:    g,
-    monsters: byGroup.get(g.id) ?? []
-  }));
-}
+    try {
+      this._ws = new WebSocket(this.serverUrl);
+    } catch (e) {
+      console.warn("[MP] WebSocket creation failed:", e.message);
+      this._scheduleReconnect();
+      return;
+    }
 
-// ── Ability Resolution ────────────────────────────────────────────────────────
+    this._ws.addEventListener("open", () => {
+      console.log("[MP] Connected to server");
+      this._connected      = true;
+      this._reconnectDelay = 2000; // reset backoff
 
-function _rollDamage(ability) {
-  const min = ability.damageMin ?? 0;
-  const max = ability.damageMax ?? 0;
-  if (min === 0 && max === 0) return 0;
-  return min + Math.floor(Math.random() * (max - min + 1));
-}
-
-function _rollHeal(ability) {
-  const min = ability.healMin ?? 0;
-  const max = ability.healMax ?? 0;
-  if (min === 0 && max === 0) return 0;
-  return min + Math.floor(Math.random() * (max - min + 1));
-}
-
-function _inRange(attacker, target, range) {
-  const dx = Math.abs(attacker.x - target.x);
-  const dy = Math.abs(attacker.y - target.y);
-  return (dx + dy) <= range + 2; // +2 tile sync tolerance
-}
-
-function _resolveAbility(session, world, msg) {
-  const { abilityId, targetId, targetType } = msg;
-
-  // Check cooldown
-  const cdRemaining = session.cooldowns[abilityId] ?? 0;
-  if (cdRemaining > 0) {
-    _send(session.ws, { type: "ability_cooldown", abilityId, remaining: cdRemaining });
-    return;
-  }
-
-  // Try DB first, fall back to a generic ability
-  const ability = abilityDefs.get(abilityId) ?? {
-    id: abilityId, type: "melee", damageMin: 5, damageMax: 10,
-    range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0
-  };
-
-  // Start cooldown immediately
-  session.cooldowns[abilityId] = ability.cooldown ?? 40;
-
-  const type = ability.type ?? "melee";
-
-  // ── AOE / Consecrate / Divine Storm ──────────────────────────────────────
-  if (type === "aoe") {
-    const radius     = ability.range ?? 3;
-    const maxTargets = ability.targets ?? 6;
-    const npcsHit    = [...world.npcs.values()]
-      .filter(n => !n.dead && _inRange(session, n, radius))
-      .slice(0, maxTargets);
-
-    let totalDamage = 0;
-    for (const npc of npcsHit) {
-      const dmg    = _rollDamage(ability);
-      const result = world.resolveAttack(npc.id, dmg, session);
-      if (!result) continue;
-      totalDamage += dmg;
-      _broadcast(session.worldId, {
-        type: "npc_damaged", npcId: npc.id,
-        hp: result.hp, maxHp: result.maxHp,
-        damage: dmg, attackerName: session.name
+      // Send join message
+      const p = this.player;
+      this._send({
+        type:        "join",
+        playerToken: this.playerToken,
+        worldId:     this.worldId,
+        name:        p.name    ?? "Hero",
+        classId:     p.classId ?? "fighter",
+        icon:        p.icon    ?? "🧙",
+        hp:          Math.ceil(p.hp ?? 80),
+        maxHp:       p.maxHp   ?? 80,
+        level:       p.level   ?? 1,
+        x:           p.x       ?? 0,
+        y:           p.y       ?? 0,
+        gold:        p.gold    ?? 0,
+        xp:          p.xp      ?? 0
       });
-      if (result.dead) _handleNPCKill(session, world, npc.id, result);
+    });
+
+    this._ws.addEventListener("message", (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
+      this._onMessage(msg);
+    });
+
+    this._ws.addEventListener("close", () => {
+      this._connected = false;
+      console.log("[MP] Disconnected from server");
+      if (!this._dead) {
+        this._showDisconnectDialog();
+      }
+    });
+
+    this._ws.addEventListener("error", (e) => {
+      console.warn("[MP] WebSocket error:", e.message ?? e);
+    });
+  }
+
+  _showDisconnectDialog() {
+    // Remove any existing dialog
+    document.getElementById("mp-disconnect-dialog")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "mp-disconnect-dialog";
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-family: monospace;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background: #0d0d18;
+        border: 1.5px solid #444466;
+        border-radius: 10px;
+        padding: 32px 40px;
+        text-align: center;
+        max-width: 340px;
+      ">
+        <div style="color:#cc4444; font-size:18px; margin-bottom:10px;">⚠ Disconnected</div>
+        <div style="color:#aaaaaa; font-size:13px; margin-bottom:24px;">
+          You have been disconnected from the server.
+          Rejoin to continue playing with others.
+        </div>
+        <div style="display:flex; gap:12px; justify-content:center;">
+          <button id="mp-rejoin-btn" style="
+            background:#1a3a1a; color:#88ee88;
+            border:1.5px solid #44aa44;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Rejoin [Y]</button>
+          <button id="mp-offline-btn" style="
+            background:#1a1a2a; color:#888899;
+            border:1.5px solid #444466;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Play Offline [N]</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    document.getElementById("mp-rejoin-btn").onclick = () => {
+      close();
+      this._reconnectDelay = 2000;
+      this._scheduleReconnect();
+    };
+
+    document.getElementById("mp-offline-btn").onclick = () => {
+      close();
+      this._dead = true; // stop reconnect attempts
+    };
+
+    // Keyboard shortcut Y/N
+    const onKey = (e) => {
+      if (e.key === "y" || e.key === "Y") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-rejoin-btn")?.click();
+      } else if (e.key === "n" || e.key === "N") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-offline-btn")?.click();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+  }
+
+  _scheduleReconnect() {
+    if (this._dead) return;
+    console.log(`[MP] Reconnecting in ${this._reconnectDelay}ms...`);
+    setTimeout(() => this._connect(), this._reconnectDelay);
+    this._reconnectDelay = Math.min(this._reconnectDelay * 2, 30000); // exponential backoff, max 30s
+  }
+
+  _send(msg) {
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify(msg));
     }
-
-    // Heal component (divine storm)
-    if (ability.healMin > 0) {
-      const healAmt = _rollHeal(ability);
-      _applyHeal(session, healAmt, world);
-    }
-
-    _send(session.ws, {
-      type: "ability_result", abilityId,
-      aoe: true, targetsHit: npcsHit.length, totalDamage
-    });
-    return;
   }
 
-  // ── Heal ─────────────────────────────────────────────────────────────────
-  if (type === "heal") {
-    const healAmt   = _rollHeal(ability);
-    const target    = targetId === "player" || !targetId
-      ? session
-      : players.get(targetId) ?? session;
-
-    const oldHp  = target.hp;
-    target.hp    = Math.min(target.maxHp, target.hp + healAmt);
-    const actual = target.hp - oldHp;
-
-    // Send stat update to healed player
-    _send(target.ws, {
-      type: "player_stat_update",
-      hp: target.hp, maxHp: target.maxHp,
-      gold: target.gold, xp: target.xp
-    });
-
-    // Broadcast heal animation to world
-    _broadcast(session.worldId, {
-      type: "player_healed",
-      healerToken: session.playerToken,
-      targetToken: target.playerToken,
-      amount: actual
-    });
-
-    _send(session.ws, { type: "ability_result", abilityId, heal: actual });
-    return;
-  }
-
-  // ── Buff (Divine Shield) ──────────────────────────────────────────────────
-  if (type === "buff") {
-    session.buffActive    = abilityId;
-    session.buffExpiresAt = Date.now() + 6000; // 6 seconds
-    _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 });
-    return;
-  }
-
-  // ── Taunt ─────────────────────────────────────────────────────────────────
-  if (type === "taunt") {
-    const count = world.resolveTaunt(session.playerToken, ability.range ?? 6);
-    _send(session.ws, { type: "taunt_result", count });
-    return;
-  }
-
-  // ── Melee / Ranged — single target ────────────────────────────────────────
-  const npc = world.npcs.get(targetId);
-  if (!npc || npc.dead) return;
-
-  // Range check
-  if (!_inRange(session, npc, ability.range ?? 1)) {
-    _send(session.ws, { type: "ability_result", abilityId, outOfRange: true });
-    return;
-  }
-
-  const damage = _rollDamage(ability);
-  const result = world.resolveAttack(targetId, damage, session);
-  if (!result) return;
-
-  _broadcast(session.worldId, {
-    type: "npc_damaged", npcId: targetId,
-    hp: result.hp, maxHp: result.maxHp,
-    damage, attackerName: session.name
-  });
-
-  _send(session.ws, {
-    type: "ability_result", abilityId, targetId,
-    damage, hp: result.hp, maxHp: result.maxHp
-  });
-
-  if (result.dead) _handleNPCKill(session, world, targetId, result);
-}
-
-function _handleNPCKill(session, world, npcId, result) {
-  const playersHere = _playersInWorld(session.worldId);
-  const count       = playersHere.length;
-  const xpShare     = Math.floor(result.xpValue / Math.max(1, count));
-
-  // Award XP and gold to all players in world
-  for (const p of playersHere) {
-    p.xp   = (p.xp   ?? 0) + xpShare;
-    p.gold = (p.gold ?? 0) + (result.loot?.gold ?? 0);
-    _send(p.ws, {
-      type: "player_stat_update",
-      hp: p.hp, maxHp: p.maxHp,
-      xp: p.xp, gold: p.gold
+  _broadcastMove() {
+    const p = this.player;
+    this._send({
+      type:  "move",
+      x:     Math.round(p.x),
+      y:     Math.round(p.y),
+      state: p.inCombat ? "combat" : "idle"
     });
   }
 
-  _broadcast(session.worldId, {
-    type: "npc_killed", npcId,
-    killerName: session.name, xpShare, loot: result.loot
-  });
+  // ─────────────────────────────────────────────
+  // MESSAGE HANDLER
+  // ─────────────────────────────────────────────
 
-  console.log(`[Server] ${session.name} killed ${npcId} (${xpShare} XP × ${count})`);
-}
-
-function _applyHeal(session, amount, world) {
-  session.hp = Math.min(session.maxHp, (session.hp ?? 0) + amount);
-  _send(session.ws, {
-    type: "player_stat_update",
-    hp: session.hp, maxHp: session.maxHp,
-    xp: session.xp, gold: session.gold
-  });
-}
-
-// ── WebSocket server ──────────────────────────────────────────────────────
-const wss = new WebSocketServer({ port: PORT });
-console.log(`[Server] WebSocket listening on ws://localhost:${PORT}`);
-
-wss.on("connection", (ws) => {
-  let session = null;
-
-  ws.on("message", async (raw) => {
-    let msg;
-    try { msg = JSON.parse(raw); } catch { return; }
-
+  _onMessage(msg) {
     switch (msg.type) {
 
-      case "join": {
-        const { playerToken, worldId, name, classId, icon, hp, maxHp, level, x, y } = msg;
-
-        if (players.has(playerToken)) _removePlayer(playerToken);
-
-        session = {
-          ws, playerToken, worldId,
-          name:     name    ?? "Hero",
-          classId:  classId ?? "fighter",
-          icon:     icon    ?? "🧙",
-          hp:       hp      ?? 80,
-          maxHp:    maxHp   ?? 80,
-          level:    level   ?? 1,
-          x:        x       ?? 0,
-          y:        y       ?? 0,
-          gold:     msg.gold  ?? 0,
-          xp:       msg.xp    ?? 0,
-          state:    "idle",
-          lastSeen: Date.now(),
-          // Ability cooldowns { abilityId -> ticksRemaining }
-          cooldowns: {}
-        };
-        players.set(playerToken, session);
-
-        // Get or create world — triggers Supabase load if new
-        if (!worlds.has(worldId)) {
-          const world = new WorldInstance(worldId);
-          worlds.set(worldId, world);
-          world.load().catch(e =>
-            console.warn(`[Server] Failed to load ${worldId}:`, e.message)
-          );
+      case "world_state": {
+        // Initial state — list of players already in this world
+        for (const playerData of (msg.players ?? [])) {
+          this._addOrUpdateRemote(playerData);
         }
-        const world = worlds.get(worldId);
-        world.addPlayer(playerToken);
+        break;
+      }
 
-        // Tell new player about existing players
-        const others = _playersInWorld(worldId)
-          .filter(p => p.playerToken !== playerToken)
-          .map(_pub);
-        _send(ws, { type: "world_state", players: others });
-        console.log(`[Server] Sent world_state to ${name}: ${others.length} other players`);
+      case "player_joined": {
+        this._addOrUpdateRemote(msg.player);
+        break;
+      }
 
-        // Send current NPC state once world is ready
-        if (world.ready) {
-          const npcs = world.getNPCState();
-          _send(ws, { type: "npc_state", npcs });
-          console.log(`[Server] Sent npc_state to ${name}: ${npcs.length} NPCs`);
-        } else {
-          // Poll until ready then send
-          const poll = setInterval(() => {
-            if (world.ready) {
-              clearInterval(poll);
-              const npcs = world.getNPCState();
-              _send(ws, { type: "npc_state", npcs });
-              console.log(`[Server] Sent delayed npc_state to ${name}: ${npcs.length} NPCs`);
-            }
-          }, 200);
+      case "player_moved": {
+        const entity = this._remotePlayers.get(msg.token);
+        if (entity) {
+          entity.x     = msg.x;
+          entity.y     = msg.y;
+          entity.state = msg.state;
+          this.onPlayerUpdate(entity);
         }
-
-        // Tell everyone else about new player
-        _broadcast(worldId, { type: "player_joined", player: _pub(session) }, playerToken);
-        console.log(`[Server] ${name} joined ${worldId} (${_playersInWorld(worldId).length} players)`);
         break;
       }
 
-      case "move": {
-        if (!session) break;
-        session.x        = msg.x;
-        session.y        = msg.y;
-        session.state    = msg.state ?? "idle";
-        session.lastSeen = Date.now();
-        _broadcast(session.worldId, {
-          type: "player_moved", token: session.playerToken,
-          x: session.x, y: session.y, state: session.state
-        }, session.playerToken);
+      case "player_updated": {
+        this._addOrUpdateRemote(msg.player);
         break;
       }
 
-      case "state_update": {
-        if (!session) break;
-        if (msg.hp    !== undefined) session.hp    = msg.hp;
-        if (msg.maxHp !== undefined) session.maxHp = msg.maxHp;
-        if (msg.level !== undefined) session.level = msg.level;
-        session.lastSeen = Date.now();
-        _broadcast(session.worldId, {
-          type: "player_updated", player: _pub(session)
-        }, session.playerToken);
+      case "player_left": {
+        const entity = this._remotePlayers.get(msg.token);
+        if (entity) {
+          this._remotePlayers.delete(msg.token);
+          this.onPlayerLeave(msg.token);
+        }
         break;
       }
 
-      case "use_ability": {
-        if (!session) break;
-        const world = worlds.get(session.worldId);
-        if (!world?.ready) break;
-        _resolveAbility(session, world, msg);
+      case "npc_state": {
+        this.onNPCState(msg.npcs ?? []);
         break;
       }
 
-      // Legacy support — keep npc_attack for backward compat
-      case "npc_attack": {
-        if (!session) break;
-        const world = worlds.get(session.worldId);
-        if (!world?.ready) break;
-        const ability = { damageMin: msg.damage, damageMax: msg.damage, range: 999, type: "melee" };
-        const damage  = msg.damage;
-        const result  = world.resolveAttack(msg.npcId, damage, session);
-        if (!result) break;
-        _broadcast(session.worldId, {
-          type: "npc_damaged", npcId: msg.npcId,
-          hp: result.hp, maxHp: result.maxHp,
-          damage, attackerName: session.name
+      case "npc_attack_player": {
+        if (msg.targetToken === this.playerToken) {
+          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage, blocked: msg.blocked });
+        }
+        break;
+      }
+
+      case "npc_damaged": {
+        this.onNPCDamaged({
+          npcId:        msg.npcId,
+          hp:           msg.hp,
+          maxHp:        msg.maxHp,
+          damage:       msg.damage,
+          attackerName: msg.attackerName
         });
-        if (result.dead) {
-          const count   = _playersInWorld(session.worldId).length;
-          const xpShare = Math.floor(result.xpValue / Math.max(1, count));
-          _broadcast(session.worldId, {
-            type: "npc_killed", npcId: msg.npcId,
-            killerName: session.name, xpShare, loot: result.loot
-          });
-        }
         break;
       }
 
-      case "taunt": {
-        if (!session) break;
-        const world = worlds.get(session.worldId);
-        if (!world?.ready) break;
-        const count = world.resolveTaunt(session.playerToken, msg.radius ?? 6);
-        _send(ws, { type: "taunt_result", count });
-        break;
-      }
-
-      case "heal_threat": {
-        // Healer generates threat on all NPCs targeting the healed player
-        if (!session) break;
-        const world = worlds.get(session.worldId);
-        if (!world?.ready) break;
-        const amount = msg.amount ?? 0;
-        for (const npc of world.npcs.values()) {
-          if (npc.dead) continue;
-          if (npc.target === msg.targetToken) {
-            world._addThreat(npc, session.playerToken, amount * 0.5, "heal");
-          }
-        }
-        break;
-      }
-
-      case "ping": {
-        if (session) session.lastSeen = Date.now();
-        _send(ws, { type: "pong" });
-        break;
-      }
-
-      case "leave": {
-        if (session) { _removePlayer(session.playerToken); session = null; }
-        break;
-      }
-    }
-  });
-
-  ws.on("close", () => { if (session) { _removePlayer(session.playerToken); session = null; } });
-  ws.on("error", e  => console.warn("[Server] WS error:", e.message));
-});
-
-// ── Tick loop ─────────────────────────────────────────────────────────────
-let tick = 0;
-setInterval(() => {
-  tick++;
-
-  // Prune stale players
-  const now = Date.now();
-  for (const [token, s] of players) {
-    if (now - s.lastSeen > STALE_MS) {
-      console.log(`[Server] Stale player removed: ${s.name}`);
-      _removePlayer(token);
-      continue;
-    }
-    // Tick player cooldowns
-    for (const abilityId of Object.keys(s.cooldowns ?? {})) {
-      s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - 1);
-      if (s.cooldowns[abilityId] === 0) delete s.cooldowns[abilityId];
-    }
-  }
-
-  // Tick all worlds
-  for (const world of worlds.values()) {
-    if (!world.ready) continue;
-    world.tick(TICK_MS);
-
-    // Broadcast NPC state every N ticks
-    if (tick % NPC_BROADCAST_TICKS === 0) {
-      const state = world.getNPCState();
-      if (!state.length) continue;
-      const raw = JSON.stringify({ type: "npc_state", npcs: state });
-      for (const token of world.players) {
-        const s = players.get(token);
-        if (s?.ws.readyState === WebSocket.OPEN) s.ws.send(raw);
-      }
-    }
-  }
-}, TICK_MS);
-
-// ── WorldInstance ─────────────────────────────────────────────────────────
-class WorldInstance {
-  constructor(worldId) {
-    this.worldId = worldId;
-    this.players = new Set();  // playerTokens
-    this.npcs    = new Map();  // npcId -> ServerNPC
-    this.ready   = false;
-    this.width   = 256;
-    this.height  = 256;
-    this.tiles   = null;
-  }
-
-  async load() {
-    try {
-      // Load world tiles for walkability checks
-      const rows = await sb(`worlds?id=eq.${this.worldId}&select=json`);
-      if (rows?.length) {
-        const data   = rows[0].json;
-        this.width   = data.width  ?? this.width;
-        this.height  = data.height ?? this.height;
-        this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
-      }
-
-      // Load spawn groups + monsters from local DB (sync)
-      const groups = loadSpawnGroups(this.worldId);
-
-      for (const { group, monsters } of groups) {
-        for (const m of monsters) {
-          const def = monsterDefs.get(m.monster_id);
-          if (!def) {
-            console.warn(`[Server] Unknown monster_id: ${m.monster_id}`);
-            continue;
-          }
-
-          const roamRadius = m.roam_radius ?? def.roamRadius;
-          const isBoss     = m.is_boss     ?? def.isBoss;
-          const id         = `${m.monster_id}_${m.x}_${m.y}`;
-
-          this.npcs.set(id, {
-            id,
-            monsterId:   m.monster_id,
-            name:        def.name,
-            icon:        def.icon,
-            x:           m.x,
-            y:           m.y,
-            homeX:       m.x,
-            homeY:       m.y,
-            hp:          def.hp,
-            maxHp:       def.hp,
-            damageMin:   def.damageMin,
-            damageMax:   def.damageMax,
-            speed:       def.speed,
-            perception:  def.perception,
-            attackRange: def.attackRange ?? 1,
-            roamRadius,
-            xpValue:     def.xpValue,
-            isBoss,
-            state:       "roaming",
-            target:      null,   // playerToken of current aggro target
-            threat:      {},     // playerToken -> threat value
-            dead:        false,
-            actionTimer: 1000 + Math.random() * 2000,
-            moveTimer:   Math.random() * 1000,
-            // Respawn support
-            respawnSecs: group.respawn_seconds ?? null,
-            deadAt:      null
-          });
-        }
-      }
-
-      this.ready = true;
-      const sample = [...this.npcs.values()][0];
-      console.log(`[Server] Loaded world ${this.worldId} — ${this.npcs.size} NPCs`);
-      if (sample) console.log(`[Server] Sample NPC: ${sample.id} speed=${sample.speed} perception=${sample.perception} dmg=${sample.damageMin}-${sample.damageMax}`);
-    } catch (e) {
-      console.warn(`[Server] World load error (${this.worldId}):`, e.message);
-      this.ready = true; // don't block players even if load fails
-    }
-  }
-
-  // ── Tick ───────────────────────────────────────────────────────────────
-
-  tick(dt) {
-    const playersHere = [...this.players]
-      .map(t => players.get(t))
-      .filter(Boolean);
-
-    for (const npc of this.npcs.values()) {
-      if (npc.dead) {
-        this._tickRespawn(npc, dt);
-        continue;
-      }
-      this._tickNPC(npc, playersHere, dt);
-    }
-  }
-
-  _tickRespawn(npc, dt) {
-    if (!npc.respawnSecs || !npc.deadAt) return;
-    const elapsed = (Date.now() - npc.deadAt) / 1000;
-    if (elapsed >= npc.respawnSecs) {
-      // Respawn at home position
-      npc.dead   = false;
-      npc.hp     = npc.maxHp;
-      npc.x      = npc.homeX;
-      npc.y      = npc.homeY;
-      npc.state  = "roaming";
-      npc.target = null;
-      npc.deadAt = null;
-      console.log(`[Server] Respawned ${npc.id}`);
-    }
-  }
-
-  _tickNPC(npc, playersHere, dt) {
-    npc.actionTimer -= dt;
-    npc.moveTimer   -= dt;
-
-    // ── Threat decay ──
-    this._decayThreat(npc);
-
-    // ── Perception ──
-    let nearest = null, nearestDist = Infinity;
-    for (const p of playersHere) {
-      const dx = p.x - npc.x, dy = p.y - npc.y;
-      const d  = Math.sqrt(dx*dx + dy*dy);
-      if (d < nearestDist) { nearestDist = d; nearest = p; }
-    }
-
-    // If NPC has a forced target from group aggro, use that player
-    // even if they're outside normal perception range
-    if (npc.target && npc.state === "alert") {
-      const forcedTarget = playersHere.find(p => p.playerToken === npc.target);
-      if (forcedTarget) {
-        nearest     = forcedTarget;
-        nearestDist = Math.sqrt(
-          (forcedTarget.x - npc.x)**2 + (forcedTarget.y - npc.y)**2
-        );
-      }
-    }
-
-    // ── State machine ──
-    if (nearest && nearestDist <= npc.perception) {
-      npc.state  = "alert";
-      npc.target = nearest.playerToken;
-    } else if (npc.state === "alert" && npc.target) {
-      // Stay alert if we have a target — only drop if target is gone and out of range
-      const hasTarget = playersHere.some(p => p.playerToken === npc.target);
-      if (!hasTarget && nearestDist > npc.perception * 2) {
-        npc.state  = "roaming";
-        npc.target = null;
-      }
-    }
-
-    // ── Movement ──
-    if (npc.moveTimer <= 0) {
-      npc.moveTimer = 1000 / npc.speed;
-
-      if (npc.state === "alert" && nearest) {
-        const dx      = nearest.x - npc.x;
-        const dy      = nearest.y - npc.y;
-        const dist    = Math.sqrt(dx*dx + dy*dy);
-        const stopAt  = npc.attackRange ?? 1;
-        // Move toward player until within attack range, then hold position
-        if (dist > stopAt + 0.5) {
-          const nx = npc.x + Math.sign(dx);
-          const ny = npc.y + Math.sign(dy);
-          if (this._walkable(nx, npc.y))      npc.x = nx;
-          else if (this._walkable(npc.x, ny)) npc.y = ny;
-        }
-      } else if (npc.state === "roaming") {
-        const dx = npc.homeX - npc.x, dy = npc.homeY - npc.y;
-        const d  = Math.sqrt(dx*dx + dy*dy);
-        if (d > npc.roamRadius) {
-          if (this._walkable(npc.x + Math.sign(dx), npc.y))      npc.x += Math.sign(dx);
-          else if (this._walkable(npc.x, npc.y + Math.sign(dy))) npc.y += Math.sign(dy);
-        } else if (Math.random() < 0.25) {
-          const dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-          const d2   = dirs[Math.floor(Math.random() * 4)];
-          if (this._walkable(npc.x + d2.x, npc.y + d2.y)) {
-            npc.x += d2.x; npc.y += d2.y;
-          }
-        }
-      }
-    }
-
-    // ── Attack ──
-    if (npc.state === "alert" && nearest && npc.actionTimer <= 0) {
-      const dx       = nearest.x - npc.x, dy = nearest.y - npc.y;
-      const d        = Math.sqrt(dx*dx + dy*dy);
-      const atkRange = npc.attackRange ?? 1;
-      if (d <= atkRange + 0.5) {
-        npc.actionTimer = 1500;
-
-        // Check if player has buff (divine shield etc)
-        const playerSession = players.get(nearest.playerToken);
-        if (playerSession?.buffActive && Date.now() < playerSession.buffExpiresAt) {
-          // Player is invulnerable — notify but deal no damage
-          _send(playerSession.ws, { type: "npc_attack_player", npcId: npc.id, damage: 0, blocked: true });
-          return;
-        }
-
-        const dmg = npc.damageMin + Math.floor(
-          Math.random() * (npc.damageMax - npc.damageMin + 1)
-        );
-
-        // Apply damage to player session server-side
-        if (playerSession) {
-          playerSession.hp = Math.max(0, (playerSession.hp ?? 0) - dmg);
-          // Send stat update to player
-          _send(playerSession.ws, {
-            type: "player_stat_update",
-            hp: playerSession.hp, maxHp: playerSession.maxHp,
-            xp: playerSession.xp, gold: playerSession.gold
-          });
-        }
-
-        // Notify player they were attacked
-        _send(nearest.ws ?? playerSession?.ws, {
-          type:        "npc_attack_player",
-          npcId:       npc.id,
-          targetToken: nearest.playerToken,
-          damage:      dmg
+      case "npc_killed": {
+        this.onNPCKilled({
+          npcId:      msg.npcId,
+          killerName: msg.killerName,
+          xpShare:    msg.xpShare,
+          loot:       msg.loot
         });
+        break;
       }
-    }
-  }
 
-  // ── Combat ─────────────────────────────────────────────────────────────
-
-  // ── Threat & Aggro ─────────────────────────────────────────────────────
-
-  /**
-   * Add threat to an NPC from a player action.
-   * Recalculates aggro target based on highest threat.
-   *
-   * @param {object} npc
-   * @param {string} playerToken
-   * @param {number} amount       - threat generated
-   * @param {string} [type]       - "damage" | "heal" | "taunt"
-   */
-  _addThreat(npc, playerToken, amount, type = "damage") {
-    if (!npc.threat) npc.threat = {};
-
-    // Taunt multiplies threat massively
-    const multiplier = type === "taunt" ? 5 : type === "heal" ? 0.5 : 1;
-    const threat     = amount * multiplier;
-
-    npc.threat[playerToken] = (npc.threat[playerToken] ?? 0) + threat;
-
-    // Recalculate aggro target — highest threat player
-    this._updateAggroTarget(npc);
-  }
-
-  /**
-   * Set aggro target to the player with highest threat.
-   * Only considers players currently in the world.
-   */
-  _updateAggroTarget(npc) {
-    const playersHere = [...this.players]
-      .map(t => players.get(t))
-      .filter(Boolean);
-
-    let topToken  = null;
-    let topThreat = 0;
-
-    for (const [token, threat] of Object.entries(npc.threat ?? {})) {
-      const player = playersHere.find(p => p.playerToken === token);
-      if (!player) continue; // player left
-      if (threat > topThreat) {
-        topThreat = threat;
-        topToken  = token;
+      case "player_stat_update": {
+        // Server is authoritative — update local player stats
+        if (this.onStatUpdate) {
+          this.onStatUpdate({ hp: msg.hp, maxHp: msg.maxHp, xp: msg.xp, gold: msg.gold });
+        }
+        break;
       }
-    }
 
-    if (topToken) {
-      npc.target = topToken;
-      npc.state  = "alert";
-    }
-  }
-
-  /**
-   * Decay all threat values over time (called in tick).
-   * Prevents permanent aggro lock on AFK players.
-   */
-  _decayThreat(npc) {
-    const DECAY = 0.999; // per tick — very slow decay
-    for (const token of Object.keys(npc.threat ?? {})) {
-      npc.threat[token] *= DECAY;
-      if (npc.threat[token] < 0.1) delete npc.threat[token];
-    }
-  }
-
-  /**
-   * Group aggro — alert nearby NPCs and give them initial threat.
-   */
-  _triggerGroupAggro(attackedNPC, playerToken, damage) {
-    const AGGRO_RADIUS = 8;
-    for (const other of this.npcs.values()) {
-      if (other.dead || other.id === attackedNPC.id) continue;
-      const dx   = other.x - attackedNPC.x;
-      const dy   = other.y - attackedNPC.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist <= AGGRO_RADIUS) {
-        // Add partial threat (witnesses get less threat than the target)
-        this._addThreat(other, playerToken, damage * 0.5, "damage");
+      case "ability_result": {
+        // Server confirmed ability fired — trigger animations
+        if (this.onAbilityResult) {
+          this.onAbilityResult(msg);
+        }
+        break;
       }
-    }
-  }
 
-  resolveAttack(npcId, damage, attacker) {
-    const npc = this.npcs.get(npcId);
-    if (!npc || npc.dead) return null;
-
-    npc.hp = Math.max(0, npc.hp - damage);
-
-    // Add full threat for the attacker, partial for nearby NPCs
-    this._addThreat(npc, attacker.playerToken, damage, "damage");
-    this._triggerGroupAggro(npc, attacker.playerToken, damage);
-
-    if (npc.hp <= 0) {
-      npc.dead   = true;
-      npc.state  = "dead";
-      npc.deadAt = Date.now();
-      // Clear threat on death
-      npc.threat = {};
-      return {
-        hp:       0,
-        maxHp:    npc.maxHp,
-        dead:     true,
-        xpValue:  npc.xpValue,
-        loot:     this._rollLoot(npc)
-      };
-    }
-
-    return { hp: npc.hp, maxHp: npc.maxHp, dead: false };
-  }
-
-  /**
-   * Handle taunt ability — massively boost threat for the taunting player.
-   */
-  resolveTaunt(playerToken, radius = 6) {
-    const taunter = players.get(playerToken);
-    if (!taunter) return;
-
-    let count = 0;
-    for (const npc of this.npcs.values()) {
-      if (npc.dead) continue;
-      const dx   = npc.x - taunter.x;
-      const dy   = npc.y - taunter.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist <= radius) {
-        this._addThreat(npc, playerToken, 1000, "taunt");
-        count++;
+      case "player_healed": {
+        if (this.onPlayerHealed) {
+          this.onPlayerHealed(msg);
+        }
+        break;
       }
+
+      case "buff_applied": {
+        if (this.onBuffApplied) {
+          this.onBuffApplied(msg);
+        }
+        break;
+      }
+
+      case "pong": break;
+
+      default:
+        console.log("[MP] Unknown message:", msg.type);
     }
-    console.log(`[Server] Taunt: ${taunter.name} taunted ${count} NPCs`);
-    return count;
   }
 
-  _rollLoot(npc) {
-    // Look up loot table for this monster
-    const link = db.prepare(
-      "SELECT loot_table_id FROM monster_loot WHERE monster_id = ?"
-    ).get(npc.monsterId);
+  // ─────────────────────────────────────────────
+  // REMOTE PLAYER MANAGEMENT
+  // ─────────────────────────────────────────────
 
-    console.log(`[Loot] ${npc.id} monsterId=${npc.monsterId} link=${link?.loot_table_id ?? "none"}`);
+  _addOrUpdateRemote(data) {
+    const token = data.playerToken;
+    if (!token || token === this.playerToken) return;
 
-    if (!link) {
-      // Fallback — simple gold drop
-      return { gold: npc.isBoss
-        ? 50 + Math.floor(Math.random() * 100)
-        : 2  + Math.floor(Math.random() * 8) };
-    }
-
-    // Get weighted entries
-    const entries = db.prepare(
-      "SELECT * FROM loot_entries WHERE loot_table_id = ?"
-    ).all(link.loot_table_id);
-
-    if (!entries.length) return { gold: 0 };
-
-    // Weighted random roll
-    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
-    let roll = Math.random() * totalWeight;
-    let chosen = entries[entries.length - 1];
-    for (const entry of entries) {
-      roll -= entry.weight;
-      if (roll <= 0) { chosen = entry; break; }
-    }
-
-    if (chosen.item_id === "nothing") return { gold: 0 };
-
-    const gold = chosen.gold_min > 0
-      ? chosen.gold_min + Math.floor(Math.random() * (chosen.gold_max - chosen.gold_min + 1))
-      : 0;
-
-    return {
-      gold,
-      itemId: chosen.item_id !== "gold" ? chosen.item_id : null,
-      qty:    chosen.qty_min + Math.floor(Math.random() * (chosen.qty_max - chosen.qty_min + 1))
-    };
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────
-
-  _walkable(x, y) {
-    if (!this.tiles) return true;
-    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return false;
-    const WALKABLE = new Set([
-      0,4,5,6,7,9,10,11,12,13,14,15,17,19,
-      20,22,23,24,25,26,27,28,29,30,31,32,33,35
-    ]);
-    return WALKABLE.has(this.tiles[y * this.width + x]);
-  }
-
-  getNPCState() {
-    return [...this.npcs.values()]
-      .filter(n => !n.dead)
-      .map(n => ({
-        id:      n.id,
-        name:    n.name,
-        icon:    n.icon,
-        x:       n.x,
-        y:       n.y,
-        hp:      n.hp,
-        maxHp:   n.maxHp,
-        state:   n.state,
-        isBoss:  n.isBoss,
-        target:  n.target ?? null   // who has aggro
-      }));
-  }
-
-  addPlayer(t)    { this.players.add(t); }
-  removePlayer(t) { this.players.delete(t); }
-}
-
-// ── Server registration ───────────────────────────────────────────────────
-let _serverId = null;
-
-async function registerServer() {
-  try {
-    // PATCH if exists, POST if not — match on ws_url
-    const existing = await sb(`game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}&select=id`);
-
-    if (existing?.length) {
-      // Update existing row
-      _serverId = existing[0].id;
-      await fetch(`${SUPABASE_URL}/rest/v1/game_servers?id=eq.${_serverId}`, {
-        method: "PATCH",
-        headers: {
-          "apikey":        SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type":  "application/json"
-        },
-        body: JSON.stringify({
-          name:           SERVER_NAME,
-          status:         "online",
-          players_online: 0,
-          last_heartbeat: new Date().toISOString(),
-          region:         SERVER_URL.includes("onrender") ? "cloud" : "local"
-        })
-      });
-      console.log(`[Server] Re-registered (existing) — id: ${_serverId}`);
+    const existing = this._remotePlayers.get(token);
+    if (existing) {
+      existing.x      = data.x;
+      existing.y      = data.y;
+      existing.hp     = data.hp;
+      existing.maxHp  = data.maxHp;
+      existing.level  = data.level;
+      existing.state  = data.state;
+      this.onPlayerUpdate(existing);
     } else {
-      // Insert new row
-      const data = await sb("game_servers", {
-        method:  "POST",
-        headers: { "Prefer": "return=representation" },
-        body:    JSON.stringify({
-          name:           SERVER_NAME,
-          ws_url:         SERVER_URL,
-          region:         SERVER_URL.includes("onrender") ? "cloud" : "local",
-          status:         "online",
-          players_online: 0,
-          last_heartbeat: new Date().toISOString()
-        })
-      });
-      _serverId = Array.isArray(data) ? data[0]?.id : data?.id;
-      console.log(`[Server] Registered (new) — id: ${_serverId}`);
+      const entity = {
+        id:          `remote_${token}`,
+        type:        "remote_player",
+        playerToken: token,
+        x:           data.x,
+        y:           data.y,
+        name:        data.name    ?? "Hero",
+        classId:     data.classId ?? "fighter",
+        icon:        data.icon    ?? "🧙",
+        hp:          data.hp      ?? 80,
+        maxHp:       data.maxHp   ?? 80,
+        level:       data.level   ?? 1,
+        state:       data.state   ?? "idle",
+        dead:        false,
+        isRemote:    true
+      };
+      this._remotePlayers.set(token, entity);
+      this.onPlayerJoin(entity);
     }
-  } catch (e) {
-    console.warn("[Server] Registration failed:", e.message);
-  }
-}
-
-async function pingServer() {
-  // Match by ws_url so we don't need _serverId
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}`, {
-      method:  "PATCH",
-      headers: {
-        "apikey":        SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type":  "application/json"
-      },
-      body: JSON.stringify({
-        players_online:  players.size,
-        last_heartbeat:  new Date().toISOString(),
-        status:          "online"
-      })
-    });
-    console.log(`[Server] Heartbeat (${players.size} players)`);
-  } catch (e) {
-    console.warn("[Server] Ping failed:", e.message);
-  }
-}
-
-async function deregisterServer() {
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/game_servers?ws_url=eq.${encodeURIComponent(SERVER_URL)}`, {
-      method:  "PATCH",
-      headers: {
-        "apikey":        SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type":  "application/json"
-      },
-      body: JSON.stringify({ status: "offline", players_online: 0 })
-    });
-    console.log("[Server] Marked offline");
-  } catch (e) {
-    console.warn("[Server] Deregister failed:", e.message);
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-function _send(ws, msg) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
-}
-
-function _playersInWorld(worldId) {
-  return [...players.values()].filter(p => p.worldId === worldId);
-}
-
-function _broadcast(worldId, msg, excludeToken = null) {
-  const raw = JSON.stringify(msg);
-  for (const s of _playersInWorld(worldId)) {
-    if (s.playerToken === excludeToken) continue;
-    if (s.ws.readyState === WebSocket.OPEN) s.ws.send(raw);
-  }
-}
-
-function _pub(s) {
-  return {
-    playerToken: s.playerToken, worldId: s.worldId,
-    name: s.name, classId: s.classId, icon: s.icon,
-    hp: s.hp, maxHp: s.maxHp, level: s.level,
-    x: s.x, y: s.y, state: s.state
-  };
-}
-
-function _removePlayer(token) {
-  const s = players.get(token);
-  if (!s) return;
-  players.delete(token);
-  const world = worlds.get(s.worldId);
-  if (world) {
-    world.removePlayer(token);
-    if (world.players.size === 0) worlds.delete(s.worldId);
-  }
-  _broadcast(s.worldId, { type: "player_left", token });
-  console.log(`[Server] ${s.name} left (${_playersInWorld(s.worldId).length} remaining)`);
-}
-
-// ── Startup ───────────────────────────────────────────────────────────────
-(async () => {
-  // Init local DB first — required for monster/spawn data
-  initDB();
-  loadMonsterDefs();
-  loadAbilityDefs();
-
-  try {
-    await registerServer();
-  } catch (e) {
-    console.warn("[Server] Registration failed — continuing without Supabase registration:", e.message);
   }
 
-  setInterval(pingServer, PING_INTERVAL_MS);
-  process.on("SIGINT",  async () => { await deregisterServer(); process.exit(0); });
-  process.on("SIGTERM", async () => { await deregisterServer(); process.exit(0); });
-})();
+  get remotePlayers() {
+    return [...this._remotePlayers.values()];
+  }
+
+  getRemotePlayer(token) {
+    return this._remotePlayers.get(token) ?? null;
+  }
+}
