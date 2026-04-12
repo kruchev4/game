@@ -31,7 +31,9 @@
       "variance": 2
     },
     "cooldown": 180,
-    "cost": {},
+    "cost": {
+      "rage": 20
+    },
     "onHit": {
       "effect": "stun",
       "duration": 90,
@@ -56,7 +58,9 @@
       "variance": 3
     },
     "cooldown": 200,
-    "cost": {},
+    "cost": {
+      "rage": 30
+    },
     "aoe": {
       "shape": "radius",
       "radius": 1
@@ -80,7 +84,9 @@
       "variance": 0
     },
     "cooldown": 480,
-    "cost": {},
+    "cost": {
+      "rage": 25
+    },
     "selfEffect": {
       "effect": "battle_cry",
       "duration": 480,
@@ -104,7 +110,9 @@
       "variance": 4
     },
     "cooldown": 240,
-    "cost": {},
+    "cost": {
+      "rage": 20
+    },
     "special": "charge",
     "tags": [
       "physical",
@@ -125,7 +133,9 @@
       "variance": 6
     },
     "cooldown": 180,
-    "cost": {},
+    "cost": {
+      "rage": 40
+    },
     "special": "execute",
     "tags": [
       "physical",
@@ -146,7 +156,9 @@
       "variance": 0
     },
     "cooldown": 300,
-    "cost": {},
+    "cost": {
+      "rage": 15
+    },
     "special": "taunt",
     "tags": [
       "utility",
@@ -167,7 +179,9 @@
       "variance": 0
     },
     "cooldown": 360,
-    "cost": {},
+    "cost": {
+      "rage": 30
+    },
     "special": "second_wind",
     "tags": [
       "heal",
@@ -187,7 +201,9 @@
       "variance": 2
     },
     "cooldown": 150,
-    "cost": {},
+    "cost": {
+      "rage": 25
+    },
     "onHit": {
       "effect": "bleed",
       "duration": 180,
@@ -212,7 +228,9 @@
       "variance": 0
     },
     "cooldown": 300,
-    "cost": {},
+    "cost": {
+      "rage": 20
+    },
     "selfEffect": {
       "effect": "fortify",
       "duration": 180,
@@ -256,7 +274,9 @@
       "variance": 2
     },
     "cooldown": 120,
-    "cost": {},
+    "cost": {
+      "mana": 12
+    },
     "onHit": {
       "effect": "slow",
       "duration": 90,
@@ -282,7 +302,9 @@
       "variance": 2
     },
     "cooldown": 150,
-    "cost": {},
+    "cost": {
+      "mana": 20
+    },
     "aoe": {
       "shape": "cone",
       "spread": 2,
@@ -307,7 +329,9 @@
       "variance": 2
     },
     "cooldown": 140,
-    "cost": {},
+    "cost": {
+      "mana": 14
+    },
     "onHit": {
       "effect": "poison",
       "duration": 240,
@@ -333,7 +357,9 @@
       "variance": 2
     },
     "cooldown": 300,
-    "cost": {},
+    "cost": {
+      "mana": 25
+    },
     "aoe": {
       "shape": "radius",
       "radius": 2
@@ -357,7 +383,9 @@
       "variance": 8
     },
     "cooldown": 420,
-    "cost": {},
+    "cost": {
+      "mana": 30
+    },
     "castTime": 180,
     "tags": [
       "physical",
@@ -378,7 +406,9 @@
       "variance": 3
     },
     "cooldown": 130,
-    "cost": {},
+    "cost": {
+      "mana": 16
+    },
     "onHit": {
       "effect": "burn",
       "duration": 180,
@@ -404,7 +434,9 @@
       "variance": 3
     },
     "cooldown": 160,
-    "cost": {},
+    "cost": {
+      "mana": 22
+    },
     "aoe": {
       "shape": "radius",
       "radius": 2,
@@ -430,7 +462,9 @@
       "variance": 0
     },
     "cooldown": 360,
-    "cost": {},
+    "cost": {
+      "mana": 18
+    },
     "selfEffect": {
       "effect": "eagles_eye",
       "duration": 360,
@@ -454,7 +488,9 @@
       "variance": 0
     },
     "cooldown": 300,
-    "cost": {},
+    "cost": {
+      "mana": 28
+    },
     "special": "shadow_step",
     "selfEffect": {
       "effect": "next_crit",
