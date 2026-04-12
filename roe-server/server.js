@@ -151,6 +151,41 @@ async function loadAbilityDefs() {
   }
 }
 
+// ── Loot cache ───────────────────────────────────────────────────────────────
+/** monster_id -> loot_table_id */
+const monsterLootMap = new Map();
+/** loot_table_id -> Entry[] */
+const lootTableEntries = new Map();
+
+/** loot_table_id -> { gold_min, gold_max } */
+const lootTableDefs = new Map();
+
+async function loadLootData() {
+  try {
+    const [links, tables, entries] = await Promise.all([
+      sb("monster_loot_tables?select=*"),
+      sb("loot_tables?select=id,gold_min,gold_max"),
+      sb("loot_table_entries?select=*")
+    ]);
+
+    for (const row of links ?? []) {
+      monsterLootMap.set(row.monster_id, row.loot_table_id);
+    }
+    for (const row of tables ?? []) {
+      lootTableDefs.set(row.id, { goldMin: row.gold_min ?? 0, goldMax: row.gold_max ?? 0 });
+    }
+    for (const row of entries ?? []) {
+      if (!lootTableEntries.has(row.loot_table_id)) {
+        lootTableEntries.set(row.loot_table_id, []);
+      }
+      lootTableEntries.get(row.loot_table_id).push(row);
+    }
+    console.log(`[Server] Loaded ${monsterLootMap.size} loot links, ${lootTableEntries.size} loot tables from Supabase`);
+  } catch (e) {
+    console.warn(`[Server] Loot load failed (${e.message}) — using gold-only drops`);
+  }
+}
+
 // ── Spawn group loader — called per world ─────────────────────────────────
 /**
  * Load all spawn groups + their monsters for a given worldId.
@@ -979,48 +1014,35 @@ class WorldInstance {
   }
 
   _rollLoot(npc) {
-    // Simple guaranteed gold drop + loot table roll
-    const baseGold = npc.isBoss
-      ? 50 + Math.floor(Math.random() * 100)
-      : 3  + Math.floor(Math.random() * 10);
+    const monsterId   = npc.monsterId ?? npc.id.split("_")[0];
+    const lootTableId = monsterLootMap.get(monsterId);
 
-    // Look up loot table for this monster
-    const monsterId = npc.monsterId ?? npc.id.split("_")[0];
-    const link = db.prepare(
-      "SELECT loot_table_id FROM monster_loot WHERE monster_id = ?"
-    ).get(monsterId);
+    // Gold from loot table definition
+    const tableDef = lootTableDefs.get(lootTableId);
+    const goldMin  = tableDef?.goldMin ?? (npc.isBoss ? 50 : 3);
+    const goldMax  = tableDef?.goldMax ?? (npc.isBoss ? 150 : 12);
+    const gold     = goldMin + Math.floor(Math.random() * (goldMax - goldMin + 1));
 
-    if (!link) {
-      return { gold: baseGold };
-    }
+    if (!lootTableId) return { gold };
 
-    // Get weighted entries
-    const entries = db.prepare(
-      "SELECT * FROM loot_entries WHERE loot_table_id = ?"
-    ).all(link.loot_table_id);
+    // Roll for item drop
+    const entries = lootTableEntries.get(lootTableId) ?? [];
+    if (!entries.length) return { gold };
 
-    if (!entries.length) return { gold: 0 };
-
-    // Weighted random roll
-    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
-    let roll = Math.random() * totalWeight;
+    const totalWeight = entries.reduce((s, e) => s + (e.weight ?? 1), 0);
+    let roll   = Math.random() * totalWeight;
     let chosen = entries[entries.length - 1];
     for (const entry of entries) {
-      roll -= entry.weight;
+      roll -= entry.weight ?? 1;
       if (roll <= 0) { chosen = entry; break; }
     }
 
-    if (chosen.item_id === "nothing") return { gold: baseGold };
+    // null item_id = gold only entry
+    const itemId = chosen.item_id ?? null;
+    const qty    = (chosen.min_quantity ?? 1) +
+                   Math.floor(Math.random() * ((chosen.max_quantity ?? 1) - (chosen.min_quantity ?? 1) + 1));
 
-    const rolledGold = chosen.gold_min > 0
-      ? chosen.gold_min + Math.floor(Math.random() * (chosen.gold_max - chosen.gold_min + 1))
-      : 0;
-
-    return {
-      gold: baseGold + rolledGold,
-      itemId: chosen.item_id !== "gold" ? chosen.item_id : null,
-      qty:    chosen.qty_min + Math.floor(Math.random() * (chosen.qty_max - chosen.qty_min + 1))
-    };
+    return { gold, itemId, qty };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -1188,6 +1210,7 @@ function _removePlayer(token) {
   // Load game data from Supabase (source of truth)
   await loadMonsterDefs();
   await loadAbilityDefs();
+  await loadLootData();
 
   // Init local DB for spawn groups only
   initDB();
