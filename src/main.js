@@ -121,10 +121,10 @@ async function start() {
       engine.serverUrl     = serverUrl;
       engine.onQuitToTitle = () => showScreens();
 
-      // Pre-load Supabase data so Engine doesn't re-fetch local JSON
+      // Pre-load Supabase data so Engine doesn't re-fetch abilities/classes
       engine._abilities = abilities;
       engine._classes   = classes;
-      engine._itemDefs  = items;
+      // Note: _itemDefs always loads from local items.json (has icons/onUse)
 
       await engine.loadWorld(WORLD_ID, character);
 
