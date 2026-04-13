@@ -88,25 +88,30 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes, spawnRes] = await Promise.all([
-      fetch("./src/data/abilities.json"),
-      fetch("./src/data/classes.json"),
-      fetch("./src/data/items.json"),
-      fetch("./src/data/loot.json"),
+    // Use pre-loaded data from Supabase if available (set by main.js)
+    // Fall back to local JSON files
+    const [lootRes, skillsRes, spawnRes] = await Promise.all([
+      fetch("./src/data/loot.json").catch(() => null),
       fetch("./src/data/skills.json"),
       fetch("./src/data/spawnGroups.json").catch(() => null)
     ]);
-    if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
-    if (!classesRes.ok)   throw new Error("Failed to load classes.json");
-    if (!itemsRes.ok)     throw new Error("Failed to load items.json");
-    if (!lootRes.ok)      throw new Error("Failed to load loot.json");
-    if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
 
-    this._abilities  = await abilitiesRes.json();
-    this._classes    = await classesRes.json();
-    this._itemDefs   = await itemsRes.json();
-    this._lootTables = await lootRes.json();
-    this._skills     = await skillsRes.json();
+    // Abilities and classes come from Supabase via main.js
+    if (!this._abilities) {
+      const r = await fetch("./src/data/abilities.json");
+      this._abilities = await r.json();
+    }
+    if (!this._classes) {
+      const r = await fetch("./src/data/classes.json");
+      this._classes = await r.json();
+    }
+    if (!this._itemDefs) {
+      const r = await fetch("./src/data/items.json");
+      this._itemDefs = r.ok ? await r.json() : {};
+    }
+
+    this._lootTables = lootRes?.ok  ? await lootRes.json()  : {};
+    this._skills     = skillsRes.ok ? await skillsRes.json() : {};
     this._spawnData  = spawnRes?.ok ? await spawnRes.json()
                      : { spawnGroups: [], randomEncounters: { enabled: false } };
 
@@ -1271,13 +1276,20 @@ export class Engine {
         // We only handle item drops and the combat log here
 
         // Item drops — add to bag
-        if (loot?.itemId && loot.itemId !== "nothing" && loot.itemId !== "gold") {
+        if (loot?.itemId) {
+          const itemDef   = this._itemDefs?.[loot.itemId];
+          const itemName  = itemDef?.name ?? loot.itemId;
           const emptySlot = this.player.bag?.findIndex(s => s === null);
           if (emptySlot >= 0) {
             this.player.bag[emptySlot] = { itemId: loot.itemId, qty: loot.qty ?? 1 };
             this.combatLog?.push({
-              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${loot.itemId}!`,
+              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${itemName}!`,
               type: "reward"
+            });
+          } else {
+            this.combatLog?.push({
+              text: `Bag full — dropped ${itemName}!`,
+              type: "system"
             });
           }
         }
@@ -1296,13 +1308,14 @@ export class Engine {
     });
 
     // ── New server-authoritative callbacks ────────────────────────────────
-    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
-      if (hp      !== undefined) this.player.hp    = hp;
-      if (maxHp   !== undefined) this.player.maxHp = maxHp;
-      if (xp      !== undefined) this.player.xp    = xp;
-      if (gold    !== undefined) this.player.gold   = gold;
+    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold, mana, maxMana }) => {
+      if (hp      !== undefined) this.player.hp          = hp;
+      if (maxHp   !== undefined) this.player.maxHp       = maxHp;
+      if (xp      !== undefined) this.player.xp          = xp;
+      if (gold    !== undefined) this.player.gold         = gold;
+      if (mana    !== undefined) this.player.resource     = mana;
+      if (maxMana !== undefined) this.player.maxResource  = maxMana;
 
-      // Don't trigger death during invulnerability window (e.g. just respawned)
       if (hp <= 0 && !this._playerDead && !this.player.invulnerable) {
         this._onPlayerDeath();
       }
@@ -1312,9 +1325,14 @@ export class Engine {
       }
     };
 
-    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit, heal }) => {
+    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, noMana, aoe, targetsHit, heal }) => {
       if (outOfRange) {
         this.combatLog?.push({ text: "Out of range.", type: "system" });
+        return;
+      }
+      if (noMana) {
+        const def = this.player.resourceDef;
+        this.combatLog?.push({ text: `Not enough ${def?.label ?? "mana"}!`, type: "system" });
         return;
       }
 
