@@ -105,7 +105,8 @@ export class Engine {
       const r = await fetch("./src/data/classes.json");
       this._classes = await r.json();
     }
-    if (!this._itemDefs) {
+    // Items always load from local JSON — Supabase items lack icon/onUse data
+    {
       const r = await fetch("./src/data/items.json");
       this._itemDefs = r.ok ? await r.json() : {};
     }
