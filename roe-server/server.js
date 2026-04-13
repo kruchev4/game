@@ -385,23 +385,42 @@ function _resolveAbility(session, world, msg) {
 function _handleNPCKill(session, world, npcId, result) {
   const playersHere = _playersInWorld(session.worldId);
   const count       = playersHere.length;
-  const xpShare     = Math.floor(result.xpValue / Math.max(1, count));
+  const xpShare     = Math.floor((result.xpValue ?? 0) / Math.max(1, count));
+  const loot        = result.loot ?? { gold: 0 };
 
-  // Award XP and gold to all players in world
+  console.log(`[Server] Kill: ${npcId} xp=${xpShare}x${count} gold=${loot.gold} item=${loot.itemId ?? "none"}`);
+
+  // Award XP and gold to ALL players
   for (const p of playersHere) {
     p.xp   = (p.xp   ?? 0) + xpShare;
-    p.gold = (p.gold ?? 0) + (result.loot?.gold ?? 0);
+    p.gold = (p.gold ?? 0) + (loot.gold ?? 0);
     _send(p.ws, {
       type: "player_stat_update",
       hp: p.hp, maxHp: p.maxHp,
-      xp: p.xp, gold: p.gold
+      xp: p.xp, gold: p.gold,
+      mana: p.mana, maxMana: p.maxMana
     });
   }
 
-  _broadcast(session.worldId, {
+  // Item loot — only goes to the killer
+  // Each player gets their own roll in future; for now killer gets the item
+  _send(session.ws, {
     type: "npc_killed", npcId,
-    killerName: session.name, xpShare, loot: result.loot
+    killerName: session.name,
+    xpShare,
+    loot: { gold: loot.gold, itemId: loot.itemId ?? null, qty: loot.qty ?? 1 }
   });
+
+  // Tell other players about the kill but without item loot
+  for (const p of playersHere) {
+    if (p.playerToken === session.playerToken) continue;
+    _send(p.ws, {
+      type: "npc_killed", npcId,
+      killerName: session.name,
+      xpShare,
+      loot: { gold: loot.gold, itemId: null, qty: 0 }
+    });
+  }
 
   console.log(`[Server] ${session.name} killed ${npcId} (${xpShare} XP × ${count})`);
 }
