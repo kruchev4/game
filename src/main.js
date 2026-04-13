@@ -118,8 +118,13 @@ async function start() {
 
       engine.saveSlot      = saveSlot;
       engine.saveProvider  = saveProvider;
-      engine.serverUrl     = serverUrl;  // pass URL to engine before loadWorld
+      engine.serverUrl     = serverUrl;
       engine.onQuitToTitle = () => showScreens();
+
+      // Pre-load Supabase data so Engine doesn't re-fetch local JSON
+      engine._abilities = abilities;
+      engine._classes   = classes;
+      engine._itemDefs  = items;
 
       await engine.loadWorld(WORLD_ID, character);
 
