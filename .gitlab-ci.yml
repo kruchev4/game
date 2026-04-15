@@ -21,7 +21,7 @@ build-image:
       --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
       --destination "${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}"
-      --destination "${REGISTRY}/${IMAGE_NAME}:latest"
+      --destination "${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_REF_SLUG}"
   tags:
     - docker
     - linux
