@@ -14,6 +14,7 @@
 
 import { Engine }                    from "./core/Engine.js";
 import { Renderer }                  from "./render/Renderer.js";
+import { IsoAdapter }                from "./render/IsoAdapter.js";
 import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
@@ -21,6 +22,9 @@ import { MultiplayerSystem }         from "./systems/MultiplayerSystem.js";
 import { fetchAvailableServers }     from "./adapters/ServerDirectory.js";
 import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
+
+// ── Feature flag — flip to true to enable isometric renderer ──────────────
+const USE_ISO_RENDERER = true; // set to true once IsoAdapter is wired up
 
 const WORLD_ID = "overworld_C";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -102,10 +106,13 @@ async function loadGameData() {
 
 async function start() {
   try {
-    const canvas = document.getElementById("game");
+    const canvas      = document.getElementById("game");
     if (!canvas) throw new Error("Canvas #game not found");
 
-    const renderer      = new Renderer(canvas);
+    // ── Renderer — flip USE_ISO_RENDERER flag to switch ───────────────────
+    const renderer = USE_ISO_RENDERER
+      ? new IsoAdapter(canvas)
+      : new Renderer(canvas);
     const worldProvider = new SupabaseOverworldProvider();
     const saveProvider  = new SaveProvider();
 
