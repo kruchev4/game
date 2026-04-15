@@ -184,15 +184,30 @@
           this.textures.addCanvas(key, canvas);
         }
 
-        // Generate character textures
-        const chars = {
-          char_fighter: makeCharCanvas("#cc3322", "F"),
-          char_ranger:  makeCharCanvas("#2a8a2a", "R"),
-          char_paladin: makeCharCanvas("#2244cc", "P"),
-          mob_goblin:   makeCharCanvas("#4a8a2a", "G"),
-        };
-        for (const [key, canvas] of Object.entries(chars)) {
+        // Generate character textures as spritesheets
+        const charDefs = [
+          { key:"char_fighter", color:"#cc3322" },
+          { key:"char_ranger",  color:"#2a8a2a" },
+          { key:"char_paladin", color:"#2244cc" },
+          { key:"mob_goblin",   color:"#4a8a2a" },
+        ];
+        for (const { key, color } of charDefs) {
+          const canvas = makeCharCanvas(color);
+          // Add as canvas texture first
           this.textures.addCanvas(key, canvas);
+          // Then manually add frame data for spritesheet
+          const tex = this.textures.get(key);
+          const FRAMES = 4, DIRS = 8;
+          for (let dir = 0; dir < DIRS; dir++) {
+            for (let frame = 0; frame < FRAMES; frame++) {
+              const idx = dir * FRAMES + frame;
+              tex.add(idx, 0,
+                frame * CHAR_SIZE,
+                dir   * CHAR_SIZE,
+                CHAR_SIZE, CHAR_SIZE
+              );
+            }
+          }
         }
       }
 
@@ -278,7 +293,7 @@
 
       _addCharacter(id, tx, ty, textureKey) {
         const { x, y } = isoToScreen(tx, ty);
-        const sprite    = this.add.sprite(x, y - 16, textureKey);
+        const sprite    = this.add.sprite(x, y - 16, textureKey, 0);
         sprite.setOrigin(0.5, 0.75);
         sprite.setDepth((tx + ty) * 10 + 5);
         sprite._tx = tx;
