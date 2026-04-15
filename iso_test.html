@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Realm of Echoes — Isometric Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; overflow: hidden; }
+    #game { width: 100vw; height: 100vh; }
+    #info {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #e8c84a;
+      font-family: monospace;
+      font-size: 13px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 14px;
+      border: 1px solid #4a2e10;
+      pointer-events: none;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="info">
+    <div>🗺 Realm of Echoes — Isometric Test</div>
+    <div style="margin-top:6px;color:#aaa;font-size:11px">
+      Placeholder tiles and sprites<br>
+      Replace with Kenney assets when ready<br>
+      Click to place marker · WASD to pan camera
+    </div>
+  </div>
+
+  <script type="module">
+    import Phaser from "https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.esm.js";
+
+    // ── Constants ──────────────────────────────────────────────────────────
+    const TILE_W      = 128;
+    const TILE_H      = 64;
+    const TILE_W_HALF = 64;
+    const TILE_H_HALF = 32;
+    const CHAR_SIZE   = 64;
+    const MAP_W       = 20;
+    const MAP_H       = 20;
+
+    // ── Coordinate helpers ─────────────────────────────────────────────────
+    function isoToScreen(tx, ty) {
+      return {
+        x: (tx - ty) * TILE_W_HALF,
+        y: (tx + ty) * TILE_H_HALF
+      };
+    }
+
+    function screenToIso(sx, sy) {
+      return {
+        tx: Math.floor((sx / TILE_W_HALF + sy / TILE_H_HALF) / 2),
+        ty: Math.floor((sy / TILE_H_HALF - sx / TILE_W_HALF) / 2)
+      };
+    }
+
+    // ── Generate placeholder tile texture ──────────────────────────────────
+    function makeTileCanvas(fillTop, fillLeft, fillRight, stroke) {
+      const c   = document.createElement("canvas");
+      c.width   = TILE_W;
+      c.height  = TILE_H + 20; // extra height for side faces
+      const ctx = c.getContext("2d");
+
+      // Top face (diamond)
+      ctx.beginPath();
+      ctx.moveTo(TILE_W_HALF, 0);
+      ctx.lineTo(TILE_W, TILE_H_HALF);
+      ctx.lineTo(TILE_W_HALF, TILE_H);
+      ctx.lineTo(0, TILE_H_HALF);
+      ctx.closePath();
+      ctx.fillStyle = fillTop;
+      ctx.fill();
+
+      // Left face
+      ctx.beginPath();
+      ctx.moveTo(0, TILE_H_HALF);
+      ctx.lineTo(TILE_W_HALF, TILE_H);
+      ctx.lineTo(TILE_W_HALF, TILE_H + 16);
+      ctx.lineTo(0, TILE_H_HALF + 16);
+      ctx.closePath();
+      ctx.fillStyle = fillLeft;
+      ctx.fill();
+
+      // Right face
+      ctx.beginPath();
+      ctx.moveTo(TILE_W_HALF, TILE_H);
+      ctx.lineTo(TILE_W, TILE_H_HALF);
+      ctx.lineTo(TILE_W, TILE_H_HALF + 16);
+      ctx.lineTo(TILE_W_HALF, TILE_H + 16);
+      ctx.closePath();
+      ctx.fillStyle = fillRight;
+      ctx.fill();
+
+      // Outline
+      ctx.beginPath();
+      ctx.moveTo(TILE_W_HALF, 0);
+      ctx.lineTo(TILE_W, TILE_H_HALF);
+      ctx.lineTo(TILE_W_HALF, TILE_H);
+      ctx.lineTo(0, TILE_H_HALF);
+      ctx.closePath();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+      return c;
+    }
+
+    // ── Generate placeholder character ─────────────────────────────────────
+    function makeCharCanvas(color, label) {
+      // 4 idle frames × 8 directions
+      const FRAMES = 4;
+      const DIRS   = 8;
+      const c      = document.createElement("canvas");
+      c.width       = FRAMES * CHAR_SIZE;
+      c.height      = DIRS   * CHAR_SIZE;
+      const ctx     = c.getContext("2d");
+
+      for (let dir = 0; dir < DIRS; dir++) {
+        for (let frame = 0; frame < FRAMES; frame++) {
+          const x   = frame * CHAR_SIZE;
+          const y   = dir   * CHAR_SIZE;
+          const bob = Math.sin(frame * Math.PI / 2) * 2;
+
+          // Shadow
+          ctx.fillStyle = "rgba(0,0,0,0.3)";
+          ctx.beginPath();
+          ctx.ellipse(x + 32, y + 56, 14, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Body
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 20, y + 28 + bob, 24, 22);
+
+          // Head
+          ctx.beginPath();
+          ctx.arc(x + 32, y + 22 + bob, 11, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Highlight
+          ctx.fillStyle = "rgba(255,255,255,0.2)";
+          ctx.beginPath();
+          ctx.arc(x + 28, y + 18 + bob, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Direction indicator
+          ctx.fillStyle = "#fff";
+          ctx.font      = "8px monospace";
+          ctx.fillText(["S","SW","W","NW","N","NE","E","SE"][dir], x + 2, y + 12);
+        }
+      }
+      return c;
+    }
+
+    // ── World map ──────────────────────────────────────────────────────────
+    // Simple test map — 0=grass, 1=stone, 2=path, 3=water
+    const WORLD = Array.from({ length: MAP_H }, (_, y) =>
+      Array.from({ length: MAP_W }, (_, x) => {
+        if (y === 0 || y === MAP_H-1 || x === 0 || x === MAP_W-1) return 1; // border
+        if (x === 10 || y === 10) return 2;  // path
+        if (x < 3 && y < 3)      return 3;  // water corner
+        return 0; // grass
+      })
+    );
+
+    // ── Phaser Scene ───────────────────────────────────────────────────────
+    class IsoTestScene extends Phaser.Scene {
+      constructor() { super({ key: "IsoTestScene" }); }
+
+      preload() {
+        // Generate tile textures
+        const tiles = {
+          tile_grass: makeTileCanvas("#5a8a3a","#3a6a1a","#2a5a0a","#4a7a2a"),
+          tile_stone: makeTileCanvas("#888880","#555550","#444440","#666660"),
+          tile_path:  makeTileCanvas("#b8a878","#907850","#806840","#a09060"),
+          tile_water: makeTileCanvas("#3a5aaa","#1a3a8a","#0a2a7a","#2a4a9a"),
+        };
+        for (const [key, canvas] of Object.entries(tiles)) {
+          this.textures.addCanvas(key, canvas);
+        }
+
+        // Generate character textures
+        const chars = {
+          char_fighter: makeCharCanvas("#cc3322", "F"),
+          char_ranger:  makeCharCanvas("#2a8a2a", "R"),
+          char_paladin: makeCharCanvas("#2244cc", "P"),
+          mob_goblin:   makeCharCanvas("#4a8a2a", "G"),
+        };
+        for (const [key, canvas] of Object.entries(chars)) {
+          this.textures.addCanvas(key, canvas);
+        }
+      }
+
+      create() {
+        this.cameras.main.setBackgroundColor("#1a1008");
+
+        // ── Build tile map ───────────────────────────────────────────────
+        const tileKeys = ["tile_grass","tile_stone","tile_path","tile_water"];
+
+        for (let ty = 0; ty < MAP_H; ty++) {
+          for (let tx = 0; tx < MAP_W; tx++) {
+            const { x, y } = isoToScreen(tx, ty);
+            const tileType = WORLD[ty][tx];
+            const img = this.add.image(x, y, tileKeys[tileType]);
+            img.setOrigin(0.5, 0.5);
+            img.setDepth((tx + ty) * 10);
+          }
+        }
+
+        // ── Add test characters ──────────────────────────────────────────
+        this._addCharacter("player",  10, 10, "char_fighter");
+        this._addCharacter("ranger",  11, 11, "char_ranger");
+        this._addCharacter("goblin1",  8,  8, "mob_goblin");
+        this._addCharacter("goblin2", 12,  8, "mob_goblin");
+
+        // ── Register idle animations ─────────────────────────────────────
+        ["char_fighter","char_ranger","char_paladin","mob_goblin"].forEach(key => {
+          for (let dir = 0; dir < 8; dir++) {
+            const dirName = ["S","SW","W","NW","N","NE","E","SE"][dir];
+            this.anims.create({
+              key:       `${key}_idle_${dirName}`,
+              frames:    this.anims.generateFrameNumbers(key, {
+                start: dir * 4, end: dir * 4 + 3
+              }),
+              frameRate: 4,
+              repeat:    -1
+            });
+          }
+        });
+
+        // Play idle animations
+        this._sprites.forEach((sprite, id) => {
+          const key = sprite.texture.key;
+          sprite.play(`${key}_idle_S`);
+        });
+
+        // ── Camera setup ─────────────────────────────────────────────────
+        const center = isoToScreen(MAP_W/2, MAP_H/2);
+        this.cameras.main.centerOn(center.x, center.y);
+        this.cameras.main.setZoom(1.2);
+
+        // ── WASD camera pan ───────────────────────────────────────────────
+        this._cursors = this.input.keyboard.createCursorKeys();
+        this._wasd    = this.input.keyboard.addKeys("W,A,S,D");
+
+        // ── Click handler ─────────────────────────────────────────────────
+        this.input.on("pointerdown", (ptr) => {
+          const worldPt = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          const { tx, ty } = screenToIso(worldPt.x, worldPt.y);
+          if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) {
+            this._moveCharacter("player", tx, ty);
+          }
+        });
+
+        // ── Info text ─────────────────────────────────────────────────────
+        this.add.text(10, 10,
+          "✓ Isometric grid working\n✓ Tiles rendering\n✓ Characters placed\n✓ Click to move player",
+          { fontFamily:"monospace", fontSize:"12px", color:"#e8c84a",
+            stroke:"#000", strokeThickness:3 }
+        ).setScrollFactor(0).setDepth(99999);
+      }
+
+      update() {
+        const speed = 4;
+        const cam   = this.cameras.main;
+        if (this._wasd.A.isDown || this._cursors.left.isDown)  cam.scrollX -= speed;
+        if (this._wasd.D.isDown || this._cursors.right.isDown) cam.scrollX += speed;
+        if (this._wasd.W.isDown || this._cursors.up.isDown)    cam.scrollY -= speed;
+        if (this._wasd.S.isDown || this._cursors.down.isDown)  cam.scrollY += speed;
+      }
+
+      _sprites = new Map();
+
+      _addCharacter(id, tx, ty, textureKey) {
+        const { x, y } = isoToScreen(tx, ty);
+        const sprite    = this.add.sprite(x, y - 16, textureKey);
+        sprite.setOrigin(0.5, 0.75);
+        sprite.setDepth((tx + ty) * 10 + 5);
+        sprite._tx = tx;
+        sprite._ty = ty;
+        this._sprites.set(id, sprite);
+
+        // Name label
+        const label = this.add.text(x, y - 48, id, {
+          fontFamily:"monospace", fontSize:"10px", color:"#ffffff",
+          stroke:"#000", strokeThickness:2
+        }).setOrigin(0.5, 0.5).setDepth((tx + ty) * 10 + 6);
+        sprite._label = label;
+
+        return sprite;
+      }
+
+      _moveCharacter(id, tx, ty) {
+        const sprite = this._sprites.get(id);
+        if (!sprite) return;
+
+        const { x, y } = isoToScreen(tx, ty);
+        this.tweens.add({
+          targets:  sprite,
+          x, y:     y - 16,
+          duration: 200,
+          ease:     "Linear"
+        });
+        if (sprite._label) {
+          this.tweens.add({
+            targets:  sprite._label,
+            x, y:     y - 48,
+            duration: 200
+          });
+        }
+        sprite.setDepth((tx + ty) * 10 + 5);
+        sprite._tx = tx;
+        sprite._ty = ty;
+
+        // Damage text test
+        this.spawnText(x, y - 16, "click!", "#e8c84a");
+      }
+
+      spawnText(x, y, text, color) {
+        const t = this.add.text(x, y, text, {
+          fontFamily:"monospace", fontSize:"14px", color,
+          stroke:"#000", strokeThickness:3
+        }).setOrigin(0.5, 1).setDepth(99998);
+        this.tweens.add({
+          targets: t, y: y - 40, alpha: 0, duration: 800,
+          onComplete: () => t.destroy()
+        });
+      }
+    }
+
+    // ── Launch ────────────────────────────────────────────────────────────
+    new Phaser.Game({
+      type:   Phaser.AUTO,
+      width:  window.innerWidth,
+      height: window.innerHeight,
+      parent: "game",
+      backgroundColor: "#1a1008",
+      scene:  IsoTestScene,
+      scale: {
+        mode:       Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      }
+    });
+  </script>
+</body>
+</html>
