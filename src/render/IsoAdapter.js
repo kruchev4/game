@@ -1,3 +1,5 @@
+import { IsoHUD } from "./IsoHUD.js";
+
 /**
  * IsoAdapter.js
  *
@@ -175,7 +177,7 @@ class IsoCamera {
 export class IsoAdapter {
   constructor(existingCanvas) {
     // ── Properties Engine sets directly ──────────────────────────────────
-    this.player          = null;
+    this._playerRef      = null;
     this.currentTarget   = null;
     this.combatLog       = null;
     this.animSystem      = null;
@@ -184,6 +186,14 @@ export class IsoAdapter {
     this.playerAbilities = [];
     this.itemDefs        = {};
     this.chunkLayer      = null; // not used — Phaser handles tiles
+
+    // ── Player getter/setter — mounts HUD when player is assigned ──────────
+    Object.defineProperty(this, "player", {
+      get: () => this._playerRef,
+      set: (p) => {
+        this._playerRef = p;
+      }
+    });
 
     // ── Internal state ────────────────────────────────────────────────────
     this._scene          = null;
@@ -373,9 +383,9 @@ export class IsoAdapter {
 
     // Stream tiles only when player moves to a new chunk position
     // NOT every frame — tiles are permanent once drawn
-    if (this.player) {
-      const px = Math.floor(this.player.x);
-      const py = Math.floor(this.player.y);
+    if (this._playerRef) {
+      const px = Math.floor(this._playerRef.x);
+      const py = Math.floor(this._playerRef.y);
       const chunkX = Math.floor(px / 10);
       const chunkY = Math.floor(py / 10);
       const chunkKey = `${chunkX},${chunkY}`;
@@ -389,8 +399,8 @@ export class IsoAdapter {
     const activeIds = new Set();
 
     // Player
-    if (this.player) {
-      this._updateSprite(this.player, "player");
+    if (this._playerRef) {
+      this._updateSprite(this._playerRef, "player");
       activeIds.add("player");
     }
 
@@ -741,9 +751,20 @@ export class IsoAdapter {
   // ── HUD ───────────────────────────────────────────────────────────────────
 
   _updateHUD() {
-    // HUD is rendered by the existing HTML overlay system
-    // Phaser handles the world; HTML handles UI
-    // No action needed here for now
+    if (!this._playerRef) return;
+
+    // Mount HUD on first render
+    if (!this._hud._el) {
+      const abilityBar = this._player.abilities ?? 
+        Object.keys(this.abilities ?? {}).slice(0, 6);
+      this._hud.mount(this._player, this.abilities, abilityBar);
+    }
+
+    // Update target
+    this._hud.setTarget(this.currentTarget);
+
+    // Update cooldowns from player
+    this._hud.setCooldowns(this._player.abilityCooldowns ?? {});
   }
 
   // ── Placeholder asset loading ─────────────────────────────────────────────
