@@ -316,9 +316,18 @@ export class IsoAdapter {
     // Skip entity updates if scene not ready
     if (!this._ready || !this._scene) return;
 
-    // Stream in tiles around player position
+    // Stream tiles only when player moves to a new chunk position
+    // NOT every frame — tiles are permanent once drawn
     if (this.player) {
-      this._updateVisibleTiles(Math.floor(this.player.x), Math.floor(this.player.y));
+      const px = Math.floor(this.player.x);
+      const py = Math.floor(this.player.y);
+      const chunkX = Math.floor(px / 10);
+      const chunkY = Math.floor(py / 10);
+      const chunkKey = `${chunkX},${chunkY}`;
+      if (chunkKey !== this._lastChunk) {
+        this._lastChunk = chunkKey;
+        this._updateVisibleTiles(px, py);
+      }
     }
 
     // ── Update entity sprites ─────────────────────────────────────────────
@@ -371,25 +380,17 @@ export class IsoAdapter {
     // Clear existing tiles
     for (const img of this._tileCache.values()) img.destroy();
     this._tileCache.clear();
+    this._lastChunk = null; // reset chunk tracker
 
-    this._world     = world;
-    this._worldDirty = false;
+    this._world = world;
 
-    // Only draw a viewport-sized chunk around spawn — rest loaded on demand
-    // Full 256x256 = 65k tiles would hang the browser
-    // We draw a 40x40 chunk centered on world center, expand as player moves
-    const W         = world.width;
-    const H         = world.height;
-    const CHUNK     = 30; // tiles visible in each direction
-    const cx        = Math.floor(W / 2);
-    const cy        = Math.floor(H / 2);
+    // Draw initial chunk around spawn point (world center as fallback)
+    // Player position not known yet — will be updated on first move
+    const spawnX = this.player?.x ?? Math.floor(world.width  / 2);
+    const spawnY = this.player?.y ?? Math.floor(world.height / 2);
+    this._updateVisibleTiles(Math.floor(spawnX), Math.floor(spawnY));
 
-    this._drawChunk(world, 
-      Math.max(0, cx - CHUNK), Math.max(0, cy - CHUNK),
-      Math.min(W, cx + CHUNK), Math.min(H, cy + CHUNK)
-    );
-
-    console.log(`[IsoAdapter] Drew ${this._tileCache.size} tiles`);
+    console.log(`[IsoAdapter] Drew ${this._tileCache.size} initial tiles`);
   }
 
   _drawChunk(world, x0, y0, x1, y1) {
@@ -413,17 +414,19 @@ export class IsoAdapter {
     }
   }
 
-  // Called from render() to stream in tiles as player moves
+  // Stream tiles around player — only called when player enters new chunk
+  // Tiles already drawn are skipped (tileCache check in _drawChunk)
   _updateVisibleTiles(playerX, playerY) {
     if (!this._world) return;
-    const W      = this._world.width;
-    const H      = this._world.height;
-    const CHUNK  = 20;
-    const x0     = Math.max(0, playerX - CHUNK);
-    const y0     = Math.max(0, playerY - CHUNK);
-    const x1     = Math.min(W, playerX + CHUNK);
-    const y1     = Math.min(H, playerY + CHUNK);
+    const W     = this._world.width;
+    const H     = this._world.height;
+    const RANGE = 25; // tiles in each direction
+    const x0    = Math.max(0, playerX - RANGE);
+    const y0    = Math.max(0, playerY - RANGE);
+    const x1    = Math.min(W, playerX + RANGE);
+    const y1    = Math.min(H, playerY + RANGE);
     this._drawChunk(this._world, x0, y0, x1, y1);
+    console.log(`[IsoAdapter] Tile cache: ${this._tileCache.size} tiles`);
   }
 
   // ── Entity sprite management ──────────────────────────────────────────────
