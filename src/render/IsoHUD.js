@@ -47,6 +47,42 @@ export class IsoHUD {
     this._target = entity;
   }
 
+  pushLog(text, type) {
+    const container = document.getElementById("hud-combatlog");
+    if (!container) return;
+
+    const colors = {
+      damage:     "#ff6666",
+      damage_out: "#ffaa44",
+      heal:       "#44ff88",
+      reward:     "#e8c84a",
+      system:     "#aaaacc",
+      default:    "#cccccc"
+    };
+
+    const el = document.createElement("div");
+    el.style.cssText = [
+      `color:${colors[type] ?? colors.default}`,
+      "font-size:11px",
+      "line-height:1.3",
+      "text-shadow:1px 1px 2px rgba(0,0,0,0.9)",
+      "opacity:1",
+      "transition:opacity 3s ease"
+    ].join(";");
+    el.textContent = text;
+    container.appendChild(el);
+
+    // Fade out after 4s
+    setTimeout(() => { el.style.opacity = "0"; }, 4000);
+    // Remove after fade
+    setTimeout(() => { el.remove(); }, 7000);
+
+    // Keep max 8 lines
+    while (container.children.length > 8) {
+      container.removeChild(container.firstChild);
+    }
+  }
+
   setCooldowns(cooldowns) {
     this._cooldowns = cooldowns ?? {};
   }
@@ -73,7 +109,7 @@ export class IsoHUD {
 
     el.innerHTML = `
       <style>
-        #iso-hud * { box-sizing: border-box; }
+        #iso-hud * { box-sizing: border-box; pointer-events: none; }
 
         /* ── Player Frame ── */
         #hud-player {
@@ -176,7 +212,7 @@ export class IsoHUD {
           justify-content: center;
           position: relative;
           cursor: pointer;
-          pointer-events: auto;
+          pointer-events: auto !important;
           transition: border-color 0.15s;
         }
         .hud-slot:hover { border-color: rgba(160,160,255,0.9); }
@@ -234,7 +270,7 @@ export class IsoHUD {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          pointer-events: auto;
+          pointer-events: auto !important;
           cursor: pointer;
           position: relative;
         }
@@ -306,6 +342,23 @@ export class IsoHUD {
       <!-- Quick Slots -->
       <div id="hud-quickslots"></div>
 
+      <!-- Combat Log -->
+      <div id="hud-combatlog" style="
+        position:absolute;
+        bottom:80px;
+        left:260px;
+        width:280px;
+        max-height:140px;
+        overflow:hidden;
+        display:flex;
+        flex-direction:column;
+        justify-content:flex-end;
+        gap:1px;
+        padding:6px 8px;
+        background:rgba(6,6,14,0.72);
+        border-radius:6px;
+      "></div>
+
       <!-- Minimap -->
       <div id="hud-minimap" style="
         position:absolute;
@@ -368,7 +421,8 @@ export class IsoHUD {
         <span class="hud-slot-name">${ability?.name ?? abilityId}</span>
         <div class="hud-slot-cd hidden" id="hud-slot-cd-${i}"></div>
       `;
-      slot.addEventListener("pointerdown", () => {
+      slot.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
         window.dispatchEvent(new KeyboardEvent("keydown", {
           key: String(i + 1), code: `Digit${i + 1}`, bubbles: true
         }));
@@ -391,6 +445,13 @@ export class IsoHUD {
         <span class="hud-qslot-icon" id="hud-qi-${i}">—</span>
         <span class="hud-qslot-qty" id="hud-qq-${i}"></span>
       `;
+      slot.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        // Keys 5-8 mapped to quick slots 0-3
+        window.dispatchEvent(new KeyboardEvent("keydown", {
+          key: String(i + 5), code: `Digit${i + 5}`, bubbles: true
+        }));
+      });
       container.appendChild(slot);
     }
   }
