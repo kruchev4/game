@@ -1711,31 +1711,38 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
+    const t0 = performance.now();
+
     if (!this._playerDead) {
       const serverOwnsNPCs = this.multiplayerSystem?._connected;
 
+      const t1 = performance.now();
       if (!this.townSystem && !serverOwnsNPCs) {
-        // Single player / offline — full local simulation
         this.npcPerceptionSystem?.update();
         this.npcMovementSystem?.update();
         this.combatSystem?.update();
         this.npcAISystem?.update(this.world);
       } else if (!this.townSystem && serverOwnsNPCs) {
-        // Multiplayer — server owns NPC movement and attacks
         if (this.combatSystem) this.combatSystem.multiplayerMode = true;
         this.combatSystem?.updatePlayerOnly();
       }
+      const t2 = performance.now();
 
       this.movementSystem?.update();
+      const t3 = performance.now();
+
       this.lootSystem?.update();
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
       this.animSystem?.update();
       this.effectSystem?.update();
+      const t4 = performance.now();
+
       this.multiplayerSystem?.update();
+      const t5 = performance.now();
+
       this._tickPlayerResource();
 
-      // Divine Shield — tick invulnerability timer
       if (this.player.invulnerable) {
         this.player.invulnerableTimer = (this.player.invulnerableTimer ?? 0) - 1;
         if (this.player.invulnerableTimer <= 0) {
@@ -1749,6 +1756,13 @@ export class Engine {
         this._autoSaveTick = 0;
         this.saveToSlot();
       }
+
+      // Log slow systems
+      const slow = 16; // ms threshold
+      if (t2 - t1 > slow) console.warn(`[Loop] NPC systems: ${(t2-t1).toFixed(1)}ms`);
+      if (t3 - t2 > slow) console.warn(`[Loop] Movement: ${(t3-t2).toFixed(1)}ms`);
+      if (t4 - t3 > slow) console.warn(`[Loop] Loot/anim/effect: ${(t4-t3).toFixed(1)}ms`);
+      if (t5 - t4 > slow) console.warn(`[Loop] Multiplayer: ${(t5-t4).toFixed(1)}ms`);
     }
 
     this.combatLog?.update();
@@ -1757,10 +1771,15 @@ export class Engine {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
     }
 
-    // Don't render game world when death screen is active — it draws on same canvas
+    const t6 = performance.now();
     if (!this._deathScreen?.active) {
       this.renderer.render(this.world, this.entities);
     }
+    const t7 = performance.now();
+    if (t7 - t6 > slow) console.warn(`[Loop] Render: ${(t7-t6).toFixed(1)}ms`);
+
+    const total = t7 - t0;
+    if (total > 50) console.warn(`[Loop] TOTAL SLOW FRAME: ${total.toFixed(1)}ms`);
 
     requestAnimationFrame(() => this.loop());
   }
