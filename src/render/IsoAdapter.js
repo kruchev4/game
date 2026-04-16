@@ -253,12 +253,10 @@ export class IsoAdapter {
 
         // ── Input → forward to Engine via fake canvas ─────────────────────
         this.input.on("pointerdown", (ptr) => {
-          // Fire to Engine handlers with clientX/Y as the coordinates
-          // Engine will call camera.screenToWorld(px, py) which we intercept
-          adapter._pendingClick = {
-            clientX: ptr.x,
-            clientY: ptr.y
-          };
+          // Debounce — prevent multiple fires per click
+          const now = Date.now();
+          if (now - (adapter._lastClick ?? 0) < 100) return;
+          adapter._lastClick = now;
           adapter._fireCanvasEvent("pointerdown", ptr.x, ptr.y, { button: ptr.event?.button ?? 0 });
         });
 
@@ -266,12 +264,9 @@ export class IsoAdapter {
           adapter._fireCanvasEvent("wheel", ptr.x, ptr.y, { deltaY: dy });
         });
 
-        // Keyboard — forward to window so Engine keydown handler works
-        this.input.keyboard.on("keydown", (e) => {
-          window.dispatchEvent(new KeyboardEvent("keydown", {
-            key: e.key, code: e.code, bubbles: true
-          }));
-        });
+        // Keyboard — Engine listens on window directly so no forwarding needed
+        // Just make sure Phaser doesn't consume key events exclusively
+        this.input.keyboard.enabled = true;
 
         adapter._ready = true;
         console.log("[IsoAdapter] Phaser scene ready");
@@ -335,14 +330,20 @@ export class IsoAdapter {
       activeIds.add("player");
     }
 
-    // All entities (NPCs, remote players, corpses)
+    // All entities (NPCs, remote players, corpses) — skip player (drawn above)
     for (const entity of entities) {
-      if (entity.type === "corpse") {
-        this._updateCorpse(entity);
-      } else {
-        this._updateSprite(entity, entity.id);
+      if (!entity || entity === this.player) continue; // skip player duplicate
+      if (!entity.id) continue;
+      try {
+        if (entity.type === "corpse") {
+          this._updateCorpse(entity);
+        } else {
+          this._updateSprite(entity, entity.id);
+        }
+        activeIds.add(entity.id);
+      } catch(e) {
+        console.warn("[IsoAdapter] Entity render error:", entity.id, e.message);
       }
-      activeIds.add(entity.id);
     }
 
     // Remove sprites for entities no longer in the world
@@ -428,13 +429,15 @@ export class IsoAdapter {
   // ── Entity sprite management ──────────────────────────────────────────────
 
   _updateSprite(entity, id) {
+    if (!entity || !id) return;
     if (entity.dead && entity.type !== "corpse") {
       this._removeSprite(id);
       return;
     }
 
-    const tx  = entity.x;
-    const ty  = entity.y;
+    const tx  = Math.floor(entity.x ?? 0);
+    const ty  = Math.floor(entity.y ?? 0);
+    if (isNaN(tx) || isNaN(ty)) return; // skip entities with bad coords
     const key = charKey(entity.classId ?? entity.type);
     const { x, y } = isoToScreen(tx, ty);
 
@@ -747,11 +750,10 @@ export class IsoAdapter {
   // We store those handlers and call them manually from Phaser input
 
   _makeFakeCanvas() {
+    // Virtual canvas — NOT added to DOM to prevent event bubbling issues
     const fake = document.createElement("canvas");
-    fake.style.display = "none";
     fake.width  = window.innerWidth;
     fake.height = window.innerHeight;
-    document.body.appendChild(fake);
 
     const listeners = this._eventListeners = [];
     fake.addEventListener = (type, fn, opts) => {
