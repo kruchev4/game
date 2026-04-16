@@ -26,7 +26,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.S
 
 const TICK_MS              = 50;   // 20 ticks/sec
 const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
+const NPC_BROADCAST_TICKS  = 4;    // broadcast NPC state every N ticks (200ms)
 const PING_INTERVAL_MS     = 10000;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -1105,16 +1105,12 @@ class WorldInstance {
     return [...this.npcs.values()]
       .filter(n => !n.dead)
       .map(n => ({
-        id:      n.id,
-        name:    n.name,
-        icon:    n.icon,
-        x:       n.x,
-        y:       n.y,
-        hp:      n.hp,
-        maxHp:   n.maxHp,
-        state:   n.state,
-        isBoss:  n.isBoss,
-        target:  n.target ?? null   // who has aggro
+        id:    n.id,
+        x:     n.x,
+        y:     n.y,
+        hp:    n.hp,
+        maxHp: n.maxHp,
+        state: n.state
       }));
   }
 
