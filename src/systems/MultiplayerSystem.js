@@ -6,7 +6,8 @@
  */
 
 const MOVE_MS      = 100;   // broadcast position every 100ms
-const PING_MS      = 5000;  // keepalive ping every 5s
+const PING_MS      = 10000; // keepalive ping every 10s
+const PONG_TIMEOUT = 15000; // disconnect if no pong in 15s
 
 export class MultiplayerSystem {
   constructor({ serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
@@ -76,6 +77,11 @@ export class MultiplayerSystem {
     if (this._pingTimer >= PING_MS) {
       this._pingTimer = 0;
       this._send({ type: "ping" });
+      // Check if pong is overdue — connection may be dead
+      if (Date.now() - this._lastPong > PONG_TIMEOUT && this._connected) {
+        console.warn("[MP] Pong timeout — connection likely dead, reconnecting");
+        this._ws?.close();
+      }
     }
   }
 
@@ -166,7 +172,9 @@ export class MultiplayerSystem {
     this._ws.addEventListener("open", () => {
       console.log("[MP] Connected to server");
       this._connected      = true;
+      this._lastPong       = Date.now();
       this._reconnectDelay = 2000; // reset backoff
+      clearTimeout(this._disconnectTimer); // cancel any pending disconnect dialog
 
       // Send join message
       const p = this.player;
@@ -183,7 +191,9 @@ export class MultiplayerSystem {
         x:           p.x       ?? 0,
         y:           p.y       ?? 0,
         gold:        p.gold    ?? 0,
-        xp:          p.xp      ?? 0
+        xp:          p.xp      ?? 0,
+        mana:        Math.ceil(p.resource ?? 100),
+        maxMana:     p.maxResource ?? 100
       });
     });
 
@@ -197,8 +207,18 @@ export class MultiplayerSystem {
       this._connected = false;
       console.log("[MP] Disconnected from server");
       if (!this._dead) {
-        this._showDisconnectDialog();
+        // Small grace period — ignore brief disconnects (tunnel hiccup)
+        this._disconnectTimer = setTimeout(() => {
+          if (!this._connected && !this._dead) {
+            this._showDisconnectDialog();
+          }
+        }, 3000);
       }
+    });
+
+    this._ws.addEventListener("open", () => {
+      // Clear any pending disconnect dialog timer
+      clearTimeout(this._disconnectTimer);
     });
 
     this._ws.addEventListener("error", (e) => {
@@ -415,7 +435,7 @@ export class MultiplayerSystem {
         break;
       }
 
-      case "pong": break;
+      case "pong": this._lastPong = Date.now(); break;
 
       default:
         console.log("[MP] Unknown message:", msg.type);
