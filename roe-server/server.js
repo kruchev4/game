@@ -1237,7 +1237,11 @@ function _removePlayer(token) {
   try {
     await registerServer();
   } catch (e) {
-    console.warn("[Server] Registration failed — continuing without Supabase registration:", e.message);
+    console.warn("[Server] Registration failed — retrying in 5s:", e.message);
+    setTimeout(async () => {
+      try { await registerServer(); }
+      catch (e2) { console.warn("[Server] Retry failed:", e2.message); }
+    }, 5000);
   }
 
   setInterval(pingServer, PING_INTERVAL_MS);
