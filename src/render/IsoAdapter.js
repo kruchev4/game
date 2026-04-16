@@ -91,6 +91,20 @@ const TILE_MAP = {
   35: { sheet: "water",    frame: 6  },  // dark deep water
 };
 
+// ── Town/Dungeon tile IDs (40+) using Kenney dungeon sheets ─────────────
+// stoneTile_S.png = single tile, frame 0
+// We load individual PNGs for dungeon tiles (not a spritesheet)
+Object.assign(TILE_MAP, {
+  40: { sheet: "dung_stone",   frame: 0 },  // clean stone tile
+  41: { sheet: "dung_planks",  frame: 0 },  // wooden planks
+  42: { sheet: "dung_dirt",    frame: 0 },  // dirt floor
+  43: { sheet: "dung_stonebig",frame: 0 },  // rough stone
+  44: { sheet: "dung_inset",   frame: 0 },  // stone inset
+  45: { sheet: "dung_uneven",  frame: 0 },  // stone uneven
+  46: { sheet: "dung_dirttile",frame: 0 },  // dirt tiles variant
+  47: { sheet: "dung_plankhole",frame:0 },  // plank with hole
+});
+
 const DEFAULT_TILE = { sheet: "terrain1", frame: 1 };
 
 function getTileDef(tileId) {
@@ -144,13 +158,14 @@ class IsoCamera {
 
   screenToWorld(sx, sy) {
     if (!this._scene?.cameras?.main) return { x: 0, y: 0 };
-    // sx/sy are client coordinates (from Engine's e.clientX/Y)
-    // Need to offset by Phaser canvas position on screen
-    const phaserCanvas = this._scene.game.canvas;
-    const rect = phaserCanvas.getBoundingClientRect();
-    const localX = sx - rect.left;
-    const localY = sy - rect.top;
-    const worldPt = this._scene.cameras.main.getWorldPoint(localX, localY);
+    // Use the pre-computed tile from the last click event if available
+    if (this._lastClickTile) {
+      const tile = this._lastClickTile;
+      this._lastClickTile = null; // consume it
+      return tile;
+    }
+    // Fallback: compute from Phaser coords directly
+    const worldPt = this._scene.cameras.main.getWorldPoint(sx, sy);
     const iso     = screenToIso(worldPt.x, worldPt.y);
     return { x: iso.x, y: iso.y };
   }
@@ -289,6 +304,20 @@ export class IsoAdapter {
           for (let i = 0; i < keys.length; i++) {
             this.load.image(keys[i], sheets[i]);
           }
+          // Dungeon/town individual tile PNGs
+          const dungTiles = [
+            ["dung_stone",    "src/assets/tiles/dungeon/stoneTile_S.png"],
+            ["dung_planks",   "src/assets/tiles/dungeon/planks_S.png"],
+            ["dung_dirt",     "src/assets/tiles/dungeon/dirt_S.png"],
+            ["dung_stonebig", "src/assets/tiles/dungeon/stone_S.png"],
+            ["dung_inset",    "src/assets/tiles/dungeon/stoneInset_S.png"],
+            ["dung_uneven",   "src/assets/tiles/dungeon/stoneUneven_S.png"],
+            ["dung_dirttile", "src/assets/tiles/dungeon/dirtTiles_S.png"],
+            ["dung_plankhole","src/assets/tiles/dungeon/planksHole_S.png"],
+          ];
+          for (const [key, path] of dungTiles) {
+            this.load.image(key, path);
+          }
           // Load character placeholders (canvas-based, no file loading needed)
           adapter._loadCharPlaceholders(this);
         } catch(e) {
@@ -314,18 +343,21 @@ export class IsoAdapter {
           if (now - (adapter._lastClick ?? 0) < 100) return;
           adapter._lastClick = now;
 
-          // Pass client coordinates so Engine can apply proper offset via screenToWorld
-          const phaserCanvas = adapter._scene.game.canvas;
-          const rect  = phaserCanvas.getBoundingClientRect();
-          const clientX = ptr.x + rect.left;
-          const clientY = ptr.y + rect.top;
-
-          // Debug log
+          // Compute the world tile directly here — most reliable approach
           const worldPt = adapter._scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
           const iso     = screenToIso(worldPt.x, worldPt.y);
-          console.log(`[IsoAdapter] Click: ptr(${Math.round(ptr.x)},${Math.round(ptr.y)}) → client(${Math.round(clientX)},${Math.round(clientY)}) → tile(${iso.x},${iso.y})`);
 
-          adapter._fireCanvasEvent("pointerdown", clientX, clientY, { button: ptr.event?.button ?? 0 });
+          console.log(`[IsoAdapter] Click → tile(${iso.x},${iso.y})`);
+
+          // Store computed tile so screenToWorld can return it directly
+          adapter._lastClickTile = { x: iso.x, y: iso.y };
+
+          // Fire event with coords that will produce the right tile via screenToWorld
+          // We pass ptr.x/y directly — screenToWorld will use getWorldPoint(ptr.x, ptr.y)
+          adapter._fireCanvasEvent("pointerdown", ptr.x, ptr.y, {
+            button: ptr.event?.button ?? 0,
+            _isoTile: iso  // attach tile for direct use
+          });
         });
 
         // Disable right-click context menu on Phaser canvas
