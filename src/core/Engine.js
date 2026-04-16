@@ -1302,18 +1302,18 @@ export class Engine {
 
     // ── New server-authoritative callbacks ────────────────────────────────
     this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold, mana, maxMana }) => {
-      if (hp      !== undefined) this.player.hp          = hp;
-      if (maxHp   !== undefined) this.player.maxHp       = maxHp;
-      if (xp      !== undefined) this.player.xp          = xp;
-      if (gold    !== undefined) this.player.gold         = gold;
-      if (mana    !== undefined) this.player.resource     = mana;
-      if (maxMana !== undefined) this.player.maxResource  = maxMana;
+      if (hp      !== undefined && !isNaN(hp))      this.player.hp          = hp;
+      if (maxHp   !== undefined && !isNaN(maxHp))   this.player.maxHp       = maxHp;
+      if (xp      !== undefined && !isNaN(xp))      this.player.xp          = xp;
+      if (gold    !== undefined && !isNaN(gold))     this.player.gold         = gold;
+      if (mana    !== undefined && !isNaN(mana))     this.player.resource     = mana;
+      if (maxMana !== undefined && !isNaN(maxMana))  this.player.maxResource  = maxMana;
 
-      if (hp <= 0 && !this._playerDead && !this.player.invulnerable) {
+      if (hp !== undefined && hp <= 0 && !this._playerDead && !this.player.invulnerable) {
         this._onPlayerDeath();
       }
 
-      if (xp !== undefined) {
+      if (xp !== undefined && !isNaN(xp)) {
         this.xpSystem?._checkLevelUp?.();
       }
     };
