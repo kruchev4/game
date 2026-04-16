@@ -1241,6 +1241,7 @@ export class Engine {
       },
 
       onNPCAttackPlayer: ({ npcId, damage, blocked }) => {
+        console.log(`[Engine] onNPCAttackPlayer npcId=${npcId} damage=${damage} blocked=${blocked} playerDead=${this._playerDead}`);
         if (this._playerDead) return;
         if (blocked) {
           this.combatLog?.push({ text: "Attack blocked by Divine Shield!", type: "system" });
