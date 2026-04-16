@@ -815,6 +815,8 @@ export class Engine {
     const nextIdx    = (currentIdx + 1) % sorted.length;
     this._setTarget(sorted[nextIdx]);
   }
+
+  _setTarget(entity) {
     this._currentTarget         = entity;
     this.renderer.currentTarget = entity;
     // Log only in debug mode to prevent console spam
