@@ -83,10 +83,11 @@ if (this.path && this.path.length > 0) {
   _getKeyboardStep() {
     let dx = 0, dy = 0;
 
-    if (this.keys.has("w") || this.keys.has("arrowup")) dy = -1;
-    else if (this.keys.has("s") || this.keys.has("arrowdown")) dy = 1;
-    else if (this.keys.has("a") || this.keys.has("arrowleft")) dx = -1;
-    else if (this.keys.has("d") || this.keys.has("arrowright")) dx = 1;
+    // Allow diagonal — check each axis independently
+    if (this.keys.has("w") || this.keys.has("arrowup"))    dy = -1;
+    if (this.keys.has("s") || this.keys.has("arrowdown"))  dy =  1;
+    if (this.keys.has("a") || this.keys.has("arrowleft"))  dx = -1;
+    if (this.keys.has("d") || this.keys.has("arrowright")) dx =  1;
 
     if (dx === 0 && dy === 0) return null;
     return { dx, dy };
