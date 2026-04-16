@@ -240,9 +240,10 @@ export class IsoAdapter {
     container.style.cssText = [
       "position:fixed",
       "inset:0",
-      "z-index:1",       // behind UI (z-index:100+) but above background
+      "z-index:1",
       "pointer-events:auto"
     ].join(";");
+    container.addEventListener("contextmenu", e => { e.preventDefault(); e.stopPropagation(); });
     document.body.insertBefore(container, document.body.firstChild);
 
     const w = window.innerWidth;
@@ -323,6 +324,12 @@ export class IsoAdapter {
           console.log(`[IsoAdapter] Click: ptr(${Math.round(ptr.x)},${Math.round(ptr.y)}) → client(${Math.round(clientX)},${Math.round(clientY)}) → tile(${iso.x},${iso.y})`);
 
           adapter._fireCanvasEvent("pointerdown", clientX, clientY, { button: ptr.event?.button ?? 0 });
+        });
+
+        // Disable right-click context menu on Phaser canvas
+        adapter._scene.game.canvas.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
         });
 
         this.input.on("wheel", (ptr, objs, dx, dy) => {
