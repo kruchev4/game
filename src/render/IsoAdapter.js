@@ -395,6 +395,9 @@ export class IsoAdapter {
       }
     }
 
+    // Store entities for minimap
+    this._lastEntities = entities;
+
     // ── Update entity sprites ─────────────────────────────────────────────
     const activeIds = new Set();
 
@@ -406,7 +409,7 @@ export class IsoAdapter {
 
     // All entities (NPCs, remote players, corpses) — skip player (drawn above)
     for (const entity of entities) {
-      if (!entity || entity === this.player) continue;
+      if (!entity || entity === this._playerRef) continue;
       if (!entity.id) continue;
       try {
         if (entity.type === "corpse") {
@@ -751,20 +754,32 @@ export class IsoAdapter {
   // ── HUD ───────────────────────────────────────────────────────────────────
 
   _updateHUD() {
-    if (!this._playerRef) return;
+    const p = this._playerRef;
+    if (!p) return;
 
     // Mount HUD on first render
     if (!this._hud._el) {
-      const abilityBar = this._player.abilities ?? 
+      const abilityBar = p.abilities ??
         Object.keys(this.abilities ?? {}).slice(0, 6);
-      this._hud.mount(this._player, this.abilities, abilityBar);
+      this._hud.mount(p, this.abilities, abilityBar);
     }
 
-    // Update target
-    this._hud.setTarget(this.currentTarget);
+    // Pass world for minimap
+    if (this._world && this._world !== this._hud._world) {
+      this._hud._world = this._world;
+      this._hud.setWorld(this._world);
+    }
 
-    // Update cooldowns from player
-    this._hud.setCooldowns(this._player.abilityCooldowns ?? {});
+    // Update ability bar if it changed
+    const bar = p.abilities ?? [];
+    if (JSON.stringify(bar) !== JSON.stringify(this._lastAbilityBar ?? [])) {
+      this._lastAbilityBar = [...bar];
+      this._hud.setAbilityBar(bar);
+    }
+
+    this._hud.setTarget(this.currentTarget);
+    this._hud.setCooldowns(p.abilityCooldowns ?? {});
+    this._hud.setEntities(this._lastEntities ?? []);
   }
 
   // ── Placeholder asset loading ─────────────────────────────────────────────
