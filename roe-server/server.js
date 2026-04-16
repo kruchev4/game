@@ -441,6 +441,25 @@ console.log(`[Server] WebSocket listening on ws://localhost:${PORT}`);
 wss.on("connection", (ws) => {
   let session = null;
 
+  // Protocol-level ping every 30s to keep Cloudflare tunnel alive
+  // This is different from the JSON ping — it's a WebSocket frame ping
+  const wsPing = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    } else {
+      clearInterval(wsPing);
+    }
+  }, 30000);
+
+  ws.on("pong", () => {
+    // Tunnel is alive — update lastSeen
+    if (session) session.lastSeen = Date.now();
+  });
+
+  ws.on("close", () => {
+    clearInterval(wsPing);
+  });
+
   ws.on("message", async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
