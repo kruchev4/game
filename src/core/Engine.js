@@ -318,7 +318,7 @@ export class Engine {
   _initDungeonSpawns() {
     const world = this.world;
 
-    // Reuse TownSystem for exit detection (dungeons have same exits[] format)
+    // Reuse TownSystem for exit detection
     this.townSystem = new TownSystem({
       townData: world,
       world,
@@ -327,69 +327,56 @@ export class Engine {
       onExit:   (exit) => this._exitTown(exit)
     });
 
-    if (!world.spawnGroups?.length) return;
-    for (const group of world.spawnGroups) {
-      for (const monDef of (group.monsters ?? [])) {
-        const classDef = this._classes[monDef.classId];
-        if (!classDef) {
-          console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
-          continue;
-        }
+    // Support both flat spawns[] and spawnGroups[] formats
+    const spawnList = world.spawns?.length
+      ? world.spawns
+      : (world.spawnGroups ?? []).flatMap(g => g.monsters ?? []);
 
-        let pos;
-        try {
-          pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
-        } catch {
-          continue;
-        }
+    for (const monDef of spawnList) {
+      const monsterId = monDef.monsterId ?? monDef.classId;
+      // Look up monster def from loaded monster data
+      const monsterData = this._monsterDefs?.get?.(monsterId);
+      const classDef    = monsterData
+        ? {
+            name:       monsterData.name,
+            icon:       monsterData.icon,
+            baseStats:  { hp: monsterData.hp },
+            damageMin:  monsterData.damageMin,
+            damageMax:  monsterData.damageMax,
+            speed:      monsterData.speed,
+            perception: monsterData.perception,
+            attackRange:monsterData.attackRange,
+            xpValue:    monsterData.xpValue,
+          }
+        : this._classes[monsterId];
 
-        const npc = new NPC({
-          id:         `${monDef.classId}_${pos.x}_${pos.y}`,
-          classId:    monDef.classId,
-          classDef,
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: classDef.roamRadius ?? 3
-        });
-
-        this.npcs.push(npc);
-        this.entities.push(npc);
-        this.npcPerceptionSystem?.npcs.push(npc);
-        this.npcMovementSystem?.npcs.push(npc);
-        this.npcAISystem?.npcs.push(npc);
-        this.combatSystem?.npcs.push(npc);
+      if (!classDef) {
+        console.warn(`[Engine] Unknown dungeon monster: ${monsterId}`);
+        continue;
       }
-    }
 
-    // Spawn boss if defined
-    const boss = world.boss;
-    if (boss) {
-      const classDef = this._classes[boss.classId];
-      if (classDef) {
-        let pos;
-        try { pos = findNearestWalkable(world, boss.x, boss.y, 3); }
-        catch { pos = { x: boss.x, y: boss.y }; }
+      let pos;
+      try { pos = findNearestWalkable(world, monDef.x, monDef.y, 3); }
+      catch { continue; }
 
-        const bossNPC = new NPC({
-          id:         `boss_${boss.classId}`,
-          classId:    boss.classId,
-          classDef:   { ...classDef, icon: boss.icon ?? classDef.icon },
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: 2
-        });
-        bossNPC.isBoss = true;
-        bossNPC.name   = boss.name ?? classDef.name;
+      const npc = new NPC({
+        id:         `${monsterId}_${pos.x}_${pos.y}`,
+        classId:    monsterId,
+        classDef:   { ...classDef, icon: monDef.icon ?? classDef.icon },
+        x:          pos.x,
+        y:          pos.y,
+        roamCenter: { x: pos.x, y: pos.y },
+        roamRadius: monDef.roamRadius ?? 3
+      });
+      npc.isBoss = monDef.isBoss ?? false;
+      if (npc.isBoss) npc.name = monDef.name ?? classDef.name ?? monsterId;
 
-        this.npcs.push(bossNPC);
-        this.entities.push(bossNPC);
-        this.npcPerceptionSystem?.npcs.push(bossNPC);
-        this.npcMovementSystem?.npcs.push(bossNPC);
-        this.npcAISystem?.npcs.push(bossNPC);
-        this.combatSystem?.npcs.push(bossNPC);
-      }
+      this.npcs.push(npc);
+      this.entities.push(npc);
+      this.npcPerceptionSystem?.npcs.push(npc);
+      this.npcMovementSystem?.npcs.push(npc);
+      this.npcAISystem?.npcs.push(npc);
+      this.combatSystem?.npcs.push(npc);
     }
 
     console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
@@ -725,8 +712,8 @@ export class Engine {
           const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
           this.transition({
             targetWorld:  townId,
-            targetX:      20,
-            targetY:      27,
+            targetX:      19,  // Millhaven north entrance
+            targetY:      2,
             returnWorld:  this._currentWorldId,
             returnX:      clickedTown.x,
             returnY:      clickedTown.y
