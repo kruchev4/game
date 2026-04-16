@@ -706,8 +706,11 @@ export class Engine {
       if (!this.townSystem && this.world?.type !== "town") {
         const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
         const clickedTown = towns.find(t =>
-          Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
+          Math.abs(t.x - worldTile.x) <= 2 && Math.abs(t.y - worldTile.y) <= 2
         );
+        if (towns.length > 0) {
+          console.log(`[Engine] Click at (${worldTile.x},${worldTile.y}), towns: ${towns.map(t=>`${t.name}(${t.x},${t.y})`).join(", ")}, hit: ${clickedTown?.name ?? "none"}`);
+        }
         if (clickedTown) {
           const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
           this.transition({
@@ -726,7 +729,7 @@ export class Engine {
         // Dungeon portal click
         const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
         const clickedPortal = portals.find(p =>
-          Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
+          Math.abs(p.x - worldTile.x) <= 2 && Math.abs(p.y - worldTile.y) <= 2
         );
         if (clickedPortal) {
           this.transition({
