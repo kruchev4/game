@@ -790,13 +790,12 @@ export class Engine {
   _setTarget(entity) {
     this._currentTarget         = entity;
     this.renderer.currentTarget = entity;
-    if (entity) {
+    // Log only in debug mode to prevent console spam
+    if (entity && window._roeDebug) {
       const label = entity.id === "player" ? "yourself"
         : entity.isRemote ? (entity.name ?? "ally")
         : entity.id;
       console.log(`[Target] ${label}`);
-    } else {
-      console.log("[Target] cleared");
     }
   }
 
@@ -1270,30 +1269,17 @@ export class Engine {
           this.entities = this.entities.filter(e => e.id !== npcId);
           this.npcs     = this.npcs.filter(n => n.id !== npcId);
           if (this._currentTarget?.id === npcId) this._setTarget(null);
+
+          // Spawn loot corpse with server-provided loot
+          this.lootSystem?.onNPCKilledWithLoot(npc, loot);
         }
         this.animSystem?.playDying(npcId);
 
         // XP and gold are applied via player_stat_update (server authoritative)
         // We only handle item drops and the combat log here
 
-        // Item drops — add to bag
-        if (loot?.itemId) {
-          const itemDef   = this._itemDefs?.[loot.itemId];
-          const itemName  = itemDef?.name ?? loot.itemId;
-          const emptySlot = this.player.bag?.findIndex(s => s === null);
-          if (emptySlot >= 0) {
-            this.player.bag[emptySlot] = { itemId: loot.itemId, qty: loot.qty ?? 1 };
-            this.combatLog?.push({
-              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${itemName}!`,
-              type: "reward"
-            });
-          } else {
-            this.combatLog?.push({
-              text: `Bag full — dropped ${itemName}!`,
-              type: "system"
-            });
-          }
-        }
+        // Item drops handled via corpse — player must click to loot
+        // Gold already applied via player_stat_update
 
         // Combat log
         const isKiller = killerName === this.player.name;
