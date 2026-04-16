@@ -648,6 +648,19 @@ export class Engine {
       // Inventory toggle
       if (key === "i") { this._inventoryWindow?.toggle(); return; }
 
+      // Tab — cycle through nearby targets
+      if (e.key === "Tab") {
+        e.preventDefault();
+        this._cycleTarget();
+        return;
+      }
+
+      // Escape — clear target
+      if (e.key === "Escape") {
+        this._setTarget(null);
+        return;
+      }
+
       // Manual save — F5
       if (e.key === "F5") {
         e.preventDefault();
@@ -787,7 +800,21 @@ export class Engine {
   // TARGETING
   // ─────────────────────────────────────────────
 
-  _setTarget(entity) {
+  _cycleTarget() {
+    const liveNPCs = this.npcs.filter(n => !n.dead);
+    if (!liveNPCs.length) return;
+
+    // Sort by distance from player
+    const sorted = [...liveNPCs].sort((a, b) => {
+      const da = Math.hypot(a.x - this.player.x, a.y - this.player.y);
+      const db = Math.hypot(b.x - this.player.x, b.y - this.player.y);
+      return da - db;
+    });
+
+    const currentIdx = sorted.findIndex(n => n.id === this._currentTarget?.id);
+    const nextIdx    = (currentIdx + 1) % sorted.length;
+    this._setTarget(sorted[nextIdx]);
+  }
     this._currentTarget         = entity;
     this.renderer.currentTarget = entity;
     // Log only in debug mode to prevent console spam
@@ -1772,6 +1799,29 @@ export class Engine {
     }
 
     this.combatLog?.update();
+
+    // ── Auto-target nearest enemy when no target ──────────────────────────
+    if (this.player && !this._playerDead) {
+      const target = this._currentTarget;
+      const needsTarget = !target || target.dead ||
+        (target.type === "npc" && !this.npcs.find(n => n.id === target.id));
+
+      if (needsTarget && this.npcs.length > 0) {
+        const AUTO_RANGE = 8; // tiles
+        let nearest = null, nearestDist = Infinity;
+        for (const npc of this.npcs) {
+          if (npc.dead) continue;
+          const dx = npc.x - this.player.x;
+          const dy = npc.y - this.player.y;
+          const d  = Math.sqrt(dx*dx + dy*dy);
+          if (d < AUTO_RANGE && d < nearestDist) {
+            nearestDist = d;
+            nearest     = npc;
+          }
+        }
+        if (nearest) this._setTarget(nearest);
+      }
+    }
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
