@@ -105,15 +105,23 @@ class IsoCamera {
   centerOn(tx, ty, world) {
     this.x = tx;
     this.y = ty;
-    if (!this._scene) return;
+    if (!this._scene?.cameras?.main) return;
     const { x, y } = isoToScreen(tx, ty);
-    this._scene.cameras.main.centerOn(x, y);
+    // Use lerp for smooth camera follow instead of instant snap
+    const cam    = this._scene.cameras.main;
+    const cx     = cam.scrollX + cam.width  / 2;
+    const cy     = cam.scrollY + cam.height / 2;
+    const lerpX  = cx + (x - cx) * 0.12;
+    const lerpY  = cy + (y - cy) * 0.12;
+    cam.centerOn(lerpX, lerpY);
   }
 
   screenToWorld(sx, sy) {
     if (!this._scene) return { x: 0, y: 0 };
+    // sx/sy are already in Phaser canvas coords (from our _fireCanvasEvent)
     const world = this._scene.cameras.main.getWorldPoint(sx, sy);
-    return screenToIso(world.x, world.y);
+    const iso   = screenToIso(world.x, world.y);
+    return { x: iso.tx ?? iso.x, y: iso.ty ?? iso.y };
   }
 
   worldToScreen(tx, ty) {
@@ -222,26 +230,20 @@ export class IsoAdapter {
 
         // ── Input → forward to Engine via fake canvas ─────────────────────
         this.input.on("pointerdown", (ptr) => {
-          const worldPt = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-          const tile    = screenToIso(worldPt.x, worldPt.y);
-          // Emit a synthetic event on the fake canvas
-          const evt = new PointerEvent("pointerdown", {
-            button:  ptr.event.button,
-            clientX: ptr.event.clientX,
-            clientY: ptr.event.clientY,
-            bubbles: true
-          });
-          // Attach tile info for Engine to read
-          evt._isoTile = tile;
-          adapter._fireCanvasEvent("pointerdown", evt);
+          // Fire to Engine handlers with clientX/Y as the coordinates
+          // Engine will call camera.screenToWorld(px, py) which we intercept
+          adapter._pendingClick = {
+            clientX: ptr.x,
+            clientY: ptr.y
+          };
+          adapter._fireCanvasEvent("pointerdown", ptr.x, ptr.y, { button: ptr.event?.button ?? 0 });
         });
 
         this.input.on("wheel", (ptr, objs, dx, dy) => {
-          const evt = new WheelEvent("wheel", { deltaY: dy, bubbles: true });
-          adapter._fireCanvasEvent("wheel", evt);
+          adapter._fireCanvasEvent("wheel", ptr.x, ptr.y, { deltaY: dy });
         });
 
-        // ── Keyboard ──────────────────────────────────────────────────────
+        // Keyboard — forward to window so Engine keydown handler works
         this.input.keyboard.on("keydown", (e) => {
           window.dispatchEvent(new KeyboardEvent("keydown", {
             key: e.key, code: e.code, bubbles: true
@@ -266,10 +268,18 @@ export class IsoAdapter {
   render(world, entities = []) {
     if (!this._ready || !this._scene) return;
 
-    // ── Draw world tiles (only when world changes) ────────────────────────
-    if (world && world !== this._lastWorld) {
+    // ── Draw world tiles (only once per world load) ──────────────────────
+    if (world && world !== this._lastWorld && this._ready) {
       this._drawWorld(world);
       this._lastWorld = world;
+    }
+
+    // Skip entity updates if scene not ready
+    if (!this._ready || !this._scene) return;
+
+    // Stream in tiles around player position
+    if (this.player) {
+      this._updateVisibleTiles(Math.floor(this.player.x), Math.floor(this.player.y));
     }
 
     // ── Update entity sprites ─────────────────────────────────────────────
@@ -298,6 +308,11 @@ export class IsoAdapter {
       }
     }
 
+    // Cap active sprites to prevent memory leak
+    if (this._entitySprites.size > 200) {
+      console.warn("[IsoAdapter] Too many sprites — possible leak");
+    }
+
     // ── HUD — drawn on Phaser UI camera (fixed position) ─────────────────
     this._updateHUD();
   }
@@ -312,25 +327,58 @@ export class IsoAdapter {
     for (const img of this._tileCache.values()) img.destroy();
     this._tileCache.clear();
 
-    // Only draw visible tiles — start with full world, optimize later
-    const W = world.width;
-    const H = world.height;
+    this._world     = world;
+    this._worldDirty = false;
 
-    for (let ty = 0; ty < H; ty++) {
-      for (let tx = 0; tx < W; tx++) {
-        const tileId = Array.isArray(world.tiles[ty])
+    // Only draw a viewport-sized chunk around spawn — rest loaded on demand
+    // Full 256x256 = 65k tiles would hang the browser
+    // We draw a 40x40 chunk centered on world center, expand as player moves
+    const W         = world.width;
+    const H         = world.height;
+    const CHUNK     = 30; // tiles visible in each direction
+    const cx        = Math.floor(W / 2);
+    const cy        = Math.floor(H / 2);
+
+    this._drawChunk(world, 
+      Math.max(0, cx - CHUNK), Math.max(0, cy - CHUNK),
+      Math.min(W, cx + CHUNK), Math.min(H, cy + CHUNK)
+    );
+
+    console.log(`[IsoAdapter] Drew ${this._tileCache.size} tiles`);
+  }
+
+  _drawChunk(world, x0, y0, x1, y1) {
+    const W = world.width;
+    for (let ty = y0; ty < y1; ty++) {
+      for (let tx = x0; tx < x1; tx++) {
+        const key2 = `${tx},${ty}`;
+        if (this._tileCache.has(key2)) continue;
+
+        const tileId  = Array.isArray(world.tiles[ty])
           ? world.tiles[ty][tx]
           : world.tiles[ty * W + tx];
 
-        const key     = tileKey(tileId);
-        const { x, y } = isoToScreen(tx, ty);
-        const img     = this._scene.add.image(x, y, key);
+        const key       = tileKey(tileId ?? 0);
+        const { x, y }  = isoToScreen(tx, ty);
+        const img       = this._scene.add.image(x, y, key);
         img.setOrigin(0.5, 0.5);
         img.setDepth(depthOf(tx, ty) - 1);
-
-        this._tileCache.set(`${tx},${ty}`, img);
+        this._tileCache.set(key2, img);
       }
     }
+  }
+
+  // Called from render() to stream in tiles as player moves
+  _updateVisibleTiles(playerX, playerY) {
+    if (!this._world) return;
+    const W      = this._world.width;
+    const H      = this._world.height;
+    const CHUNK  = 20;
+    const x0     = Math.max(0, playerX - CHUNK);
+    const y0     = Math.max(0, playerY - CHUNK);
+    const x1     = Math.min(W, playerX + CHUNK);
+    const y1     = Math.min(H, playerY + CHUNK);
+    this._drawChunk(this._world, x0, y0, x1, y1);
   }
 
   // ── Entity sprite management ──────────────────────────────────────────────
@@ -651,14 +699,16 @@ export class IsoAdapter {
   }
 
   // ── Fake canvas for Engine event listeners ────────────────────────────────
+  // Engine registers pointerdown/wheel on renderer.canvas
+  // We store those handlers and call them manually from Phaser input
 
   _makeFakeCanvas() {
     const fake = document.createElement("canvas");
     fake.style.display = "none";
     fake.width  = window.innerWidth;
     fake.height = window.innerHeight;
+    document.body.appendChild(fake);
 
-    // Override addEventListener to capture Engine's event registrations
     const listeners = this._eventListeners = [];
     fake.addEventListener = (type, fn, opts) => {
       listeners.push({ type, fn });
@@ -676,9 +726,23 @@ export class IsoAdapter {
     return fake;
   }
 
-  _fireCanvasEvent(type, event) {
+  _fireCanvasEvent(type, clientX, clientY, extra = {}) {
+    // Build an event that Engine can read offsetX/Y and clientX/Y from
+    const rect  = { left: 0, top: 0 };
+    const event = {
+      button:   0,
+      clientX,
+      clientY,
+      offsetX:  clientX,
+      offsetY:  clientY,
+      deltaY:   extra.deltaY ?? 0,
+      preventDefault: () => {},
+      ...extra
+    };
     for (const { type: t, fn } of this._eventListeners) {
-      if (t === type) fn(event);
+      if (t === type) {
+        try { fn(event); } catch(e) { console.warn("[IsoAdapter] Event handler error:", e); }
+      }
     }
   }
 
