@@ -102,7 +102,8 @@ Object.assign(TILE_MAP, {
   44: { sheet: "dung_inset",   frame: 0 },  // stone inset
   45: { sheet: "dung_uneven",  frame: 0 },  // stone uneven
   46: { sheet: "dung_dirttile",frame: 0 },  // dirt tiles variant
-  47: { sheet: "dung_plankhole",frame:0 },  // plank with hole
+  47: { sheet: "dung_plankhole",frame:0 },
+  48: { sheet: "dung_stonebig", frame: 0 },  // dungeon wall — dark stone  // plank with hole
 });
 
 const DEFAULT_TILE = { sheet: "terrain1", frame: 1 };
