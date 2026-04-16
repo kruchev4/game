@@ -209,6 +209,12 @@ export class Engine {
 
     // Re-center camera
     this.renderer.camera.centerOn(x, y, this.world);
+
+    // Update HUD minimap with new world
+    if (this.renderer._hud) {
+      this.renderer._hud.setWorld(this.world);
+      this.renderer._overlayWorld = null; // force overlay rebuild
+    }
   }
 
   /** Return to the previous world (pop from return stack) */
@@ -801,7 +807,9 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   _cycleTarget() {
-    const liveNPCs = this.npcs.filter(n => !n.dead);
+    // Include town NPCs for targeting
+    const townNPCs = this.townSystem?.npcs ?? [];
+    const liveNPCs = [...this.npcs.filter(n => !n.dead), ...townNPCs];
     if (!liveNPCs.length) return;
 
     // Sort by distance from player
@@ -1808,10 +1816,11 @@ export class Engine {
       const needsTarget = !target || target.dead ||
         (target.type === "npc" && !this.npcs.find(n => n.id === target.id));
 
-      if (needsTarget && this.npcs.length > 0) {
+      const allNPCs = [...this.npcs, ...(this.townSystem?.npcs ?? [])];
+      if (needsTarget && allNPCs.length > 0) {
         const AUTO_RANGE = 8; // tiles
         let nearest = null, nearestDist = Infinity;
-        for (const npc of this.npcs) {
+        for (const npc of allNPCs) {
           if (npc.dead) continue;
           const dx = npc.x - this.player.x;
           const dy = npc.y - this.player.y;
