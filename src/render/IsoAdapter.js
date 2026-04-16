@@ -393,40 +393,73 @@ export class IsoAdapter {
     console.log(`[IsoAdapter] Drew ${this._tileCache.size} initial tiles`);
   }
 
+  // Kept for compatibility — use _updateVisibleTiles for batched loading
   _drawChunk(world, x0, y0, x1, y1) {
-    const W = world.width;
-    for (let ty = y0; ty < y1; ty++) {
-      for (let tx = x0; tx < x1; tx++) {
-        const key2 = `${tx},${ty}`;
-        if (this._tileCache.has(key2)) continue;
-
-        const tileId  = Array.isArray(world.tiles[ty])
-          ? world.tiles[ty][tx]
-          : world.tiles[ty * W + tx];
-
-        const key       = tileKey(tileId ?? 0);
-        const { x, y }  = isoToScreen(tx, ty);
-        const img       = this._scene.add.image(x, y, key);
-        img.setOrigin(0.5, 0.5);
-        img.setDepth(depthOf(tx, ty) - 1);
-        this._tileCache.set(key2, img);
-      }
-    }
+    this._world = world;
+    this._updateVisibleTiles(
+      Math.floor((x0 + x1) / 2),
+      Math.floor((y0 + y1) / 2)
+    );
   }
 
-  // Stream tiles around player — only called when player enters new chunk
-  // Tiles already drawn are skipped (tileCache check in _drawChunk)
+  // Stream tiles around player — batched across frames to prevent blocking
   _updateVisibleTiles(playerX, playerY) {
     if (!this._world) return;
     const W     = this._world.width;
     const H     = this._world.height;
-    const RANGE = 25; // tiles in each direction
+    const RANGE = 22;
     const x0    = Math.max(0, playerX - RANGE);
     const y0    = Math.max(0, playerY - RANGE);
     const x1    = Math.min(W, playerX + RANGE);
     const y1    = Math.min(H, playerY + RANGE);
-    this._drawChunk(this._world, x0, y0, x1, y1);
-    console.log(`[IsoAdapter] Tile cache: ${this._tileCache.size} tiles`);
+
+    // Build list of only tiles not yet drawn
+    const todo = [];
+    for (let ty = y0; ty < y1; ty++) {
+      for (let tx = x0; tx < x1; tx++) {
+        if (!this._tileCache.has(`${tx},${ty}`)) {
+          todo.push([tx, ty]);
+        }
+      }
+    }
+
+    if (!todo.length) return;
+
+    // Cancel any in-progress batch
+    if (this._tileBatchId) {
+      cancelAnimationFrame(this._tileBatchId);
+      this._tileBatchId = null;
+    }
+
+    // Draw in batches of 80 tiles per frame — smooth, no blocking
+    const BATCH = 80;
+    let   idx   = 0;
+
+    const drawBatch = () => {
+      if (!this._world || !this._scene) return;
+      const end = Math.min(idx + BATCH, todo.length);
+      for (; idx < end; idx++) {
+        const [tx, ty] = todo[idx];
+        const key2 = `${tx},${ty}`;
+        if (this._tileCache.has(key2)) continue;
+        const tileId    = Array.isArray(this._world.tiles[ty])
+          ? this._world.tiles[ty][tx]
+          : this._world.tiles[ty * this._world.width + tx];
+        const texKey    = tileKey(tileId ?? 0);
+        const { x, y }  = isoToScreen(tx, ty);
+        const img       = this._scene.add.image(x, y, texKey);
+        img.setOrigin(0.5, 0.5);
+        img.setDepth(depthOf(tx, ty) - 1);
+        this._tileCache.set(key2, img);
+      }
+      if (idx < todo.length) {
+        this._tileBatchId = requestAnimationFrame(drawBatch);
+      } else {
+        this._tileBatchId = null;
+      }
+    };
+
+    this._tileBatchId = requestAnimationFrame(drawBatch);
   }
 
   // ── Entity sprite management ──────────────────────────────────────────────
