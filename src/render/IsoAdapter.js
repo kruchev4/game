@@ -840,7 +840,6 @@ export class IsoAdapter {
   }
 
   _makeTransparentTexture(scene, key, transColor) {
-    // Draw sheet onto canvas replacing transColor with transparent pixels
     const tex    = scene.textures.get(key);
     const src    = tex.getSourceImage();
     const canvas = document.createElement("canvas");
@@ -852,21 +851,21 @@ export class IsoAdapter {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data      = imageData.data;
 
-    // Extract RGB from transColor (0xff00ff or similar)
     const tr = (transColor >> 16) & 0xff;
     const tg = (transColor >> 8)  & 0xff;
     const tb =  transColor        & 0xff;
 
     for (let i = 0; i < data.length; i += 4) {
       if (data[i] === tr && data[i+1] === tg && data[i+2] === tb) {
-        data[i+3] = 0; // make transparent
+        data[i+3] = 0;
       }
     }
     ctx.putImageData(imageData, 0, 0);
 
-    // Replace texture with transparent version
+    // Remove old texture before replacing
+    scene.textures.remove(key);
     scene.textures.addCanvas(key, canvas);
-    this._registerSheetFrames(scene, key, null); // re-register frames, no trans this time
+    this._registerSheetFrames(scene, key, null);
   }
 
   // ── Animation registration ────────────────────────────────────────────────
