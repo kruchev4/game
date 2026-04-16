@@ -212,6 +212,8 @@ export class IsoAdapter {
     this._world          = null;
     this._hud            = new IsoHUD();
     this._lastEntities   = [];
+    this._overlayGroup   = null;
+    this._overlayWorld   = null;
 
     // ── Fake canvas for Engine event listeners ────────────────────────────
     this.canvas = this._makeFakeCanvas();
@@ -460,6 +462,9 @@ export class IsoAdapter {
     if (this._entitySprites.size > 200) {
       console.warn("[IsoAdapter] Too many sprites — possible leak");
     }
+
+    // ── World overlays — towns, portals, exits ───────────────────────────
+    this._updateWorldOverlays(world);
 
     // ── HUD — drawn on Phaser UI camera (fixed position) ─────────────────
     this._updateHUD();
@@ -766,6 +771,76 @@ export class IsoAdapter {
   _depthSort(scene) {
     // Phaser handles depth via setDepth — no manual sort needed
     // but we update entity depths each frame to handle movement
+  }
+
+  // ── World Overlays ────────────────────────────────────────────────────────
+
+  _updateWorldOverlays(world) {
+    if (!world || !this._scene) return;
+    if (world === this._overlayWorld) return; // only rebuild when world changes
+    this._overlayWorld = world;
+
+    // Clear old overlays
+    if (this._overlayGroup) {
+      this._overlayGroup.clear(true, true);
+    }
+    this._overlayGroup = this._scene.add.group();
+
+    const raw = world._raw ?? world;
+
+    // ── Town markers ──────────────────────────────────────────────────────
+    for (const town of (raw.towns ?? [])) {
+      this._addOverlayMarker(town.x, town.y, "🏘️", town.name, "#e8c84a", 2000);
+    }
+
+    // ── Portal/dungeon markers ────────────────────────────────────────────
+    for (const portal of (raw.portals ?? [])) {
+      const label = portal.campaignId?.replace(/_/g, " ") ?? "Dungeon";
+      this._addOverlayMarker(portal.x, portal.y, "🌀", label, "#aa66ff", 1500);
+    }
+
+    // ── Exit markers (in towns/dungeons) ─────────────────────────────────
+    for (const exit of (raw.exits ?? [])) {
+      this._addOverlayMarker(exit.x, exit.y, "🚪", "Exit", "#88ccff", 1000);
+    }
+  }
+
+  _addOverlayMarker(tx, ty, icon, label, color, depth) {
+    if (!this._scene) return;
+    const { x, y } = isoToScreen(tx, ty);
+
+    // Icon text
+    const iconEl = this._scene.add.text(x, y - TILE_H_HALF, icon, {
+      fontSize: "24px"
+    }).setOrigin(0.5, 1).setDepth(depth);
+
+    // Label background
+    const bg = this._scene.add.rectangle(x, y - TILE_H_HALF - 28, 
+      label.length * 7 + 12, 16, 0x000000, 0.7
+    ).setDepth(depth - 1);
+
+    // Label text
+    const labelEl = this._scene.add.text(x, y - TILE_H_HALF - 28, label, {
+      fontSize:        "10px",
+      fontFamily:      "monospace",
+      color,
+      stroke:          "#000000",
+      strokeThickness: 2
+    }).setOrigin(0.5, 0.5).setDepth(depth);
+
+    // Gentle float animation
+    this._scene.tweens.add({
+      targets:  iconEl,
+      y:        y - TILE_H_HALF - 6,
+      duration: 1200,
+      yoyo:     true,
+      repeat:   -1,
+      ease:     "Sine.easeInOut"
+    });
+
+    this._overlayGroup?.add(iconEl);
+    this._overlayGroup?.add(bg);
+    this._overlayGroup?.add(labelEl);
   }
 
   // ── HUD ───────────────────────────────────────────────────────────────────
