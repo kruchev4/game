@@ -81,13 +81,30 @@ if (this.path && this.path.length > 0) {
   }
 
   _getKeyboardStep() {
+    // Isometric WASD mapping:
+    // In isometric view, "north" on screen is up-left (W) and up-right (D)
+    //   W = NW face  (-x, -y ... actually -1,0 in screen feel)
+    //   D = NE face
+    //   S = SE face
+    //   A = SW face
+    // Diagonals give true cardinal directions:
+    //   W+D = North, S+A = South, W+A = West, S+D = East
+    const w = this.keys.has("w") || this.keys.has("arrowup");
+    const s = this.keys.has("s") || this.keys.has("arrowdown");
+    const a = this.keys.has("a") || this.keys.has("arrowleft");
+    const d = this.keys.has("d") || this.keys.has("arrowright");
+
     let dx = 0, dy = 0;
 
-    // Allow diagonal — check each axis independently
-    if (this.keys.has("w") || this.keys.has("arrowup"))    dy = -1;
-    if (this.keys.has("s") || this.keys.has("arrowdown"))  dy =  1;
-    if (this.keys.has("a") || this.keys.has("arrowleft"))  dx = -1;
-    if (this.keys.has("d") || this.keys.has("arrowright")) dx =  1;
+    // Each key contributes to one iso axis
+    if (w) { dx -= 1; dy -= 1; }  // NW on screen = (-1,-1)
+    if (s) { dx += 1; dy += 1; }  // SE on screen = (+1,+1)
+    if (a) { dx -= 1; dy += 1; }  // SW on screen = (-1,+1)
+    if (d) { dx += 1; dy -= 1; }  // NE on screen = (+1,-1)
+
+    // Clamp to -1/0/1
+    dx = Math.sign(dx);
+    dy = Math.sign(dy);
 
     if (dx === 0 && dy === 0) return null;
     return { dx, dy };
@@ -101,13 +118,29 @@ if (this.path && this.path.length > 0) {
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
 
-    if (nx < 0 || ny < 0 || nx >= this.world.width || ny >= this.world.height) return false;
+    // Try diagonal first
+    if (nx >= 0 && ny >= 0 && nx < this.world.width && ny < this.world.height) {
+      if (isWalkable(this.world.getTile(nx, ny))) {
+        this.player.x = nx;
+        this.player.y = ny;
+        return true;
+      }
+    }
 
-    const tileId = this.world.getTile(nx, ny);
-    if (!isWalkable(tileId)) return false;
+    // Fall back to single axis if diagonal blocked
+    if (dx !== 0 && dy !== 0) {
+      const nx1 = this.player.x + dx;
+      const ny1 = this.player.y;
+      const nx2 = this.player.x;
+      const ny2 = this.player.y + dy;
+      if (nx1 >= 0 && nx1 < this.world.width && isWalkable(this.world.getTile(nx1, ny1))) {
+        this.player.x = nx1; return true;
+      }
+      if (ny2 >= 0 && ny2 < this.world.height && isWalkable(this.world.getTile(nx2, ny2))) {
+        this.player.y = ny2; return true;
+      }
+    }
 
-    this.player.x = nx;
-    this.player.y = ny;
-    return true;
+    return false;
   }
 }
