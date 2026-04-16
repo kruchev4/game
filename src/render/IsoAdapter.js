@@ -300,7 +300,7 @@ export class IsoAdapter {
         adapter.camera._scene = this;
 
         // ── Camera settings ───────────────────────────────────────────────
-        this.cameras.main.setZoom(1.0);
+        this.cameras.main.setZoom(0.5);
         this.cameras.main.setBackgroundColor("#1a1008");
 
         // ── Register animations ───────────────────────────────────────────
