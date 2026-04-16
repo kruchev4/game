@@ -14,7 +14,7 @@
 
 import { Engine }                    from "./core/Engine.js";
 import { Renderer }                  from "./render/Renderer.js";
-import { IsoAdapter }                from "./render/IsoAdapter.js";
+// import { IsoAdapter }             from "./render/IsoAdapter.js"; // enabled when USE_ISO_RENDERER = true
 import { SupabaseOverworldProvider } from "./adapters/SupabaseOverworldProvider.js";
 import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
@@ -109,10 +109,15 @@ async function start() {
     const canvas      = document.getElementById("game");
     if (!canvas) throw new Error("Canvas #game not found");
 
-    // ── Renderer — flip USE_ISO_RENDERER flag to switch ───────────────────
-    const renderer = USE_ISO_RENDERER
-      ? new IsoAdapter(canvas)
-      : new Renderer(canvas);
+    // ── Renderer ─────────────────────────────────────────────────────────
+    // IsoAdapter loaded dynamically when USE_ISO_RENDERER = true
+    let renderer;
+    if (USE_ISO_RENDERER) {
+      const { IsoAdapter } = await import("./render/IsoAdapter.js");
+      renderer = new IsoAdapter(canvas);
+    } else {
+      renderer = new Renderer(canvas);
+    }
     const worldProvider = new SupabaseOverworldProvider();
     const saveProvider  = new SaveProvider();
 
