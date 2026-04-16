@@ -381,6 +381,7 @@ export class MultiplayerSystem {
       }
 
       case "npc_attack_player": {
+        console.log(`[MP] npc_attack_player at ${Date.now()} dmg=${msg.damage} target=${msg.targetToken?.slice(0,8)}`);
         if (msg.targetToken === this.playerToken) {
           this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage, blocked: msg.blocked });
         }
