@@ -24,17 +24,18 @@ import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabas
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 // ── Feature flag — flip to true to enable isometric renderer ──────────────
-const USE_ISO_RENDERER = true; // set to true once IsoAdapter is wired up
+const USE_ISO_RENDERER = false; // set to true once IsoAdapter is wired up
 
 const WORLD_ID = "overworld_C";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Load game data from Supabase (single source of truth) ─────────────────
 async function loadGameData() {
-  const [abilitiesRes, classesRes, itemsRes] = await Promise.all([
+  const [abilitiesRes, classesRes, itemsRes, monstersRes] = await Promise.all([
     supabase.from("abilities").select("*"),
     supabase.from("classes").select("*"),
-    supabase.from("items").select("*")
+    supabase.from("items").select("*"),
+    supabase.from("monsters").select("*")
   ]);
 
   // Convert abilities array to map keyed by id
@@ -96,10 +97,10 @@ async function loadGameData() {
       fetch("./src/data/abilities.json").then(r => r.json()),
       fetch("./src/data/classes.json").then(r => r.json())
     ]);
-    return { abilities: ar, classes: cr, items };
+    return { abilities: ar, classes: cr, items, monsters: monstersRes.data ?? [] };
   }
 
-  return { abilities, classes, items };
+  return { abilities, classes, items, monsters: monstersRes.data ?? [] };
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ async function start() {
     const saveProvider  = new SaveProvider();
 
     // Load all game data from Supabase (single source of truth)
-    const { abilities, classes, items } = await loadGameData();
+    const { abilities, classes, items, monsters } = await loadGameData();
 
     // ── Launch engine ─────────────────────────────────────────────────────
     async function launchGame(character, saveSlot, serverUrl = null) {
@@ -137,7 +138,9 @@ async function start() {
       // Pre-load Supabase data so Engine doesn't re-fetch abilities/classes
       engine._abilities = abilities;
       engine._classes   = classes;
-      // Note: _itemDefs always loads from local items.json (has icons/onUse)
+      engine._monsterDefs = new Map(
+        (monsters ?? []).map(m => [m.id, m])
+      );
 
       // Wait for Phaser to be ready before loading world
       if (USE_ISO_RENDERER && renderer.isReady === false) {
