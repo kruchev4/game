@@ -163,47 +163,66 @@ export class IsoAdapter {
     // ── Internal state ────────────────────────────────────────────────────
     this._scene          = null;
     this._ready          = false;
-    this._tileCache      = new Map(); // "tx,ty" → Phaser.Image
-    this._entitySprites  = new Map(); // entityId → { sprite, label, shadow }
-    this._prevPositions  = new Map(); // entityId → {x, y} for direction calc
+    this._pendingWorld   = null; // world queued before Phaser ready
+    this._tileCache      = new Map();
+    this._entitySprites  = new Map();
+    this._prevPositions  = new Map();
     this._phaserGame     = null;
-    this._eventListeners = []; // { type, fn } for forwarding to fake canvas
+    this._eventListeners = [];
+    this._lastWorld      = null;
+    this._world          = null;
 
     // ── Fake canvas for Engine event listeners ────────────────────────────
-    // Engine adds pointerdown/wheel listeners to renderer.canvas
-    // We intercept these and re-emit from the Phaser scene
     this.canvas = this._makeFakeCanvas();
 
     // ── Camera ────────────────────────────────────────────────────────────
-    this.camera = new IsoCamera(null); // scene injected after Phaser starts
+    this.camera = new IsoCamera(null);
 
-    // ── Launch Phaser ─────────────────────────────────────────────────────
-    this._launch(existingCanvas);
+    // ── Launch Phaser (deferred to next tick so DOM is stable) ────────────
+    setTimeout(() => this._launch(existingCanvas), 100);
   }
 
   // ── Phaser launch ─────────────────────────────────────────────────────────
 
   _launch(existingCanvas) {
-    // Hide the old canvas
+    // Replace the existing canvas with Phaser
+    // Phaser will inject its own canvas into the same parent
+    const parent = existingCanvas?.parentElement ?? document.body;
+
     if (existingCanvas) {
       existingCanvas.style.display = "none";
     }
 
+    // Create a dedicated container for Phaser so it doesn't conflict with UI
+    const container = document.createElement("div");
+    container.id    = "phaser-container";
+    container.style.cssText = [
+      "position:fixed",
+      "inset:0",
+      "z-index:1",       // behind UI (z-index:100+) but above background
+      "pointer-events:auto"
+    ].join(";");
+    document.body.insertBefore(container, document.body.firstChild);
+
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    this._phaserGame = new Phaser.Game({
-      type:            Phaser.AUTO,
-      width:           w,
-      height:          h,
-      backgroundColor: "#1a1008",
-      parent:          document.body,
-      scene:           this._makeScene(),
-      scale: {
-        mode:       Phaser.Scale.RESIZE,
-        autoCenter: Phaser.Scale.CENTER_BOTH
-      }
-    });
+    try {
+      this._phaserGame = new Phaser.Game({
+        type:            Phaser.AUTO,
+        width:           w,
+        height:          h,
+        backgroundColor: "#1a1008",
+        parent:          container,
+        scene:           this._makeScene(),
+        scale: {
+          mode:       Phaser.Scale.RESIZE,
+          autoCenter: Phaser.Scale.CENTER_BOTH
+        }
+      });
+    } catch(e) {
+      console.error("[IsoAdapter] Phaser launch failed:", e);
+    }
   }
 
   _makeScene() {
@@ -213,11 +232,15 @@ export class IsoAdapter {
       constructor() { super({ key: "GameIsoScene" }); }
 
       preload() {
-        // Load placeholder textures — replaced with Kenney assets later
-        adapter._loadPlaceholders(this);
+        try {
+          adapter._loadPlaceholders(this);
+        } catch(e) {
+          console.error("[IsoAdapter] Preload error:", e);
+        }
       }
 
       create() {
+        try {
         adapter._scene = this;
         adapter.camera._scene = this;
 
@@ -252,6 +275,16 @@ export class IsoAdapter {
 
         adapter._ready = true;
         console.log("[IsoAdapter] Phaser scene ready");
+
+        // Flush world queued before Phaser was ready
+        if (adapter._pendingWorld) {
+          adapter._drawWorld(adapter._pendingWorld);
+          adapter._lastWorld    = adapter._pendingWorld;
+          adapter._pendingWorld = null;
+        }
+        } catch(e) {
+          console.error("[IsoAdapter] Scene create error:", e);
+        }
       }
 
       update(time, delta) {
@@ -266,10 +299,21 @@ export class IsoAdapter {
   // ── Main render call (called by Engine every frame) ───────────────────────
 
   render(world, entities = []) {
-    if (!this._ready || !this._scene) return;
+    if (!this._ready || !this._scene) {
+      // Queue world for when Phaser is ready
+      if (world) this._pendingWorld = world;
+      return;
+    }
+
+    // Flush pending world if we just became ready
+    if (this._pendingWorld && this._pendingWorld !== this._lastWorld) {
+      this._drawWorld(this._pendingWorld);
+      this._lastWorld   = this._pendingWorld;
+      this._pendingWorld = null;
+    }
 
     // ── Draw world tiles (only once per world load) ──────────────────────
-    if (world && world !== this._lastWorld && this._ready) {
+    if (world && world !== this._lastWorld) {
       this._drawWorld(world);
       this._lastWorld = world;
     }
