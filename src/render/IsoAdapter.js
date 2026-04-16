@@ -117,11 +117,12 @@ class IsoCamera {
   }
 
   screenToWorld(sx, sy) {
-    if (!this._scene) return { x: 0, y: 0 };
-    // sx/sy are already in Phaser canvas coords (from our _fireCanvasEvent)
-    const world = this._scene.cameras.main.getWorldPoint(sx, sy);
-    const iso   = screenToIso(world.x, world.y);
-    return { x: iso.tx ?? iso.x, y: iso.ty ?? iso.y };
+    if (!this._scene?.cameras?.main) return { x: 0, y: 0 };
+    // sx/sy are Phaser pointer coords (already in canvas space)
+    // getWorldPoint handles zoom and scroll correctly
+    const worldPt = this._scene.cameras.main.getWorldPoint(sx, sy);
+    const iso     = screenToIso(worldPt.x, worldPt.y);
+    return { x: iso.x, y: iso.y };
   }
 
   worldToScreen(tx, ty) {
@@ -253,10 +254,17 @@ export class IsoAdapter {
 
         // ── Input → forward to Engine via fake canvas ─────────────────────
         this.input.on("pointerdown", (ptr) => {
-          // Debounce — prevent multiple fires per click
           const now = Date.now();
           if (now - (adapter._lastClick ?? 0) < 100) return;
           adapter._lastClick = now;
+
+          // Debug — log what tile we think was clicked
+          if (adapter._scene?.cameras?.main) {
+            const worldPt = adapter._scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+            const iso     = screenToIso(worldPt.x, worldPt.y);
+            console.log(`[IsoAdapter] Click: screen(${Math.round(ptr.x)},${Math.round(ptr.y)}) → world(${Math.round(worldPt.x)},${Math.round(worldPt.y)}) → tile(${iso.x},${iso.y})`);
+          }
+
           adapter._fireCanvasEvent("pointerdown", ptr.x, ptr.y, { button: ptr.event?.button ?? 0 });
         });
 
