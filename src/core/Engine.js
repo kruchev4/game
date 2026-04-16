@@ -735,7 +735,7 @@ export class Engine {
           this.transition({
             targetWorld:  townId,
             targetX:      19,  // Millhaven north entrance
-            targetY:      2,
+            targetY:      1,   // row 1 inside north entrance
             returnWorld:  this._currentWorldId,
             returnX:      clickedTown.x,
             returnY:      clickedTown.y
