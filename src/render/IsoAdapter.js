@@ -403,45 +403,51 @@ export class IsoAdapter {
 
     this._world = world;
 
-    // Draw initial chunk around spawn point (world center as fallback)
-    // Player position not known yet — will be updated on first move
-    const spawnX = this.player?.x ?? Math.floor(world.width  / 2);
-    const spawnY = this.player?.y ?? Math.floor(world.height / 2);
-    this._updateVisibleTiles(Math.floor(spawnX), Math.floor(spawnY));
+    // Draw initial chunk synchronously — Phaser is ready, player position known
+    const spawnX = Math.floor(this.player?.x ?? world.width  / 2);
+    const spawnY = Math.floor(this.player?.y ?? world.height / 2);
+    this._updateVisibleTiles(spawnX, spawnY, true); // sync=true
 
-    console.log(`[IsoAdapter] Drew ${this._tileCache.size} initial tiles`);
+    console.log(`[IsoAdapter] Drew ${this._tileCache.size} initial tiles around (${spawnX},${spawnY})`);
   }
 
-  // Kept for compatibility — use _updateVisibleTiles for batched loading
   _drawChunk(world, x0, y0, x1, y1) {
     this._world = world;
     this._updateVisibleTiles(
       Math.floor((x0 + x1) / 2),
-      Math.floor((y0 + y1) / 2)
+      Math.floor((y0 + y1) / 2),
+      true // sync
     );
   }
 
-  // Stream tiles around player — batched across frames to prevent blocking
-  _updateVisibleTiles(playerX, playerY) {
-    if (!this._world) return;
+  // Draw tiles — sync for initial load, batched rAF for subsequent chunks
+  _updateVisibleTiles(playerX, playerY, sync = false) {
+    if (!this._world || !this._scene) return;
     const W     = this._world.width;
     const H     = this._world.height;
-    const RANGE = 22;
+    const RANGE = 20;
     const x0    = Math.max(0, playerX - RANGE);
     const y0    = Math.max(0, playerY - RANGE);
     const x1    = Math.min(W, playerX + RANGE);
     const y1    = Math.min(H, playerY + RANGE);
 
-    // Build list of only tiles not yet drawn
+    if (sync) {
+      // Synchronous — used for initial load, small area, Phaser already ready
+      for (let ty = y0; ty < y1; ty++) {
+        for (let tx = x0; tx < x1; tx++) {
+          this._drawTile(tx, ty);
+        }
+      }
+      return;
+    }
+
+    // Build list of only NEW tiles
     const todo = [];
     for (let ty = y0; ty < y1; ty++) {
       for (let tx = x0; tx < x1; tx++) {
-        if (!this._tileCache.has(`${tx},${ty}`)) {
-          todo.push([tx, ty]);
-        }
+        if (!this._tileCache.has(`${tx},${ty}`)) todo.push([tx, ty]);
       }
     }
-
     if (!todo.length) return;
 
     // Cancel any in-progress batch
@@ -450,26 +456,15 @@ export class IsoAdapter {
       this._tileBatchId = null;
     }
 
-    // Draw in batches of 80 tiles per frame — smooth, no blocking
-    const BATCH = 80;
+    // Batch across frames — 60 tiles per frame
+    const BATCH = 60;
     let   idx   = 0;
-
     const drawBatch = () => {
       if (!this._world || !this._scene) return;
       const end = Math.min(idx + BATCH, todo.length);
       for (; idx < end; idx++) {
         const [tx, ty] = todo[idx];
-        const key2 = `${tx},${ty}`;
-        if (this._tileCache.has(key2)) continue;
-        const tileId    = Array.isArray(this._world.tiles[ty])
-          ? this._world.tiles[ty][tx]
-          : this._world.tiles[ty * this._world.width + tx];
-        const texKey    = tileKey(tileId ?? 0);
-        const { x, y }  = isoToScreen(tx, ty);
-        const img       = this._scene.add.image(x, y, texKey);
-        img.setOrigin(0.5, 0.5);
-        img.setDepth(depthOf(tx, ty) - 1);
-        this._tileCache.set(key2, img);
+        this._drawTile(tx, ty);
       }
       if (idx < todo.length) {
         this._tileBatchId = requestAnimationFrame(drawBatch);
@@ -477,8 +472,21 @@ export class IsoAdapter {
         this._tileBatchId = null;
       }
     };
-
     this._tileBatchId = requestAnimationFrame(drawBatch);
+  }
+
+  _drawTile(tx, ty) {
+    const key2 = `${tx},${ty}`;
+    if (this._tileCache.has(key2)) return;
+    const tileId   = Array.isArray(this._world.tiles[ty])
+      ? this._world.tiles[ty][tx]
+      : this._world.tiles[ty * this._world.width + tx];
+    const texKey   = tileKey(tileId ?? 0);
+    const { x, y } = isoToScreen(tx, ty);
+    const img      = this._scene.add.image(x, y, texKey);
+    img.setOrigin(0.5, 0.5);
+    img.setDepth(depthOf(tx, ty) - 1);
+    this._tileCache.set(key2, img);
   }
 
   // ── Entity sprite management ──────────────────────────────────────────────
