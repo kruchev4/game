@@ -341,19 +341,28 @@ export class IsoAdapter {
 
     // All entities (NPCs, remote players, corpses) — skip player (drawn above)
     for (const entity of entities) {
-      if (!entity || entity === this.player) continue; // skip player duplicate
+      if (!entity || entity === this.player) continue;
       if (!entity.id) continue;
       try {
         if (entity.type === "corpse") {
           this._updateCorpse(entity);
-        } else {
+        } else if (this._entitySprites.has(entity.id)) {
+          // Already has a sprite — just update position/state (cheap)
           this._updateSprite(entity, entity.id);
+        } else {
+          // New entity — queue sprite creation to avoid frame spike
+          if (!this._spriteQueue.find(e => e.id === entity.id)) {
+            this._spriteQueue.push(entity);
+          }
         }
         activeIds.add(entity.id);
       } catch(e) {
         console.warn("[IsoAdapter] Entity render error:", entity.id, e.message);
       }
     }
+
+    // Process sprite creation queue — max 3 new sprites per frame
+    this._flushSpriteQueue();
 
     // Remove sprites for entities no longer in the world
     for (const [id] of this._entitySprites) {
@@ -380,7 +389,9 @@ export class IsoAdapter {
     // Clear existing tiles
     for (const img of this._tileCache.values()) img.destroy();
     this._tileCache.clear();
-    this._lastChunk = null; // reset chunk tracker
+    this._lastChunk    = null;  // reset chunk tracker
+    this._spriteQueue  = [];    // entities waiting for sprite creation
+    this._spriteBatchId = null; // rAF handle for sprite batching
 
     this._world = world;
 
@@ -463,6 +474,20 @@ export class IsoAdapter {
   }
 
   // ── Entity sprite management ──────────────────────────────────────────────
+
+  _flushSpriteQueue() {
+    if (!this._spriteQueue.length) return;
+    // Create at most 3 new sprites per frame to stay smooth
+    const batch = this._spriteQueue.splice(0, 3);
+    for (const entity of batch) {
+      if (!entity?.id) continue;
+      try {
+        this._updateSprite(entity, entity.id);
+      } catch(e) {
+        console.warn("[IsoAdapter] Sprite create error:", entity.id, e.message);
+      }
+    }
+  }
 
   _updateSprite(entity, id) {
     if (!entity || !id) return;
