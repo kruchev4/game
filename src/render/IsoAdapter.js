@@ -311,14 +311,18 @@ export class IsoAdapter {
           if (now - (adapter._lastClick ?? 0) < 100) return;
           adapter._lastClick = now;
 
-          // Debug — log what tile we think was clicked
-          if (adapter._scene?.cameras?.main) {
-            const worldPt = adapter._scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
-            const iso     = screenToIso(worldPt.x, worldPt.y);
-            console.log(`[IsoAdapter] Click: screen(${Math.round(ptr.x)},${Math.round(ptr.y)}) → world(${Math.round(worldPt.x)},${Math.round(worldPt.y)}) → tile(${iso.x},${iso.y})`);
-          }
+          // Pass client coordinates so Engine can apply proper offset via screenToWorld
+          const phaserCanvas = adapter._scene.game.canvas;
+          const rect  = phaserCanvas.getBoundingClientRect();
+          const clientX = ptr.x + rect.left;
+          const clientY = ptr.y + rect.top;
 
-          adapter._fireCanvasEvent("pointerdown", ptr.x, ptr.y, { button: ptr.event?.button ?? 0 });
+          // Debug log
+          const worldPt = adapter._scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          const iso     = screenToIso(worldPt.x, worldPt.y);
+          console.log(`[IsoAdapter] Click: ptr(${Math.round(ptr.x)},${Math.round(ptr.y)}) → client(${Math.round(clientX)},${Math.round(clientY)}) → tile(${iso.x},${iso.y})`);
+
+          adapter._fireCanvasEvent("pointerdown", clientX, clientY, { button: ptr.event?.button ?? 0 });
         });
 
         this.input.on("wheel", (ptr, objs, dx, dy) => {
