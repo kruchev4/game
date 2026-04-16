@@ -16,10 +16,10 @@
  */
 
 // ── Isometric constants ───────────────────────────────────────────────────
-const TILE_W      = 128;
-const TILE_H      = 64;
-const TILE_W_HALF = 64;
-const TILE_H_HALF = 32;
+const TILE_W      = 256;  // Kenney/opengameart 256x128 tiles
+const TILE_H      = 128;
+const TILE_W_HALF = 128;
+const TILE_H_HALF = 64;
 const CHAR_SIZE   = 64;
 const DIRS        = ["S","SW","W","NW","N","NE","E","SE"];
 
@@ -49,26 +49,50 @@ function vecToDir(dx, dy) {
   return dirs[Math.round(((angle + 360) % 360) / 45) % 8];
 }
 
-// ── Tile type → texture key ───────────────────────────────────────────────
-const TILE_KEYS = {
-  0:  "tile_grass",
-  1:  "tile_grass",   // will differentiate with proper assets
-  2:  "tile_water",
-  3:  "tile_dirt",
-  4:  "tile_grass",
-  5:  "tile_path",
-  6:  "tile_path",
-  7:  "tile_stone",
-  8:  "tile_stone",
-  9:  "tile_grass",
-  10: "tile_grass",
-  11: "tile_water",
-  12: "tile_stone",
-  default: "tile_grass"
+// ── Tile ID → { sheet, frameIndex } ──────────────────────────────────────
+const TILE_MAP = {
+  0:  { sheet: "terrain1", frame: 1  },  // grass
+  1:  { sheet: "terrain1", frame: 0  },  // dark grass
+  2:  { sheet: "terrain1", frame: 9  },  // mossy grass
+  3:  { sheet: "terrain1", frame: 10 },  // bright green
+  4:  { sheet: "terrain1", frame: 4  },  // dirt path
+  5:  { sheet: "terrain1", frame: 7  },  // brown dirt
+  6:  { sheet: "terrain1", frame: 3  },  // dry savanna
+  7:  { sheet: "water",    frame: 0  },  // deep water
+  8:  { sheet: "water",    frame: 3  },  // medium water
+  9:  { sheet: "water",    frame: 2  },  // shallow water
+  10: { sheet: "water",    frame: 14 },  // bright teal
+  11: { sheet: "terrain1", frame: 5  },  // rocky ground
+  12: { sheet: "terrain1", frame: 6  },  // stone floor
+  13: { sheet: "terrain2", frame: 0  },  // rough stone
+  14: { sheet: "terrain2", frame: 2  },  // grey stone
+  15: { sheet: "forest",   frame: 1  },  // light forest
+  16: { sheet: "forest",   frame: 0  },  // dense forest
+  17: { sheet: "forest",   frame: 8  },  // dark conifer
+  18: { sheet: "forest",   frame: 4  },  // mixed forest
+  19: { sheet: "terrain3", frame: 0  },  // grey mountain
+  20: { sheet: "terrain3", frame: 3  },  // dark slate
+  21: { sheet: "terrain3", frame: 1  },  // textured rock
+  22: { sheet: "terrain1", frame: 12 },  // sandy yellow
+  23: { sheet: "terrain2", frame: 17 },  // sand
+  24: { sheet: "terrain1", frame: 15 },  // sandy pink
+  25: { sheet: "terrain2", frame: 3  },  // seafoam ice
+  26: { sheet: "terrain2", frame: 4  },  // blue ice
+  27: { sheet: "terrain2", frame: 5  },  // pale ice
+  28: { sheet: "terrain1", frame: 11 },  // cracked earth
+  29: { sheet: "terrain1", frame: 8  },  // grey rock flat
+  30: { sheet: "terrain2", frame: 6  },  // mixed ground
+  31: { sheet: "terrain2", frame: 8  },  // sage green
+  32: { sheet: "terrain1", frame: 13 },  // sage
+  33: { sheet: "terrain1", frame: 16 },  // tan stone
+  34: { sheet: "terrain3", frame: 9  },  // pale grey rock
+  35: { sheet: "water",    frame: 6  },  // dark deep water
 };
 
-function tileKey(tileId) {
-  return TILE_KEYS[tileId] ?? TILE_KEYS.default;
+const DEFAULT_TILE = { sheet: "terrain1", frame: 1 };
+
+function getTileDef(tileId) {
+  return TILE_MAP[tileId] ?? DEFAULT_TILE;
 }
 
 // ── Class → texture key ───────────────────────────────────────────────────
@@ -234,7 +258,20 @@ export class IsoAdapter {
 
       preload() {
         try {
-          adapter._loadPlaceholders(this);
+          // Load real tile spritesheets
+          const sheets = [
+            "src/assets/tiles/overworld/terrain1.png",
+            "src/assets/tiles/overworld/terrain2.png",
+            "src/assets/tiles/overworld/terrain3.png",
+            "src/assets/tiles/overworld/forest.png",
+            "src/assets/tiles/overworld/water.png",
+          ];
+          const keys = ["terrain1","terrain2","terrain3","forest","water"];
+          for (let i = 0; i < keys.length; i++) {
+            this.load.image(keys[i], sheets[i]);
+          }
+          // Load character placeholders (canvas-based, no file loading needed)
+          adapter._loadCharPlaceholders(this);
         } catch(e) {
           console.error("[IsoAdapter] Preload error:", e);
         }
@@ -275,6 +312,9 @@ export class IsoAdapter {
         // Keyboard — Engine listens on window directly so no forwarding needed
         // Just make sure Phaser doesn't consume key events exclusively
         this.input.keyboard.enabled = true;
+
+        // Register tile sheet frames now that images are loaded
+        adapter._registerTileSheets(this);
 
         adapter._ready = true;
         console.log("[IsoAdapter] Phaser scene ready");
@@ -323,6 +363,13 @@ export class IsoAdapter {
 
     // Skip entity updates if scene not ready
     if (!this._ready || !this._scene) return;
+
+    // Log Phaser object count every 300 frames to detect bloat
+    this._frameCount = (this._frameCount ?? 0) + 1;
+    if (this._frameCount % 300 === 0) {
+      const objCount = this._scene.children?.length ?? 0;
+      console.log(`[IsoAdapter] Scene objects: ${objCount}, sprites: ${this._entitySprites.size}, tiles: ${this._tileCache.size}`);
+    }
 
     // Stream tiles only when player moves to a new chunk position
     // NOT every frame — tiles are permanent once drawn
@@ -478,12 +525,22 @@ export class IsoAdapter {
   _drawTile(tx, ty) {
     const key2 = `${tx},${ty}`;
     if (this._tileCache.has(key2)) return;
-    const tileId   = Array.isArray(this._world.tiles[ty])
+    const tileId    = Array.isArray(this._world.tiles[ty])
       ? this._world.tiles[ty][tx]
       : this._world.tiles[ty * this._world.width + tx];
-    const texKey   = tileKey(tileId ?? 0);
-    const { x, y } = isoToScreen(tx, ty);
-    const img      = this._scene.add.image(x, y, texKey);
+    const def       = getTileDef(tileId ?? 0);
+    const { x, y }  = isoToScreen(tx, ty);
+
+    // Use sheet texture with frame index
+    let img;
+    if (this._scene.textures.exists(def.sheet)) {
+      img = this._scene.add.image(x, y, def.sheet, def.frame);
+    } else {
+      // Sheet not loaded yet — use fallback color rect
+      img = this._scene.add.image(x, y, "terrain1", 1);
+    }
+
+    // Tiles are 256x128 — origin at center of diamond top face
     img.setOrigin(0.5, 0.5);
     img.setDepth(depthOf(tx, ty) - 1);
     this._tileCache.set(key2, img);
@@ -691,93 +748,37 @@ export class IsoAdapter {
 
   // ── Placeholder asset loading ─────────────────────────────────────────────
 
-  _loadPlaceholders(scene) {
-    const makeTile = (fillTop, fillLeft, fillRight, stroke) => {
-      const c   = document.createElement("canvas");
-      c.width   = TILE_W;
-      c.height  = TILE_H + 20;
-      const ctx = c.getContext("2d");
-      // Top face
-      ctx.beginPath();
-      ctx.moveTo(TILE_W_HALF, 0);
-      ctx.lineTo(TILE_W, TILE_H_HALF);
-      ctx.lineTo(TILE_W_HALF, TILE_H);
-      ctx.lineTo(0, TILE_H_HALF);
-      ctx.closePath();
-      ctx.fillStyle = fillTop; ctx.fill();
-      // Left face
-      ctx.beginPath();
-      ctx.moveTo(0, TILE_H_HALF);
-      ctx.lineTo(TILE_W_HALF, TILE_H);
-      ctx.lineTo(TILE_W_HALF, TILE_H + 16);
-      ctx.lineTo(0, TILE_H_HALF + 16);
-      ctx.closePath();
-      ctx.fillStyle = fillLeft; ctx.fill();
-      // Right face
-      ctx.beginPath();
-      ctx.moveTo(TILE_W_HALF, TILE_H);
-      ctx.lineTo(TILE_W, TILE_H_HALF);
-      ctx.lineTo(TILE_W, TILE_H_HALF + 16);
-      ctx.lineTo(TILE_W_HALF, TILE_H + 16);
-      ctx.closePath();
-      ctx.fillStyle = fillRight; ctx.fill();
-      // Outline
-      ctx.beginPath();
-      ctx.moveTo(TILE_W_HALF, 0);
-      ctx.lineTo(TILE_W, TILE_H_HALF);
-      ctx.lineTo(TILE_W_HALF, TILE_H);
-      ctx.lineTo(0, TILE_H_HALF);
-      ctx.closePath();
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
-      return c;
-    };
-
+  _loadCharPlaceholders(scene) {
+    // Canvas-based character placeholders — no file loading needed
     const makeChar = (color) => {
       const FRAMES = 4, DIRS = 8;
-      const c   = document.createElement("canvas");
-      c.width   = FRAMES * CHAR_SIZE;
-      c.height  = DIRS   * CHAR_SIZE;
-      const ctx = c.getContext("2d");
+      const cv  = document.createElement("canvas");
+      cv.width  = FRAMES * CHAR_SIZE;
+      cv.height = DIRS   * CHAR_SIZE;
+      const ctx = cv.getContext("2d");
       for (let dir = 0; dir < DIRS; dir++) {
         for (let f = 0; f < FRAMES; f++) {
           const x   = f * CHAR_SIZE;
           const y   = dir * CHAR_SIZE;
           const bob = Math.sin(f * Math.PI / 2) * 2;
-          // Shadow
           ctx.fillStyle = "rgba(0,0,0,0.25)";
           ctx.beginPath();
           ctx.ellipse(x+32, y+56, 14, 5, 0, 0, Math.PI*2);
           ctx.fill();
-          // Body
           ctx.fillStyle = color;
           ctx.fillRect(x+20, y+28+bob, 24, 22);
-          // Head
           ctx.beginPath();
           ctx.arc(x+32, y+22+bob, 11, 0, Math.PI*2);
           ctx.fill();
-          // Shine
           ctx.fillStyle = "rgba(255,255,255,0.2)";
           ctx.beginPath();
           ctx.arc(x+28, y+18+bob, 5, 0, Math.PI*2);
           ctx.fill();
         }
       }
-      return c;
+      return cv;
     };
 
-    // Add tile textures
-    const tiles = {
-      tile_grass: makeTile("#5a8a3a","#3a6a1a","#2a5a0a","#4a7a2a"),
-      tile_stone: makeTile("#888880","#555550","#444440","#666660"),
-      tile_path:  makeTile("#b8a878","#907850","#806840","#a09060"),
-      tile_water: makeTile("#3a5aaa","#1a3a8a","#0a2a7a","#2a4a9a"),
-      tile_dirt:  makeTile("#8a6040","#6a4020","#5a3010","#7a5030"),
-    };
-    for (const [key, canvas] of Object.entries(tiles)) {
-      scene.textures.addCanvas(key, canvas);
-    }
-
-    // Add character textures with frame data
     const chars = {
       char_fighter: makeChar("#cc3322"),
       char_ranger:  makeChar("#2a8a2a"),
@@ -794,6 +795,78 @@ export class IsoAdapter {
         }
       }
     }
+  }
+
+  _registerTileSheets(scene) {
+    const sheets = [
+      { key: "terrain1", trans: null      },
+      { key: "terrain2", trans: null      },
+      { key: "terrain3", trans: 0xff00ff  },
+      { key: "forest",   trans: null      },
+      { key: "water",    trans: 0xff00ff  },
+    ];
+    for (const { key, trans } of sheets) {
+      if (!scene.textures.exists(key)) {
+        console.warn(`[IsoAdapter] Texture ${key} not loaded`);
+        continue;
+      }
+      if (trans) {
+        this._makeTransparentTexture(scene, key, trans);
+      } else {
+        this._registerSheetFrames(scene, key, null);
+      }
+    }
+    console.log("[IsoAdapter] Tile sheets registered");
+  }
+
+  _registerSheetFrames(scene, key, transColor) {
+    const tex = scene.textures.get(key);
+    if (!tex) return;
+
+    // Each sheet: 3 cols x 6 rows of 256x128 tiles
+    for (let row = 0; row < 6; row++) {
+      for (let col = 0; col < 3; col++) {
+        const index = row * 3 + col;
+        tex.add(index, 0, col * TILE_W, row * TILE_H, TILE_W, TILE_H);
+      }
+    }
+
+    // Handle transparency by making a new canvas texture with alpha
+    if (transColor) {
+      this._makeTransparentTexture(scene, key, transColor);
+    }
+
+    console.log(`[IsoAdapter] Registered ${key} sheet (18 frames)`);
+  }
+
+  _makeTransparentTexture(scene, key, transColor) {
+    // Draw sheet onto canvas replacing transColor with transparent pixels
+    const tex    = scene.textures.get(key);
+    const src    = tex.getSourceImage();
+    const canvas = document.createElement("canvas");
+    canvas.width  = src.width;
+    canvas.height = src.height;
+    const ctx    = canvas.getContext("2d");
+    ctx.drawImage(src, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data      = imageData.data;
+
+    // Extract RGB from transColor (0xff00ff or similar)
+    const tr = (transColor >> 16) & 0xff;
+    const tg = (transColor >> 8)  & 0xff;
+    const tb =  transColor        & 0xff;
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] === tr && data[i+1] === tg && data[i+2] === tb) {
+        data[i+3] = 0; // make transparent
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    // Replace texture with transparent version
+    scene.textures.addCanvas(key, canvas);
+    this._registerSheetFrames(scene, key, null); // re-register frames, no trans this time
   }
 
   // ── Animation registration ────────────────────────────────────────────────
