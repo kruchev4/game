@@ -8,7 +8,7 @@ export class MovementSystem {
     this.player = player;
 
     this.lastMoveTime = 0;
-    this.moveDelay = 120;
+    this.moveDelay = 180;
 
     this.keys = new Set();
     this.target = null;
