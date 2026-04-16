@@ -540,7 +540,7 @@ export class IsoAdapter {
       img = this._scene.add.image(x, y, "terrain1", 1);
     }
 
-    // Tiles are 256x128 — origin at center of diamond top face
+    // Origin at center of diamond (0.5 x, 0.5 y for 256x128 tiles)
     img.setOrigin(0.5, 0.5);
     img.setDepth(depthOf(tx, ty) - 1);
     this._tileCache.set(key2, img);
@@ -799,10 +799,10 @@ export class IsoAdapter {
 
   _registerTileSheets(scene) {
     const sheets = [
-      { key: "terrain1", trans: null      },
-      { key: "terrain2", trans: null      },
+      { key: "terrain1", trans: 0x000000  },
+      { key: "terrain2", trans: 0x000000  },
       { key: "terrain3", trans: 0xff00ff  },
-      { key: "forest",   trans: null      },
+      { key: "forest",   trans: 0x000000  },
       { key: "water",    trans: 0xff00ff  },
     ];
     for (const { key, trans } of sheets) {
@@ -810,11 +810,7 @@ export class IsoAdapter {
         console.warn(`[IsoAdapter] Texture ${key} not loaded`);
         continue;
       }
-      if (trans) {
-        this._makeTransparentTexture(scene, key, trans);
-      } else {
-        this._registerSheetFrames(scene, key, null);
-      }
+      this._makeTransparentTexture(scene, key, trans);
     }
     console.log("[IsoAdapter] Tile sheets registered");
   }
@@ -842,27 +838,54 @@ export class IsoAdapter {
   _makeTransparentTexture(scene, key, transColor) {
     const tex    = scene.textures.get(key);
     const src    = tex.getSourceImage();
+    const W      = src.width;   // 768
+    const H      = src.height;  // 768
+    const TW     = TILE_W;      // 256
+    const TH     = TILE_H;      // 128
+    const COLS   = 3;
+    const ROWS   = 6;
+
     const canvas = document.createElement("canvas");
-    canvas.width  = src.width;
-    canvas.height = src.height;
+    canvas.width  = W;
+    canvas.height = H;
     const ctx    = canvas.getContext("2d");
-    ctx.drawImage(src, 0, 0);
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data      = imageData.data;
+    const isMagenta = ((transColor >> 16) & 0xff) > 200 &&
+                      ((transColor >> 8)  & 0xff) < 10;
 
-    const tr = (transColor >> 16) & 0xff;
-    const tg = (transColor >> 8)  & 0xff;
-    const tb =  transColor        & 0xff;
+    if (isMagenta) {
+      // Exact color key for magenta
+      ctx.drawImage(src, 0, 0);
+      const imageData = ctx.getImageData(0, 0, W, H);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 200 && data[i+1] < 10 && data[i+2] > 200) {
+          data[i+3] = 0;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+    } else {
+      // Black background — clip each tile to its diamond shape
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const sx = col * TW;
+          const sy = row * TH;
 
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] === tr && data[i+1] === tg && data[i+2] === tb) {
-        data[i+3] = 0;
+          ctx.save();
+          // Diamond clip path
+          ctx.beginPath();
+          ctx.moveTo(sx + TW / 2, sy);
+          ctx.lineTo(sx + TW,     sy + TH / 2);
+          ctx.lineTo(sx + TW / 2, sy + TH);
+          ctx.lineTo(sx,          sy + TH / 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(src, sx, sy, TW, TH, sx, sy, TW, TH);
+          ctx.restore();
+        }
       }
     }
-    ctx.putImageData(imageData, 0, 0);
 
-    // Remove old texture before replacing
     scene.textures.remove(key);
     scene.textures.addCanvas(key, canvas);
     this._registerSheetFrames(scene, key, null);
