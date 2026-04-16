@@ -776,6 +776,7 @@ class WorldInstance {
   // ── Tick ───────────────────────────────────────────────────────────────
 
   tick(dt) {
+    // Build players array once per tick — not per NPC per hit
     const playersHere = [...this.players]
       .map(t => players.get(t))
       .filter(Boolean);
@@ -784,6 +785,11 @@ class WorldInstance {
       if (npc.dead) {
         this._tickRespawn(npc, dt);
         continue;
+      }
+      // Batch aggro recalc — only for NPCs that had threat changes this tick
+      if (npc._aggroDirty) {
+        npc._aggroDirty = false;
+        this._updateAggroTarget(npc, playersHere);
       }
       this._tickNPC(npc, playersHere, dt);
     }
@@ -940,29 +946,28 @@ class WorldInstance {
     const threat     = amount * multiplier;
 
     npc.threat[playerToken] = (npc.threat[playerToken] ?? 0) + threat;
-
-    // Recalculate aggro target — highest threat player
-    this._updateAggroTarget(npc);
+    // Mark for aggro recalc — processed once per tick not per hit
+    npc._aggroDirty = true;
   }
 
   /**
    * Set aggro target to the player with highest threat.
    * Only considers players currently in the world.
    */
-  _updateAggroTarget(npc) {
-    const playersHere = [...this.players]
-      .map(t => players.get(t))
-      .filter(Boolean);
+  _updateAggroTarget(npc, playersHere) {
+    // playersHere passed in to avoid rebuilding per-call
+    if (!playersHere) {
+      playersHere = [...this.players].map(t => players.get(t)).filter(Boolean);
+    }
 
     let topToken  = null;
     let topThreat = 0;
 
     for (const [token, threat] of Object.entries(npc.threat ?? {})) {
-      const player = playersHere.find(p => p.playerToken === token);
-      if (!player) continue; // player left
       if (threat > topThreat) {
-        topThreat = threat;
-        topToken  = token;
+        // Only check if player is actually here
+        const inWorld = playersHere.some(p => p.playerToken === token);
+        if (inWorld) { topThreat = threat; topToken = token; }
       }
     }
 
@@ -977,10 +982,11 @@ class WorldInstance {
    * Prevents permanent aggro lock on AFK players.
    */
   _decayThreat(npc) {
-    const DECAY = 0.999; // per tick — very slow decay
-    for (const token of Object.keys(npc.threat ?? {})) {
+    if (!npc.threat) return;
+    const DECAY = 0.998;
+    for (const token in npc.threat) {
       npc.threat[token] *= DECAY;
-      if (npc.threat[token] < 0.1) delete npc.threat[token];
+      if (npc.threat[token] < 0.5) delete npc.threat[token];
     }
   }
 
