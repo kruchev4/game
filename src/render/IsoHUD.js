@@ -306,6 +306,30 @@ export class IsoHUD {
       <!-- Quick Slots -->
       <div id="hud-quickslots"></div>
 
+      <!-- Minimap -->
+      <div id="hud-minimap" style="
+        position:absolute;
+        top:12px;
+        right:12px;
+        width:160px;
+        height:160px;
+        background:rgba(10,10,20,0.88);
+        border:1.5px solid rgba(100,160,100,0.5);
+        border-radius:6px;
+        overflow:hidden;
+      ">
+        <canvas id="hud-minimap-canvas" width="160" height="160"></canvas>
+        <div style="
+          position:absolute;
+          bottom:4px;
+          left:0;right:0;
+          text-align:center;
+          font-size:8px;
+          color:rgba(150,200,150,0.7);
+          pointer-events:none;
+        " id="hud-minimap-label"></div>
+      </div>
+
       <!-- Target Frame -->
       <div id="hud-target" class="hidden">
         <div id="hud-target-name">Target</div>
@@ -458,6 +482,9 @@ export class IsoHUD {
       }
     }
 
+    // ── Minimap ───────────────────────────────────────────────────────────────
+    this._updateMinimap(p);
+
     // ── Target frame ─────────────────────────────────────────────────────────
     const targetEl    = document.getElementById("hud-target");
     const targetName  = document.getElementById("hud-target-name");
@@ -474,6 +501,111 @@ export class IsoHUD {
       if (targetLabel) targetLabel.textContent  = `${Math.ceil(this._target.hp ?? 0)} / ${this._target.maxHp ?? 0}`;
     } else if (targetEl) {
       targetEl.classList.add("hidden");
+    }
+  }
+
+  setWorld(world) {
+    this._world = world;
+    this._minimapDirty = true;
+  }
+
+  setEntities(entities) {
+    this._entities = entities;
+  }
+
+  _updateMinimap(p) {
+    const canvas = document.getElementById("hud-minimap-canvas");
+    if (!canvas || !this._world) return;
+
+    const ctx  = canvas.getContext("2d");
+    const W    = canvas.width;   // 160
+    const H    = canvas.height;  // 160
+    const mw   = this._world.width  ?? 240;
+    const mh   = this._world.height ?? 180;
+    const scaleX = W / mw;
+    const scaleY = H / mh;
+
+    // Only redraw base map when world changes
+    if (this._minimapDirty) {
+      this._minimapDirty = false;
+      this._minimapCache = document.createElement("canvas");
+      this._minimapCache.width  = W;
+      this._minimapCache.height = H;
+      const mc = this._minimapCache.getContext("2d");
+
+      const tiles = this._world.tiles;
+      if (tiles) {
+        const COLORS = {
+          water:   "#1a3a8a",
+          forest:  "#1a5a1a",
+          mountain:"#666660",
+          path:    "#8a6040",
+          default: "#3a6a2a"
+        };
+        const getTileColor = (id) => {
+          if (id >= 7  && id <= 10) return COLORS.water;
+          if (id >= 15 && id <= 18) return COLORS.forest;
+          if (id >= 19 && id <= 21) return COLORS.mountain;
+          if (id === 4 || id === 5) return COLORS.path;
+          return COLORS.default;
+        };
+
+        // Draw every 2nd tile for performance
+        const step = 2;
+        for (let ty = 0; ty < mh; ty += step) {
+          for (let tx = 0; tx < mw; tx += step) {
+            const tileId = Array.isArray(tiles[ty])
+              ? tiles[ty][tx]
+              : tiles[ty * mw + tx];
+            mc.fillStyle = getTileColor(tileId ?? 0);
+            mc.fillRect(
+              Math.floor(tx * scaleX), Math.floor(ty * scaleY),
+              Math.ceil(step * scaleX) + 1, Math.ceil(step * scaleY) + 1
+            );
+          }
+        }
+      }
+    }
+
+    // Draw cached base map
+    if (this._minimapCache) {
+      ctx.drawImage(this._minimapCache, 0, 0);
+    } else {
+      ctx.fillStyle = "#1a2a1a";
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // Draw entities (NPCs) as red dots
+    for (const e of this._entities ?? []) {
+      if (!e || e.dead) continue;
+      ctx.fillStyle = "rgba(220,60,60,0.8)";
+      ctx.fillRect(
+        Math.floor(e.x * scaleX) - 1,
+        Math.floor(e.y * scaleY) - 1,
+        2, 2
+      );
+    }
+
+    // Draw player as bright dot
+    if (p) {
+      const px = Math.floor(p.x * scaleX);
+      const py = Math.floor(p.y * scaleY);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fill();
+      // View radius indicator
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth   = 0.5;
+      ctx.beginPath();
+      ctx.arc(px, py, 20 * scaleX, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Coords label
+    const label = document.getElementById("hud-minimap-label");
+    if (label && p) {
+      label.textContent = `${Math.floor(p.x)}, ${Math.floor(p.y)}`;
     }
   }
 
