@@ -144,9 +144,13 @@ class IsoCamera {
 
   screenToWorld(sx, sy) {
     if (!this._scene?.cameras?.main) return { x: 0, y: 0 };
-    // sx/sy are Phaser pointer coords (already in canvas space)
-    // getWorldPoint handles zoom and scroll correctly
-    const worldPt = this._scene.cameras.main.getWorldPoint(sx, sy);
+    // sx/sy are client coordinates (from Engine's e.clientX/Y)
+    // Need to offset by Phaser canvas position on screen
+    const phaserCanvas = this._scene.game.canvas;
+    const rect = phaserCanvas.getBoundingClientRect();
+    const localX = sx - rect.left;
+    const localY = sy - rect.top;
+    const worldPt = this._scene.cameras.main.getWorldPoint(localX, localY);
     const iso     = screenToIso(worldPt.x, worldPt.y);
     return { x: iso.x, y: iso.y };
   }
