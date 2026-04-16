@@ -198,7 +198,7 @@ export class IsoAdapter {
     // ── Internal state ────────────────────────────────────────────────────
     this._scene          = null;
     this._ready          = false;
-    this._pendingWorld   = null; // world queued before Phaser ready
+    this._pendingWorld   = null;
     this._tileCache      = new Map();
     this._entitySprites  = new Map();
     this._prevPositions  = new Map();
@@ -206,6 +206,8 @@ export class IsoAdapter {
     this._eventListeners = [];
     this._lastWorld      = null;
     this._world          = null;
+    this._hud            = new IsoHUD();
+    this._lastEntities   = [];
 
     // ── Fake canvas for Engine event listeners ────────────────────────────
     this.canvas = this._makeFakeCanvas();
