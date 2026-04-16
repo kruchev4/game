@@ -19,22 +19,41 @@ export class SupabaseOverworldProvider {
   }
 
   #normalize(raw) {
+    // Helper to parse JSON strings that may be nested
+    const parseArr = (v) => {
+      if (!v) return [];
+      if (Array.isArray(v)) return v;
+      if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
+      return [];
+    };
+
     return {
-      id:          raw.id,
+      // ── Core ──
+      id:     raw.id,
+      width:  raw.width,
+      height: raw.height,
+      tiles:  raw.tiles,
+
+      // ── Rich metadata ──
       type:        raw.type        ?? "world",
       name:        raw.name        ?? raw.id,
-      width:       raw.width,
-      height:      raw.height,
-      tiles:       raw.tiles,
-      towns:       raw.towns       ?? [],
-      portals:     raw.portals     ?? [],
-      namedZones:  raw.namedZones  ?? [],
-      capitol:     raw.capitol     ?? null,
-      bosses:      raw.bosses      ?? [],
-      encounters:  raw.encounters  ?? [],
-      entryPoints: raw.entryPoints ?? {},
       meta:        raw.meta        ?? {},
-      _raw:        raw,
+      capitol:     raw.capitol     ?? null,
+      towns:       parseArr(raw.towns),
+      portals:     parseArr(raw.portals),
+      namedZones:  parseArr(raw.namedZones),
+      bosses:      parseArr(raw.bosses),
+      entryPoints: raw.entryPoints ?? {},
+      spawnGroups: parseArr(raw.spawnGroups),
+      encounters:  parseArr(raw.encounters),
+      specialFeatures: parseArr(raw.specialFeatures),
+      blimpRoutes: parseArr(raw.blimpRoutes),
+      variants:    raw.variants    ?? {},
+      metadata:    raw.metadata    ?? {},
+
+      // Keep raw for anything we missed
+      _raw: raw,
+
       getTile(x, y) {
         if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;
         return this.tiles[y * this.width + x];
