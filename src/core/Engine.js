@@ -1191,6 +1191,7 @@ export class Engine {
       },
 
       onNPCState: (serverNPCs) => {
+        const t0 = performance.now();
         const serverIds = new Set(serverNPCs.map(n => n.id));
 
         // Build id→npc map for O(1) lookup
@@ -1234,6 +1235,9 @@ export class Engine {
 
         // Always keep combatSystem.npcs pointing at same array as this.npcs
         if (this.combatSystem) this.combatSystem.npcs = this.npcs;
+
+        const dt = performance.now() - t0;
+        if (dt > 5) console.warn(`[NPC State] Slow: ${dt.toFixed(1)}ms for ${serverNPCs.length} NPCs`);
       },
 
       onNPCAttackPlayer: ({ npcId, damage, blocked }) => {
