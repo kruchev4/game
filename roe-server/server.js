@@ -782,16 +782,20 @@ class WorldInstance {
       .filter(Boolean);
 
     for (const npc of this.npcs.values()) {
-      if (npc.dead) {
-        this._tickRespawn(npc, dt);
-        continue;
+      try {
+        if (npc.dead) {
+          this._tickRespawn(npc, dt);
+          continue;
+        }
+        if (npc._aggroDirty) {
+          npc._aggroDirty = false;
+          this._updateAggroTarget(npc, playersHere);
+        }
+        this._tickNPC(npc, playersHere, dt);
+      } catch(e) {
+        console.error(`[Server] NPC tick error (${npc.id}):`, e.message);
+        // Don't let one bad NPC crash the whole tick
       }
-      // Batch aggro recalc — only for NPCs that had threat changes this tick
-      if (npc._aggroDirty) {
-        npc._aggroDirty = false;
-        this._updateAggroTarget(npc, playersHere);
-      }
-      this._tickNPC(npc, playersHere, dt);
     }
   }
 
@@ -906,11 +910,14 @@ class WorldInstance {
         // Apply damage to player session server-side
         if (playerSession) {
           playerSession.hp = Math.max(0, (playerSession.hp ?? 0) - dmg);
-          // Send stat update to player
           _send(playerSession.ws, {
-            type: "player_stat_update",
-            hp: playerSession.hp, maxHp: playerSession.maxHp,
-            xp: playerSession.xp, gold: playerSession.gold
+            type:    "player_stat_update",
+            hp:      playerSession.hp,
+            maxHp:   playerSession.maxHp   ?? 80,
+            xp:      playerSession.xp      ?? 0,
+            gold:    playerSession.gold     ?? 0,
+            mana:    Math.ceil(playerSession.mana ?? playerSession.maxMana ?? 100),
+            maxMana: playerSession.maxMana  ?? 100
           });
         }
 
