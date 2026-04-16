@@ -24,7 +24,7 @@ import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabas
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 // ── Feature flag — flip to true to enable isometric renderer ──────────────
-const USE_ISO_RENDERER = true; // set to true once IsoAdapter is wired up
+const USE_ISO_RENDERER = false; // set to true once IsoAdapter is wired up
 
 const WORLD_ID = "overworld_C";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -109,15 +109,6 @@ async function start() {
     const canvas      = document.getElementById("game");
     if (!canvas) throw new Error("Canvas #game not found");
 
-    // ── Renderer ─────────────────────────────────────────────────────────
-    // IsoAdapter loaded dynamically when USE_ISO_RENDERER = true
-    let renderer;
-    if (USE_ISO_RENDERER) {
-      const { IsoAdapter } = await import("./render/IsoAdapter.js");
-      renderer = new IsoAdapter(canvas);
-    } else {
-      renderer = new Renderer(canvas);
-    }
     const worldProvider = new SupabaseOverworldProvider();
     const saveProvider  = new SaveProvider();
 
@@ -126,6 +117,16 @@ async function start() {
 
     // ── Launch engine ─────────────────────────────────────────────────────
     async function launchGame(character, saveSlot, serverUrl = null) {
+      // Construct renderer here — after player clicks Play
+      // IsoAdapter launches Phaser which is heavy, don't do it at startup
+      let renderer;
+      if (USE_ISO_RENDERER) {
+        const { IsoAdapter } = await import("./render/IsoAdapter.js");
+        renderer = new IsoAdapter(canvas);
+      } else {
+        renderer = new Renderer(canvas);
+      }
+
       const engine = new Engine({ worldProvider, renderer });
 
       engine.saveSlot      = saveSlot;
@@ -137,6 +138,17 @@ async function start() {
       engine._abilities = abilities;
       engine._classes   = classes;
       // Note: _itemDefs always loads from local items.json (has icons/onUse)
+
+      // Wait for Phaser to be ready before loading world
+      if (USE_ISO_RENDERER && renderer.isReady === false) {
+        await new Promise(resolve => {
+          const check = setInterval(() => {
+            if (renderer._ready) { clearInterval(check); resolve(); }
+          }, 100);
+          // Timeout after 10s
+          setTimeout(() => { clearInterval(check); resolve(); }, 10000);
+        });
+      }
 
       await engine.loadWorld(WORLD_ID, character);
 
