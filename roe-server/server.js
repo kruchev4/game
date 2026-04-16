@@ -234,9 +234,10 @@ function _rollHeal(ability) {
 }
 
 function _inRange(attacker, target, range) {
-  const dx = Math.abs(attacker.x - target.x);
-  const dy = Math.abs(attacker.y - target.y);
-  return (dx + dy) <= range + 2; // +2 tile sync tolerance
+  const dx   = attacker.x - target.x;
+  const dy   = attacker.y - target.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  return dist <= range + 1; // +1 tile sync tolerance (down from +2)
 }
 
 function _resolveAbility(session, world, msg) {
@@ -653,7 +654,18 @@ wss.on("connection", (ws) => {
 
 // ── Tick loop ─────────────────────────────────────────────────────────────
 let tick = 0;
+let _lastTickTime = Date.now();
+
 setInterval(() => {
+  const now     = Date.now();
+  const elapsed = now - _lastTickTime;
+  _lastTickTime = now;
+
+  // Warn if tick took more than 3x expected (indicates blocking)
+  if (elapsed > TICK_MS * 3 && tick > 10) {
+    console.warn(`[Server] SLOW TICK: ${elapsed}ms (expected ${TICK_MS}ms)`);
+  }
+
   tick++;
 
   // Prune stale players
@@ -678,7 +690,10 @@ setInterval(() => {
   // Tick all worlds
   for (const world of worlds.values()) {
     if (!world.ready) continue;
+    const wt0 = Date.now();
     world.tick(TICK_MS);
+    const wdt = Date.now() - wt0;
+    if (wdt > 20) console.warn(`[Server] Slow world tick (${world.worldId}): ${wdt}ms`);
 
     // Broadcast NPC state every N ticks
     if (tick % NPC_BROADCAST_TICKS === 0) {
@@ -713,7 +728,19 @@ class WorldInstance {
         const data   = rows[0].json;
         this.width   = data.width  ?? this.width;
         this.height  = data.height ?? this.height;
-        this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
+
+        if (Array.isArray(data.tiles)) {
+          // Flatten 2D array if needed
+          if (Array.isArray(data.tiles[0])) {
+            this.tiles = data.tiles.flat();
+            console.log(`[Server] Flattened 2D tile array: ${this.tiles.length} tiles`);
+          } else {
+            this.tiles = data.tiles;
+            console.log(`[Server] Flat tile array: ${this.tiles.length} tiles`);
+          }
+        } else {
+          console.warn(`[Server] No tile data in world ${this.worldId}`);
+        }
       }
 
       // Load spawn groups + monsters from local DB (sync)
