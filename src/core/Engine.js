@@ -1711,7 +1711,8 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
-    const t0 = performance.now();
+    const t0   = performance.now();
+    const slow = 16; // ms threshold for slow frame warnings
 
     if (!this._playerDead) {
       const serverOwnsNPCs = this.multiplayerSystem?._connected;
@@ -1758,11 +1759,11 @@ export class Engine {
       }
 
       // Log slow systems
-      const slow = 16; // ms threshold
-      if (t2 - t1 > slow) console.warn(`[Loop] NPC systems: ${(t2-t1).toFixed(1)}ms`);
-      if (t3 - t2 > slow) console.warn(`[Loop] Movement: ${(t3-t2).toFixed(1)}ms`);
-      if (t4 - t3 > slow) console.warn(`[Loop] Loot/anim/effect: ${(t4-t3).toFixed(1)}ms`);
-      if (t5 - t4 > slow) console.warn(`[Loop] Multiplayer: ${(t5-t4).toFixed(1)}ms`);
+      const slowThreshold = slow;
+      if (t2 - t1 > slowThreshold) console.warn(`[Loop] NPC systems: ${(t2-t1).toFixed(1)}ms`);
+      if (t3 - t2 > slowThreshold) console.warn(`[Loop] Movement: ${(t3-t2).toFixed(1)}ms`);
+      if (t4 - t3 > slowThreshold) console.warn(`[Loop] Loot/anim/effect: ${(t4-t3).toFixed(1)}ms`);
+      if (t5 - t4 > slowThreshold) console.warn(`[Loop] Multiplayer: ${(t5-t4).toFixed(1)}ms`);
     }
 
     this.combatLog?.update();
@@ -1777,7 +1778,6 @@ export class Engine {
     }
     const t7 = performance.now();
     if (t7 - t6 > slow) console.warn(`[Loop] Render: ${(t7-t6).toFixed(1)}ms`);
-
     const total = t7 - t0;
     if (total > 50) console.warn(`[Loop] TOTAL SLOW FRAME: ${total.toFixed(1)}ms`);
 
