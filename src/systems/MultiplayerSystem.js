@@ -200,7 +200,10 @@ export class MultiplayerSystem {
     this._ws.addEventListener("message", (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch { return; }
+      const t0 = performance.now();
       this._onMessage(msg);
+      const dt = performance.now() - t0;
+      if (dt > 4) console.warn(`[MP] Slow message: ${msg.type} took ${dt.toFixed(1)}ms`);
     });
 
     this._ws.addEventListener("close", () => {
