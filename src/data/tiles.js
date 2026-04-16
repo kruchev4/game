@@ -57,6 +57,17 @@ export const TILES = {
   32: { color: "#1a4a1a", walkable: true,  type: "town_exit"    },
   33: { color: "#5a3a18", walkable: true,  type: "road_bridge"  },
   35: { color: "#7a6848", walkable: true,  type: "road_path"    },
+  // ── Isometric town/dungeon tiles (Kenney assets) ───────────────────────
+  40: { color: "#888870", walkable: true,  type: "stone_tile"   },  // clean stone
+  41: { color: "#7a6040", walkable: true,  type: "planks"       },  // wooden planks
+  42: { color: "#6a5030", walkable: true,  type: "dirt_floor"   },  // dirt floor
+  43: { color: "#606060", walkable: true,  type: "stone_rough"  },  // rough stone
+  44: { color: "#808070", walkable: true,  type: "stone_inset"  },  // decorative stone
+  45: { color: "#707060", walkable: true,  type: "stone_uneven" },  // uneven stone
+  46: { color: "#605040", walkable: true,  type: "dirt_tiles"   },  // dirt variant
+  47: { color: "#6a5535", walkable: true,  type: "plank_hole"   },  // damaged planks
+  // Dungeon wall — impassable
+  48: { color: "#202020", walkable: false, type: "dungeon_wall"  },
 };
 
 /**
