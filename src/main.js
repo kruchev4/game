@@ -24,7 +24,7 @@ import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabas
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 // ── Feature flag — flip to true to enable isometric renderer ──────────────
-const USE_ISO_RENDERER = false; // set to true once IsoAdapter is wired up
+const USE_ISO_RENDERER = true; // set to true once IsoAdapter is wired up
 
 const WORLD_ID = "overworld_C";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
