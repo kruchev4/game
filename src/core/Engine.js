@@ -1193,12 +1193,18 @@ export class Engine {
       onNPCState: (serverNPCs) => {
         const serverIds = new Set(serverNPCs.map(n => n.id));
 
-        // Remove NPCs no longer on server
+        // Build id→npc map for O(1) lookup
+        const npcMap = new Map(this.npcs.map(n => [n.id, n]));
+
+        // Remove NPCs no longer on server — only filter if something changed
+        const prevCount = this.npcs.length;
         this.npcs     = this.npcs.filter(n => serverIds.has(n.id));
-        this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
+        if (this.npcs.length !== prevCount) {
+          this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
+        }
 
         for (const sNPC of serverNPCs) {
-          const existing = this.npcs.find(n => n.id === sNPC.id);
+          const existing = npcMap.get(sNPC.id);
           if (existing) {
             existing.x     = sNPC.x;
             existing.y     = sNPC.y;
