@@ -872,12 +872,12 @@ export class IsoAdapter {
           const sy = row * TH;
 
           ctx.save();
-          // Diamond clip path
+          // Diamond clip path — expand by 1px to close gaps between tiles
           ctx.beginPath();
-          ctx.moveTo(sx + TW / 2, sy);
-          ctx.lineTo(sx + TW,     sy + TH / 2);
-          ctx.lineTo(sx + TW / 2, sy + TH);
-          ctx.lineTo(sx,          sy + TH / 2);
+          ctx.moveTo(sx + TW / 2, sy - 1);
+          ctx.lineTo(sx + TW + 1, sy + TH / 2);
+          ctx.lineTo(sx + TW / 2, sy + TH + 1);
+          ctx.lineTo(sx - 1,      sy + TH / 2);
           ctx.closePath();
           ctx.clip();
           ctx.drawImage(src, sx, sy, TW, TH, sx, sy, TW, TH);
