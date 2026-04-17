@@ -5,12 +5,12 @@
  * Handles player presence, movement sync, and co-op combat.
  */
 
-const SERVER_URL   = "wss://strings-feature-computer-emperor.trycloudflare.com";
 const MOVE_MS      = 100;   // broadcast position every 100ms
 const PING_MS      = 5000;  // keepalive ping every 5s
 
 export class MultiplayerSystem {
-  constructor({ player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+  constructor({ serverUrl, player, worldId, playerToken, onPlayerJoin, onPlayerLeave, onPlayerUpdate, onNPCDamaged, onNPCKilled, onNPCState, onNPCAttackPlayer }) {
+    this.serverUrl    = serverUrl;
     this.player       = player;
     this.worldId      = worldId;
     this.playerToken  = playerToken;
@@ -87,8 +87,29 @@ export class MultiplayerSystem {
    * Tell server this player attacked an NPC.
    * Server resolves damage and broadcasts result to all clients.
    */
+  getRemotePlayers() {
+    return [...this._remotePlayers.values()];
+  }
+
+  send(msg) {
+    this._send(msg);
+  }
+
+  sendAbility({ abilityId, targetId, targetType }) {
+    this._send({ type: "use_ability", abilityId, targetId, targetType });
+  }
+
   sendAttack({ npcId, damage, abilityId }) {
+    // Legacy — prefer sendAbility for new code
     this._send({ type: "npc_attack", npcId, damage, abilityId });
+  }
+
+  sendTaunt(radius = 6) {
+    this._send({ type: "taunt", radius });
+  }
+
+  sendHealThreat(targetToken, amount) {
+    this._send({ type: "heal_threat", targetToken, amount });
   }
 
   /**
@@ -127,15 +148,15 @@ export class MultiplayerSystem {
 
   _connect() {
     if (this._dead) return;
-    if (!SERVER_URL) {
+    if (!this.serverUrl) {
       console.log("[MP] No server URL configured — multiplayer disabled");
       return;
     }
 
-    console.log(`[MP] Connecting to ${SERVER_URL}...`);
+    console.log(`[MP] Connecting to ${this.serverUrl}...`);
 
     try {
-      this._ws = new WebSocket(SERVER_URL);
+      this._ws = new WebSocket(this.serverUrl);
     } catch (e) {
       console.warn("[MP] WebSocket creation failed:", e.message);
       this._scheduleReconnect();
@@ -160,7 +181,9 @@ export class MultiplayerSystem {
         maxHp:       p.maxHp   ?? 80,
         level:       p.level   ?? 1,
         x:           p.x       ?? 0,
-        y:           p.y       ?? 0
+        y:           p.y       ?? 0,
+        gold:        p.gold    ?? 0,
+        xp:          p.xp      ?? 0
       });
     });
 
@@ -173,12 +196,92 @@ export class MultiplayerSystem {
     this._ws.addEventListener("close", () => {
       this._connected = false;
       console.log("[MP] Disconnected from server");
-      this._scheduleReconnect();
+      if (!this._dead) {
+        this._showDisconnectDialog();
+      }
     });
 
     this._ws.addEventListener("error", (e) => {
       console.warn("[MP] WebSocket error:", e.message ?? e);
     });
+  }
+
+  _showDisconnectDialog() {
+    // Remove any existing dialog
+    document.getElementById("mp-disconnect-dialog")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "mp-disconnect-dialog";
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-family: monospace;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background: #0d0d18;
+        border: 1.5px solid #444466;
+        border-radius: 10px;
+        padding: 32px 40px;
+        text-align: center;
+        max-width: 340px;
+      ">
+        <div style="color:#cc4444; font-size:18px; margin-bottom:10px;">⚠ Disconnected</div>
+        <div style="color:#aaaaaa; font-size:13px; margin-bottom:24px;">
+          You have been disconnected from the server.
+          Rejoin to continue playing with others.
+        </div>
+        <div style="display:flex; gap:12px; justify-content:center;">
+          <button id="mp-rejoin-btn" style="
+            background:#1a3a1a; color:#88ee88;
+            border:1.5px solid #44aa44;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Rejoin [Y]</button>
+          <button id="mp-offline-btn" style="
+            background:#1a1a2a; color:#888899;
+            border:1.5px solid #444466;
+            border-radius:6px; padding:8px 24px;
+            font-family:monospace; font-size:13px;
+            cursor:pointer;
+          ">Play Offline [N]</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    document.getElementById("mp-rejoin-btn").onclick = () => {
+      close();
+      this._reconnectDelay = 2000;
+      this._scheduleReconnect();
+    };
+
+    document.getElementById("mp-offline-btn").onclick = () => {
+      close();
+      this._dead = true; // stop reconnect attempts
+    };
+
+    // Keyboard shortcut Y/N
+    const onKey = (e) => {
+      if (e.key === "y" || e.key === "Y") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-rejoin-btn")?.click();
+      } else if (e.key === "n" || e.key === "N") {
+        document.removeEventListener("keydown", onKey);
+        document.getElementById("mp-offline-btn")?.click();
+      }
+    };
+    document.addEventListener("keydown", onKey);
   }
 
   _scheduleReconnect() {
@@ -250,15 +353,13 @@ export class MultiplayerSystem {
       }
 
       case "npc_state": {
-        // Server sent full NPC state — sync all NPCs
         this.onNPCState(msg.npcs ?? []);
         break;
       }
 
       case "npc_attack_player": {
-        // Server says an NPC attacked a player
         if (msg.targetToken === this.playerToken) {
-          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage });
+          this.onNPCAttackPlayer({ npcId: msg.npcId, damage: msg.damage, blocked: msg.blocked });
         }
         break;
       }
@@ -276,15 +377,45 @@ export class MultiplayerSystem {
 
       case "npc_killed": {
         this.onNPCKilled({
-          npcId:       msg.npcId,
-          killerName:  msg.killerName,
-          xpShare:     msg.xpShare,
-          loot:        msg.loot
+          npcId:      msg.npcId,
+          killerName: msg.killerName,
+          xpShare:    msg.xpShare,
+          loot:       msg.loot
         });
         break;
       }
 
-      case "pong": break; // keepalive response
+      case "player_stat_update": {
+        // Server is authoritative — update local player stats
+        if (this.onStatUpdate) {
+          this.onStatUpdate({ hp: msg.hp, maxHp: msg.maxHp, xp: msg.xp, gold: msg.gold });
+        }
+        break;
+      }
+
+      case "ability_result": {
+        // Server confirmed ability fired — trigger animations
+        if (this.onAbilityResult) {
+          this.onAbilityResult(msg);
+        }
+        break;
+      }
+
+      case "player_healed": {
+        if (this.onPlayerHealed) {
+          this.onPlayerHealed(msg);
+        }
+        break;
+      }
+
+      case "buff_applied": {
+        if (this.onBuffApplied) {
+          this.onBuffApplied(msg);
+        }
+        break;
+      }
+
+      case "pong": break;
 
       default:
         console.log("[MP] Unknown message:", msg.type);

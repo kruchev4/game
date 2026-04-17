@@ -22,16 +22,18 @@ const RACES = [
 ];
 
 const CLASS_META = {
-  fighter: { icon: "⚔️",  role: "Melee DPS",  tags: ["strength","armor","melee"],   primaryStat: "STR" },
-  ranger:  { icon: "🏹",  role: "Ranged DPS", tags: ["dexterity","ranged","nature"], primaryStat: "DEX" },
+  fighter: { icon: "⚔️",  role: "Melee DPS",    tags: ["strength","armor","melee"],        primaryStat: "STR" },
+  ranger:  { icon: "🏹",  role: "Ranged DPS",   tags: ["dexterity","ranged","nature"],      primaryStat: "DEX" },
+  paladin: { icon: "🛡️", role: "Support Melee", tags: ["strength","holy","heal","support"], primaryStat: "STR" },
 };
 
 const STAT_NAMES  = ["STR","DEX","INT","CON","WIS","CHA"];
 const MAX_REROLLS = 3;
 
 export class ScreenManager {
-  constructor({ slots, saveProvider, classes, abilities }) {
+  constructor({ slots, servers, saveProvider, classes, abilities }) {
     this.slots        = slots;
+    this.servers      = servers ?? [];
     this.saveProvider = saveProvider;
     this.classes      = classes;
     this.abilities    = abilities;
@@ -48,8 +50,9 @@ export class ScreenManager {
     this._rerolls = MAX_REROLLS;
     this._newSlot = 0;
 
+    this._selectedServer = null;
     this._overlay  = null;
-    this._content  = null;   // #roe-content — only this changes
+    this._content  = null;
     this._raf      = null;
   }
 
@@ -59,8 +62,94 @@ export class ScreenManager {
 
   show() {
     this._build();
-    this._showCharSelect();
     this._startParticles();
+    console.log("[ScreenManager] servers at show():", this.servers?.length, this.servers);
+    if (this.servers?.length > 0) {
+      this._showServerSelect();
+    } else {
+      this._showOffline();
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // SERVER SELECT
+  // ─────────────────────────────────────────────
+
+  _showServerSelect() {
+    const serversHtml = this.servers.map(s => {
+      const isCloud = s.ws_url?.includes("onrender") || s.region === "cloud";
+      const ping    = isCloud ? "☁ Cloud" : "🏠 Local";
+      const players = s.players_online ?? 0;
+      const max     = s.max_players ?? "∞";
+      const status  = players >= (s.max_players ?? 999) ? "full" : "open";
+      return `
+        <div class="srv-card ${this._selectedServer?.id === s.id ? "sel" : ""} ${status}" data-id="${s.id}">
+          <div class="srv-hd">
+            <span class="srv-name">${s.name ?? "Game Server"}</span>
+            <span class="srv-tag">${ping}</span>
+          </div>
+          <div class="srv-info">
+            <span class="srv-players">${players} / ${max} players</span>
+            <span class="srv-region">${s.region ?? "unknown"}</span>
+          </div>
+          <div class="srv-url">${s.ws_url?.replace("wss://","").split(".")[0] ?? ""}</div>
+        </div>`;
+    }).join("");
+
+    this._content.innerHTML = `
+      <div style="text-align:center;margin-bottom:28px;">
+        <div class="cs-game-title">Realm of Echoes</div>
+        <div class="cs-screen-title">Choose a Server</div>
+        <div class="cs-divider"><span>✦ select your realm ✦</span></div>
+      </div>
+      <div class="srv-list">${serversHtml}</div>
+      <div style="text-align:center;margin-top:24px;">
+        <button class="btn btn-enter" id="srv-enter" ${!this._selectedServer ? "disabled" : ""}>
+          Enter Realm →
+        </button>
+      </div>
+      <style>
+        .srv-list { display:flex; flex-direction:column; gap:10px; max-width:480px; margin:0 auto; }
+        .srv-card { background:#0d0d18; border:1.5px solid #333355; border-radius:8px; padding:14px 18px; cursor:pointer; transition:border-color .2s; }
+        .srv-card:hover { border-color:#5555aa; }
+        .srv-card.sel { border-color:#f39c12; background:#1a1608; }
+        .srv-card.full { opacity:0.5; cursor:not-allowed; }
+        .srv-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .srv-name { font-family:'Cinzel',serif; color:#e8c84a; font-size:.9rem; }
+        .srv-tag { font-size:.65rem; padding:2px 8px; border-radius:10px; background:#1a1a2e; color:#8888aa; border:1px solid #333355; }
+        .srv-info { display:flex; justify-content:space-between; font-size:.72rem; color:#666688; }
+        .srv-players { color:#88aaff; }
+        .srv-url { font-size:.62rem; color:#444466; margin-top:4px; font-family:monospace; }
+      </style>
+    `;
+
+    this._content.querySelectorAll(".srv-card:not(.full)").forEach(el => {
+      el.addEventListener("click", () => {
+        const id = el.dataset.id;
+        this._selectedServer = this.servers.find(s => s.id === id);
+        this._content.querySelectorAll(".srv-card").forEach(c => c.classList.remove("sel"));
+        el.classList.add("sel");
+        this._content.querySelector("#srv-enter").disabled = false;
+      });
+    });
+
+    this._content.querySelector("#srv-enter")?.addEventListener("click", () => {
+      if (!this._selectedServer) return;
+      this._showCharSelect();
+    });
+  }
+
+  _showOffline() {
+    this._content.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;">
+        <div class="cs-game-title">Realm of Echoes</div>
+        <div style="color:#cc4444;font-size:1.1rem;margin:20px 0;">⚠ No Servers Available</div>
+        <div style="color:#666688;font-size:.85rem;margin-bottom:30px;">
+          All game servers are currently offline.<br>Please try again later.
+        </div>
+        <button class="btn btn-back" onclick="location.reload()">↺ Retry</button>
+      </div>
+    `;
   }
 
   hide() {
@@ -71,24 +160,21 @@ export class ScreenManager {
   }
 
   // ─────────────────────────────────────────────
-  // DOM SETUP — called once
+  // DOM SETUP
   // ─────────────────────────────────────────────
 
   _build() {
-    // Remove any stale overlay
     document.getElementById("roe-screen")?.remove();
 
     this._overlay = document.createElement("div");
     this._overlay.id = "roe-screen";
     document.body.appendChild(this._overlay);
 
-    // Particle canvas — behind everything, never removed
     const pc = document.createElement("canvas");
     pc.id = "roe-particles";
     this._overlay.appendChild(pc);
     this._particleCanvas = pc;
 
-    // Content area — only innerHTML changes
     this._content = document.createElement("div");
     this._content.id = "roe-content";
     this._overlay.appendChild(this._content);
@@ -152,16 +238,14 @@ export class ScreenManager {
       </div>
     `;
 
-    // Play buttons
     this._content.querySelectorAll(".cs-play-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.dataset.slot);
         this.hide();
-        this.onPlay?.(idx, this.slots[idx]);
+        this.onPlay?.(idx, this.slots[idx], this._selectedServer?.ws_url);
       });
     });
 
-    // Empty slot — new character
     this._content.querySelectorAll(".char-slot.empty").forEach(el => {
       el.addEventListener("click", () => {
         this._newSlot = parseInt(el.dataset.new);
@@ -169,28 +253,24 @@ export class ScreenManager {
       });
     });
 
-    // Delete buttons
     this._content.querySelectorAll(".cs-del-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         this._showDeleteConfirm(parseInt(btn.dataset.del));
       });
     });
 
-    // New character button
     this._content.querySelector("#cs-new-btn")?.addEventListener("click", () => {
       const idx = this.slots.findIndex(s => s === null);
       this._newSlot = idx >= 0 ? idx : 0;
       this._startCreation();
     });
 
-    // Token copy
     this._content.querySelector("#cs-copy-btn")?.addEventListener("click", () => {
       navigator.clipboard?.writeText(playerToken);
       const el = this._content.querySelector("#cs-token-val");
       if (el) { el.textContent = "Copied!"; setTimeout(() => el.textContent = shortToken, 1500); }
     });
 
-    // Token import
     this._content.querySelector("#cs-import-btn")?.addEventListener("click", () => {
       const token = prompt("Paste your Player ID:");
       if (token?.trim()) { localStorage.setItem("roe_player_token", token.trim()); location.reload(); }
@@ -320,7 +400,7 @@ export class ScreenManager {
       .filter(([id]) => CLASS_META[id])
       .map(([id, def]) => {
         const m     = CLASS_META[id];
-        const abils = (def.abilities ?? []).map(a => this.abilities[a]?.name ?? a).join(", ");
+        const abils = (def.abilities ?? []).slice(0, 4).map(a => this.abilities[a]?.name ?? a).join(", ");
         const tags  = m.tags.map((t,i) => `<span class="ctag ${i===0?"pri":""}">${t}</span>`).join("");
         return `
           <div class="clcard ${this._classId === id ? "sel" : ""}" data-class="${id}">
@@ -328,7 +408,7 @@ export class ScreenManager {
             <div class="cl-role">${m.role} · ${m.primaryStat}</div>
             <div class="cl-desc">${def.description}</div>
             <div class="cl-tags">${tags}</div>
-            <div class="cl-abilities">Abilities: <span>${abils}</span></div>
+            <div class="cl-abilities">Abilities: <span>${abils}…</span></div>
           </div>`;
       }).join("");
 
@@ -453,6 +533,12 @@ export class ScreenManager {
       return `<div class="csm"><div class="csm-n">${n}</div><div class="csm-v">${v}</div><div class="csm-m">${m>=0?"+":""}${m}</div></div>`;
     }).join("");
 
+    // Resource label for review
+    const res = cd.resource;
+    const resLine = res
+      ? `<div class="sh-row"><span class="sh-k">Resource</span><span class="sh-v" style="color:${res.color ?? '#aaa'}">${res.label} (${res.max})</span></div>`
+      : "";
+
     this._step$('#cc-step').innerHTML = `
       <div class="card"><div class="card-inner">
         <div class="ctitle">IV — Character Sheet</div>
@@ -462,6 +548,7 @@ export class ScreenManager {
             <div class="portrait-name">${this._esc(this._name)}</div>
             <div class="portrait-sub">${race?.name ?? ""} ${cd.name ?? ""}</div>
             <div class="portrait-sub" style="color:var(--gold-b)">${race?.bonus ?? ""}</div>
+            <div class="portrait-sub" style="margin-top:6px;font-size:.7rem;color:#888">${cm.role ?? ""}</div>
           </div>
           <div>
             <div class="sh-row"><span class="sh-k">Name</span><span class="sh-v gold">${this._esc(this._name)}</span></div>
@@ -470,6 +557,7 @@ export class ScreenManager {
             <div class="sh-row"><span class="sh-k">Level</span><span class="sh-v">1</span></div>
             <div class="sh-row"><span class="sh-k">Hit Points</span><span class="sh-v gold">${cd.baseStats?.hp ?? "—"}</span></div>
             <div class="sh-row"><span class="sh-k">Gold</span><span class="sh-v gold">50 gp</span></div>
+            ${resLine}
             <div class="csm-grid">${cells}</div>
           </div>
         </div>
@@ -487,7 +575,7 @@ export class ScreenManager {
         raceId:  this._raceId,
         classId: this._classId,
         stats:   { ...this._stats }
-      });
+      }, this._selectedServer?.ws_url);
     });
   }
 

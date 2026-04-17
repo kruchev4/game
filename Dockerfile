@@ -1,8 +1,22 @@
-from nginx:alpine
+FROM node:20-alpine
 
-COPY . /usr/share/nginx/html
+# Install build tools needed for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
-#RUN sed -i 's/index.html/echoes.html/g' /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Copy the server package files and install dependencies
+COPY roe-server/package*.json ./roe-server/
+RUN cd roe-server && npm install
+
+# Copy the rest of the application
+COPY . .
+
+# Seed the local SQLite database
+RUN cd roe-server && node db/seed.js
+
+EXPOSE 8080
+ENV PORT=8080
+
+# Start the Node server
+CMD ["node", "roe-server/server.js"]

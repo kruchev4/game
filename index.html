@@ -12,8 +12,9 @@
   <script type="module" src="./src/main.js"></script>
   <script>
     // Block browser zoom (Ctrl+scroll and Ctrl+±/0)
+    // Block all scroll and browser zoom
     window.addEventListener("wheel", e => {
-      if (e.ctrlKey) e.preventDefault();
+      e.preventDefault(); // block ALL scroll — game handles zoom via canvas listener
     }, { passive: false });
 
     window.addEventListener("keydown", e => {
