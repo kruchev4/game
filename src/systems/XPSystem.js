@@ -26,6 +26,7 @@ function xpForLevel(level) {
 const PRIMARY_STAT = {
   fighter: "STR",
   ranger:  "DEX",
+  paladin: "STR",
 };
 
 export class XPSystem {
@@ -63,6 +64,18 @@ export class XPSystem {
     this.onEvent({ type: "xp_gained", amount: xpGained, npc });
 
     // Check for level up(s)
+    this._checkLevelUp();
+  }
+
+  /**
+   * Award a flat XP amount — used by multiplayer server (pre-calculated share).
+   * @param {number} amount
+   */
+  awardXP(amount) {
+    if (!amount || amount <= 0) return;
+    const p = this.player;
+    p.xp = (p.xp ?? 0) + amount;
+    this.onEvent({ type: "xp_gained", amount });
     this._checkLevelUp();
   }
 

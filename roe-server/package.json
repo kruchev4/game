@@ -1,0 +1,16 @@
+{
+  "name": "realm-of-echoes-server",
+  "version": "1.0.0",
+  "description": "Realm of Echoes game server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed":  "node db/seed.js",
+    "sync":  "node db/sync.js"
+  },
+  "dependencies": {
+    "ws":             "^8.18.0",
+    "dotenv":         "^16.4.0",
+    "better-sqlite3": "^9.4.3"
+  }
+}

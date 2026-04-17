@@ -1,0 +1,3 @@
+roe-server/node_modules/
+roe-server/db/*.db
+roe-server/db/*.db-wal

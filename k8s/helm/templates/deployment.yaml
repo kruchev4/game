@@ -20,7 +20,18 @@ spec:
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: Always
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          env:
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-auth-secret
+                  key: SUPABASE_URL
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-auth-secret
+                  key: SUPABASE_SERVICE_ROLE_KEY
 ---
 apiVersion: v1
 kind: Service
@@ -31,7 +42,7 @@ spec:
     app: realm-of-echoes
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080
 
 ---
 apiVersion: networking.k8s.io/v1
