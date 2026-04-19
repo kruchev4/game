@@ -19,6 +19,8 @@ import { DeathScreen }         from "../ui/DeathScreen.js";
 import { LootWindow }          from "../ui/LootWindow.js";
 import { InventoryWindow }     from "../ui/InventoryWindow.js";
 import { LevelUpWindow }       from "../ui/LevelUpWindow.js";
+import { CharacterSheet }      from "../ui/CharacterSheet.js";
+import { AbilityPickWindow }   from "../ui/AbilityPickWindow.js";
 import { InnWindow }           from "../ui/InnWindow.js";
 import { ShopWindow }          from "../ui/ShopWindow.js";
 import { TownNPCWindow }       from "../ui/TownNPCWindow.js";
@@ -62,7 +64,9 @@ export class Engine {
     this.effectSystem      = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
-    this._levelUpWindow   = null;
+    this._levelUpWindow    = null;
+    this._charSheet        = null;
+    this._abilityPickWindow = null;
     this._townNPCWindow   = null;
 
     // World transition state
@@ -79,6 +83,9 @@ export class Engine {
 
     this.onQuitToTitle = null;
 
+    // Pause menu
+    this._paused = false;
+
     // Fallback class for testing only — overridden by character data
     this._playerClassId = null;
   }
@@ -88,25 +95,23 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, lootRes, skillsRes, spawnRes] = await Promise.all([
+    const [abilitiesRes, classesRes, itemsRes, skillsRes, spawnRes] = await Promise.all([
       fetch("./src/data/abilities.json"),
       fetch("./src/data/classes.json"),
       fetch("./src/data/items.json"),
-      fetch("./src/data/loot.json"),
       fetch("./src/data/skills.json"),
       fetch("./src/data/spawnGroups.json").catch(() => null)
     ]);
     if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
     if (!classesRes.ok)   throw new Error("Failed to load classes.json");
     if (!itemsRes.ok)     throw new Error("Failed to load items.json");
-    if (!lootRes.ok)      throw new Error("Failed to load loot.json");
     if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
 
     this._abilities  = await abilitiesRes.json();
     this._classes    = await classesRes.json();
     this._itemDefs   = await itemsRes.json();
-    this._lootTables = await lootRes.json();
     this._skills     = await skillsRes.json();
+    // loot.json removed — server rolls all loot via Supabase loot tables
     this._spawnData  = spawnRes?.ok ? await spawnRes.json()
                      : { spawnGroups: [], randomEncounters: { enabled: false } };
 
@@ -136,6 +141,24 @@ export class Engine {
     this._spawnPlayer();
     this._buildSystems();
     this._initSpawnSystem();
+
+    // Create UI overlays once — they inject a single DOM element each
+    // and must not be recreated on world transitions (_buildSystems is called each time)
+    if (!this._charSheet) {
+      this._charSheet = new CharacterSheet({
+        player:    this.player,
+        abilities: this._abilities,
+        classes:   this._classes,
+        itemDefs:  this._itemDefs,
+        skills:    this._skills
+      });
+    }
+    if (!this._abilityPickWindow) {
+      this._abilityPickWindow = new AbilityPickWindow();
+      this._abilityPickWindow.onPick    = (id) => this._learnAbility(id);
+      this._abilityPickWindow.onUpgrade = (id) => this._upgradeAbility(id);
+    }
+
     this._bindInput();
   }
 
@@ -192,6 +215,8 @@ export class Engine {
     this.player.dead     = false;
 
     this._buildSystems();
+    // Update charSheet player reference after world transition
+    this._charSheet?.setPlayer(this.player);
 
     if (isTown) {
       this._initTownSystem();
@@ -203,6 +228,43 @@ export class Engine {
 
     // Re-center camera
     this.renderer.camera.centerOn(x, y, this.world);
+  }
+
+  /**
+   * Transition to a town or dungeon, resolving entry point from world data.
+   * entryX/entryY are optional hints from the overworld JSON object.
+   * If absent, loads the target world to read its entryPoint field.
+   * This means no coordinates ever need to be hardcoded in Engine.
+   */
+  async _transitionToWorld({ targetWorld, entryX, entryY, returnWorld, returnX, returnY }) {
+    // Explicit entry coords in the JSON — use them directly
+    if (entryX != null && entryY != null) {
+      return this.transition({
+        targetWorld, targetX: entryX, targetY: entryY,
+        returnWorld, returnX, returnY
+      }).catch(err => console.warn(`[Engine] ${targetWorld} not found:`, err.message));
+    }
+
+    // No entry coords — load the world to find its entryPoint
+    const isTown    = targetWorld.startsWith("town_");
+    const isDungeon = !isTown && !targetWorld.startsWith("overworld_");
+    let loaded = null;
+    if (isTown || isDungeon) {
+      try {
+        loaded = await new TownWorldProvider().load(targetWorld);
+      } catch (err) {
+        console.warn(`[Engine] Could not pre-load ${targetWorld}:`, err.message);
+      }
+    }
+
+    // Priority: world.entryPoint > world center
+    const tx = loaded?.entryPoint?.x ?? Math.floor((loaded?.width  ?? 20) / 2);
+    const ty = loaded?.entryPoint?.y ?? Math.floor((loaded?.height ?? 20) / 2);
+
+    return this.transition({
+      targetWorld, targetX: tx, targetY: ty,
+      returnWorld, returnX, returnY
+    }).catch(err => console.warn(`[Engine] ${targetWorld} not found:`, err.message));
   }
 
   /** Return to the previous world (pop from return stack) */
@@ -264,7 +326,13 @@ export class Engine {
       this.player.name        = char?.name ?? "Hero";
       this.player.classId     = classId;
       this.player.icon        = classDef.icon ?? "🧙";
-      this.player.abilities   = classDef.abilities ?? [];
+      const savedAbilities = char?.abilities ?? [];
+      if (savedAbilities.length) {
+        this.player.abilities = savedAbilities;
+      } else {
+        const basicAttack = classDef.basicAttack ?? classDef.abilities?.[0];
+        this.player.abilities = basicAttack ? [basicAttack] : [];
+      }
       this.player.actionSpeed = classDef.actionSpeed;
       this.player.actionTimer = classDef.actionSpeed;
 
@@ -321,69 +389,57 @@ export class Engine {
       onExit:   (exit) => this._exitTown(exit)
     });
 
-    if (!world.spawnGroups?.length) return;
-    for (const group of world.spawnGroups) {
-      for (const monDef of (group.monsters ?? [])) {
-        const classDef = this._classes[monDef.classId];
-        if (!classDef) {
-          console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
-          continue;
+    // Normalise to a flat list of spawn defs — support both formats:
+    //   Old: spawnGroups: [{ monsters: [{ classId, x, y }] }]
+    //   New: spawns: [{ monsterId, x, y, roamRadius, isBoss }]
+    const flatSpawns = [];
+    if (world.spawnGroups?.length) {
+      for (const group of world.spawnGroups) {
+        for (const m of (group.monsters ?? [])) {
+          flatSpawns.push({ classId: m.classId, x: m.x, y: m.y,
+                            roamRadius: m.roamRadius, isBoss: false });
         }
-
-        let pos;
-        try {
-          pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
-        } catch {
-          continue;
-        }
-
-        const npc = new NPC({
-          id:         `${monDef.classId}_${pos.x}_${pos.y}`,
-          classId:    monDef.classId,
-          classDef,
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: classDef.roamRadius ?? 3
-        });
-
-        this.npcs.push(npc);
-        this.entities.push(npc);
-        this.npcPerceptionSystem?.npcs.push(npc);
-        this.npcMovementSystem?.npcs.push(npc);
-        this.npcAISystem?.npcs.push(npc);
-        this.combatSystem?.npcs.push(npc);
+      }
+    } else if (world.spawns?.length) {
+      for (const s of world.spawns) {
+        flatSpawns.push({ classId: s.monsterId, x: s.x, y: s.y,
+                          roamRadius: s.roamRadius, isBoss: s.isBoss ?? false });
       }
     }
 
-    // Spawn boss if defined
-    const boss = world.boss;
-    if (boss) {
-      const classDef = this._classes[boss.classId];
-      if (classDef) {
-        let pos;
-        try { pos = findNearestWalkable(world, boss.x, boss.y, 3); }
-        catch { pos = { x: boss.x, y: boss.y }; }
-
-        const bossNPC = new NPC({
-          id:         `boss_${boss.classId}`,
-          classId:    boss.classId,
-          classDef:   { ...classDef, icon: boss.icon ?? classDef.icon },
-          x:          pos.x,
-          y:          pos.y,
-          roamCenter: { x: pos.x, y: pos.y },
-          roamRadius: 2
-        });
-        bossNPC.isBoss = true;
-        bossNPC.name   = boss.name ?? classDef.name;
-
-        this.npcs.push(bossNPC);
-        this.entities.push(bossNPC);
-        this.npcPerceptionSystem?.npcs.push(bossNPC);
-        this.npcMovementSystem?.npcs.push(bossNPC);
-        this.npcAISystem?.npcs.push(bossNPC);
-        this.combatSystem?.npcs.push(bossNPC);
+    for (const monDef of flatSpawns) {
+      const classDef = this._classes[monDef.classId];
+      if (!classDef) {
+        console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
+        continue;
       }
+
+      let pos;
+      try {
+        pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
+      } catch { continue; }
+
+      const npc = new NPC({
+        id:         `${monDef.classId}_${pos.x}_${pos.y}`,
+        classId:    monDef.classId,
+        classDef,
+        x:          pos.x,
+        y:          pos.y,
+        roamCenter: { x: pos.x, y: pos.y },
+        roamRadius: monDef.roamRadius ?? classDef.roamRadius ?? 3
+      });
+
+      if (monDef.isBoss) {
+        npc.isBoss = true;
+        npc.name   = classDef.name;
+      }
+
+      this.npcs.push(npc);
+      this.entities.push(npc);
+      this.npcPerceptionSystem?.npcs.push(npc);
+      this.npcMovementSystem?.npcs.push(npc);
+      this.npcAISystem?.npcs.push(npc);
+      this.combatSystem?.npcs.push(npc);
     }
 
     console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
@@ -543,7 +599,6 @@ export class Engine {
     // Loot system
     this.lootSystem = new LootSystem({
       player,
-      lootTables: this._lootTables,
       itemDefs:   this._itemDefs,
       onCorpseSpawn:  (corpse) => {
         this.entities.push(corpse);
@@ -579,11 +634,8 @@ export class Engine {
       this._syncAbilityBar();
     };
 
-    // Push player abilities and item defs to renderer for HUD
+    // Push player abilities to renderer (only what player has learned)
     const classDef = this._classes[this._playerClassId];
-    renderer.playerAbilities = (classDef?.abilities ?? [])
-      .map(id => this._abilities[id])
-      .filter(Boolean);
     renderer.abilities     = this._abilities;
     renderer.itemDefs      = this._itemDefs;
     renderer.currentTarget = null;
@@ -635,15 +687,21 @@ export class Engine {
     window.addEventListener("keydown", (e) => {
       const key = e.key.toLowerCase();
 
-      // Ability slots 1-4
+      // Ability slots 1-6
       const slot = parseInt(e.key) - 1;
-      if (slot >= 0 && slot <= 3) { this._useAbilitySlot(slot); return; }
+      if (slot >= 0 && slot <= 5) { this._useAbilitySlot(slot); return; }
 
-      // Quick slots 5-8
-      if (slot >= 4 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 4); return; }
+      // Quick slots 7-8
+      if (slot >= 6 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 6); return; }
 
       // Inventory toggle
       if (key === "i") { this._inventoryWindow?.toggle(); return; }
+
+      // Character sheet
+      if (key === "c") { this._charSheet?.toggle(); return; }
+
+      // Pause menu
+      if (e.key === "Escape") { e.preventDefault(); this._togglePauseMenu(); return; }
 
       // Manual save — F5
       if (e.key === "F5") {
@@ -675,6 +733,9 @@ export class Engine {
       const px     = (e.clientX - rect.left) * scaleX;
       const py     = (e.clientY - rect.top)  * scaleY;
 
+      // Pause menu intercepts all clicks when open
+      if (this._paused) { this._handlePauseMenuClick(px, py); return; }
+
       // Ability bar slot click
       const abilitySlot = this.renderer.getAbilitySlotAt(px, py);
       if (abilitySlot >= 0) { this._useAbilitySlot(abilitySlot); return; }
@@ -699,42 +760,45 @@ export class Engine {
         if (hit) return;
       }
 
-      // Town portal click — overworld only
+      // Town + dungeon portal clicks — fully data-driven from world JSON.
+      // No coords hardcoded here. Entry point comes from:
+      //   1. entryX/entryY on the town/portal object in the overworld JSON
+      //   2. entryPoint field on the target world itself (read after load)
+      //   3. Near-center of the target world as final fallback
       if (!this.townSystem && this.world?.type !== "town") {
-        const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
+        const towns   = this.world?._raw?.towns   ?? this.world?.towns   ?? [];
+        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
+
+        // ── Town click ──
         const clickedTown = towns.find(t =>
           Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
         );
         if (clickedTown) {
-          const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
-          this.transition({
-            targetWorld:  townId,
-            targetX:      20,
-            targetY:      27,
-            returnWorld:  this._currentWorldId,
-            returnX:      clickedTown.x,
-            returnY:      clickedTown.y
-          }).catch(err => {
-            console.warn(`[Engine] Town ${townId} not found:`, err.message);
+          const townId = clickedTown.worldId
+            ?? "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
+          this._transitionToWorld({
+            targetWorld: townId,
+            entryX: clickedTown.entryX ?? null,
+            entryY: clickedTown.entryY ?? null,
+            returnWorld: this._currentWorldId,
+            returnX: clickedTown.x,
+            returnY: clickedTown.y
           });
           return;
         }
 
-        // Dungeon portal click
-        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
+        // ── Dungeon portal click ──
         const clickedPortal = portals.find(p =>
           Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
         );
         if (clickedPortal) {
-          this.transition({
+          this._transitionToWorld({
             targetWorld: clickedPortal.campaignId,
-            targetX:     15,
-            targetY:     36,
+            entryX: clickedPortal.entryX ?? null,
+            entryY: clickedPortal.entryY ?? null,
             returnWorld: this._currentWorldId,
-            returnX:     clickedPortal.x,
-            returnY:     clickedPortal.y
-          }).catch(err => {
-            console.warn(`[Engine] Dungeon ${clickedPortal.campaignId} not found:`, err.message);
+            returnX: clickedPortal.x,
+            returnY: clickedPortal.y
           });
           return;
         }
@@ -1047,10 +1111,8 @@ export class Engine {
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
-        // Spawn loot corpse
-        this.lootSystem?.onNPCKilled(event.target);
+        // Loot corpse spawned by server via onNPCKilled multiplayer callback
         // Award XP — only if not connected to multiplayer server
-        // When connected, server broadcasts shared XP via onNPCKilled callback
         if (event.attacker.id === "player" && !this.multiplayerSystem?._connected) {
           this.xpSystem?.awardKillXP(event.target);
         }
@@ -1270,26 +1332,26 @@ export class Engine {
         // XP and gold are applied via player_stat_update (server authoritative)
         // We only handle item drops and the combat log here
 
-        // Item drops — add to bag
-        if (loot?.itemId && loot.itemId !== "nothing" && loot.itemId !== "gold") {
-          const emptySlot = this.player.bag?.findIndex(s => s === null);
-          if (emptySlot >= 0) {
-            this.player.bag[emptySlot] = { itemId: loot.itemId, qty: loot.qty ?? 1 };
-            this.combatLog?.push({
-              text: `Found ${loot.qty > 1 ? loot.qty + "x " : ""}${loot.itemId}!`,
-              type: "reward"
-            });
-          }
+        // Spawn a loot corpse using server-rolled loot — same as offline flow
+        // so player must walk up and click to loot (consistent UX)
+        if (npc && loot) {
+          this.lootSystem?.onNPCKilled(npc, loot);
         }
 
         // Combat log
-        const isKiller = killerName === this.player.name;
-        const goldStr  = loot?.gold > 0 ? `, +${loot.gold} gold` : "";
-        const xpStr    = xpShare > 0 ? `+${xpShare} XP` : "";
+        const isKiller  = killerName === this.player.name;
+        const npcLabel  = npc
+          ? (npc.name ?? this._npcLabel(npc))
+          : npcId.replace(/_/g, " ");
+        const goldStr   = loot?.gold > 0 ? ` +${loot.gold}g` : "";
+        const xpStr     = xpShare > 0 ? ` +${xpShare} XP` : "";
+        // Item name from itemDefs so we never show raw IDs
+        const itemDef   = loot?.itemId ? this._itemDefs?.[loot.itemId] : null;
+        const itemStr   = itemDef ? ` [${itemDef.name}]` : "";
         this.combatLog?.push({
           text: isKiller
-            ? `You killed ${npcId}! ${xpStr}${goldStr}`
-            : `${killerName} killed ${npcId}! ${xpStr}${goldStr} (shared)`,
+            ? `You killed ${npcLabel}!${xpStr}${goldStr}${itemStr}`
+            : `${killerName} killed ${npcLabel}!${xpStr}${goldStr} (shared)`,
           type: "reward"
         });
       }
@@ -1495,16 +1557,14 @@ export class Engine {
       case "xp_gained":
         log?.push({ text: `+${event.amount} XP`, type: "system" });
         break;
-      case "level_up":
+      case "level_up": {
         this.animSystem?.playLevelUp("player");
         log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
-        if (event.isSpecial) {
-          // Small delay so combat log shows first
-          setTimeout(() => {
-            this._levelUpWindow?.show(event.level);
-          }, 800);
+        if (event.level % 3 === 0) {
+          setTimeout(() => this._showAbilityPick(event.level), 800);
         }
         break;
+      }
       case "skill_learned":
         log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
         this._syncAbilityBar();
@@ -1519,15 +1579,49 @@ export class Engine {
     }
   }
 
-  /** Sync renderer ability bar after skill changes */
+  /** Sync renderer ability bar — slot 1 = basic attack, slots 2-6 = learned */
   _syncAbilityBar() {
-    const classSkills = this._skills?.[this._playerClassId] ?? [];
-    const skillMap    = Object.fromEntries(classSkills.map(s => [s.id, s]));
-
-    // Build ability defs from player's current abilities list
     this.renderer.playerAbilities = (this.player.abilities ?? [])
-      .map(id => skillMap[id] ?? this._abilities?.[id])
+      .slice(0, 6)
+      .map(id => this._abilities?.[id])
       .filter(Boolean);
+  }
+
+  _showAbilityPick(level) {
+    const classDef = this._classes[this._playerClassId];
+    if (!classDef) return;
+    const basicId    = classDef.basicAttack ?? classDef.abilities?.[0];
+    const poolIds    = classDef.abilityPool ?? (classDef.abilities ?? []).filter(id => id !== basicId);
+    const learnedIds = (this.player.abilities ?? []).filter(id => id !== basicId);
+    this._abilityPickWindow?.show({
+      level,
+      learnedIds,
+      poolIds,
+      abilityDefs: this._abilities,
+      upgrades:    this.player.learnedSkills ?? {}
+    });
+  }
+
+  _learnAbility(abilityId) {
+    const ab = this._abilities[abilityId];
+    if (!ab || (this.player.abilities ?? []).includes(abilityId)) return;
+    if (this.player.abilities.length >= 6) {
+      this.combatLog?.push({ text: "Ability bar full (max 6).", type: "system" }); return;
+    }
+    this.player.abilities.push(abilityId);
+    if (!this.player.learnedSkills) this.player.learnedSkills = {};
+    this.player.learnedSkills[abilityId] = 1;
+    this.combatLog?.push({ text: `✦ Learned ${ab.name}!`, type: "kill" });
+    this._syncAbilityBar();
+  }
+
+  _upgradeAbility(abilityId) {
+    const ab = this._abilities[abilityId];
+    if (!ab) return;
+    if (!this.player.learnedSkills) this.player.learnedSkills = {};
+    const rank = (this.player.learnedSkills[abilityId] ?? 1) + 1;
+    this.player.learnedSkills[abilityId] = rank;
+    this.combatLog?.push({ text: `✦ ${ab.name} upgraded to Rank ${rank}!`, type: "kill" });
   }
 
   // ─────────────────────────────────────────────
@@ -1688,6 +1782,40 @@ export class Engine {
   }
 
   // ─────────────────────────────────────────────
+  // PAUSE MENU
+  // ─────────────────────────────────────────────
+
+  _togglePauseMenu() {
+    this._paused = !this._paused;
+    this.renderer.paused = this._paused;
+  }
+
+  _handlePauseMenuClick(px, py) {
+    const buttons = this.renderer.getPauseMenuButtons();
+    for (const btn of buttons) {
+      if (px >= btn.x && px <= btn.x + btn.w && py >= btn.y && py <= btn.y + btn.h) {
+        if (btn.id === "resume") {
+          this._paused = false;
+          this.renderer.paused = false;
+        } else if (btn.id === "save") {
+          this.saveToSlot();
+          this._paused = false;
+          this.renderer.paused = false;
+        } else if (btn.id === "quit") {
+          this.saveToSlot().finally(() => {
+            this.running = false;
+            this.onQuitToTitle?.();
+          });
+        }
+        return;
+      }
+    }
+    // Click outside panel closes menu
+    this._paused = false;
+    this.renderer.paused = false;
+  }
+
+  // ─────────────────────────────────────────────
   // GAME LOOP
   // ─────────────────────────────────────────────
 
@@ -1700,7 +1828,7 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
-    if (!this._playerDead) {
+    if (!this._playerDead && !this._paused) {
       const serverOwnsNPCs = this.multiplayerSystem?._connected;
 
       if (!this.townSystem && !serverOwnsNPCs) {

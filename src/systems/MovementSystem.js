@@ -83,12 +83,17 @@ if (this.path && this.path.length > 0) {
   _getKeyboardStep() {
     let dx = 0, dy = 0;
 
-    if (this.keys.has("w") || this.keys.has("arrowup")) dy = -1;
-    else if (this.keys.has("s") || this.keys.has("arrowdown")) dy = 1;
-    else if (this.keys.has("a") || this.keys.has("arrowleft")) dx = -1;
-    else if (this.keys.has("d") || this.keys.has("arrowright")) dx = 1;
+    // Allow both axes simultaneously for 8-way movement
+    if (this.keys.has("w") || this.keys.has("arrowup"))    dy = -1;
+    if (this.keys.has("s") || this.keys.has("arrowdown"))  dy =  1;
+    if (this.keys.has("a") || this.keys.has("arrowleft"))  dx = -1;
+    if (this.keys.has("d") || this.keys.has("arrowright")) dx =  1;
 
     if (dx === 0 && dy === 0) return null;
+
+    // Diagonals move one tile per step just like cardinals — no speed boost.
+    // We try the diagonal first; if blocked on both axes individually we stop,
+    // but if only one axis is blocked we slide along the open one.
     return { dx, dy };
   }
 
@@ -100,13 +105,30 @@ if (this.path && this.path.length > 0) {
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
 
+    // Try full diagonal first
+    if (this._canEnter(nx, ny)) {
+      this.player.x = nx;
+      this.player.y = ny;
+      return true;
+    }
+
+    // Diagonal blocked — try sliding along each axis independently
+    if (dx !== 0 && dy !== 0) {
+      if (this._canEnter(this.player.x + dx, this.player.y)) {
+        this.player.x += dx;
+        return true;
+      }
+      if (this._canEnter(this.player.x, this.player.y + dy)) {
+        this.player.y += dy;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  _canEnter(nx, ny) {
     if (nx < 0 || ny < 0 || nx >= this.world.width || ny >= this.world.height) return false;
-
-    const tileId = this.world.getTile(nx, ny);
-    if (!isWalkable(tileId)) return false;
-
-    this.player.x = nx;
-    this.player.y = ny;
-    return true;
+    return isWalkable(this.world.getTile(nx, ny));
   }
 }
