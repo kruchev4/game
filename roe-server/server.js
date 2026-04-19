@@ -14,6 +14,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const Database = require("better-sqlite3");
 const path     = require("path");
 const fs       = require("fs");
+const http     = require("http");
 
 // ── Config ────────────────────────────────────────────────────────────────
 const PORT         = process.env.PORT         || 8080;
@@ -26,7 +27,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.S
 
 const TICK_MS              = 50;   // 20 ticks/sec
 const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 4;    // broadcast NPC state every N ticks (200ms)
+const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
 const PING_INTERVAL_MS     = 10000;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -151,41 +152,6 @@ async function loadAbilityDefs() {
   }
 }
 
-// ── Loot cache ───────────────────────────────────────────────────────────────
-/** monster_id -> loot_table_id */
-const monsterLootMap = new Map();
-/** loot_table_id -> Entry[] */
-const lootTableEntries = new Map();
-
-/** loot_table_id -> { gold_min, gold_max } */
-const lootTableDefs = new Map();
-
-async function loadLootData() {
-  try {
-    const [links, tables, entries] = await Promise.all([
-      sb("monster_loot_tables?select=*"),
-      sb("loot_tables?select=id,gold_min,gold_max"),
-      sb("loot_table_entries?select=*")
-    ]);
-
-    for (const row of links ?? []) {
-      monsterLootMap.set(row.monster_id, row.loot_table_id);
-    }
-    for (const row of tables ?? []) {
-      lootTableDefs.set(row.id, { goldMin: row.gold_min ?? 0, goldMax: row.gold_max ?? 0 });
-    }
-    for (const row of entries ?? []) {
-      if (!lootTableEntries.has(row.loot_table_id)) {
-        lootTableEntries.set(row.loot_table_id, []);
-      }
-      lootTableEntries.get(row.loot_table_id).push(row);
-    }
-    console.log(`[Server] Loaded ${monsterLootMap.size} loot links, ${lootTableEntries.size} loot tables from Supabase`);
-  } catch (e) {
-    console.warn(`[Server] Loot load failed (${e.message}) — using gold-only drops`);
-  }
-}
-
 // ── Spawn group loader — called per world ─────────────────────────────────
 /**
  * Load all spawn groups + their monsters for a given worldId.
@@ -234,10 +200,9 @@ function _rollHeal(ability) {
 }
 
 function _inRange(attacker, target, range) {
-  const dx   = attacker.x - target.x;
-  const dy   = attacker.y - target.y;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  return dist <= range + 1; // +1 tile sync tolerance (down from +2)
+  const dx = Math.abs(attacker.x - target.x);
+  const dy = Math.abs(attacker.y - target.y);
+  return (dx + dy) <= range + 2; // +2 tile sync tolerance
 }
 
 function _resolveAbility(session, world, msg) {
@@ -386,42 +351,23 @@ function _resolveAbility(session, world, msg) {
 function _handleNPCKill(session, world, npcId, result) {
   const playersHere = _playersInWorld(session.worldId);
   const count       = playersHere.length;
-  const xpShare     = Math.floor((result.xpValue ?? 0) / Math.max(1, count));
-  const loot        = result.loot ?? { gold: 0 };
+  const xpShare     = Math.floor(result.xpValue / Math.max(1, count));
 
-  console.log(`[Server] Kill: ${npcId} xp=${xpShare}x${count} gold=${loot.gold} item=${loot.itemId ?? "none"}`);
-
-  // Award XP and gold to ALL players
+  // Award XP and gold to all players in world
   for (const p of playersHere) {
     p.xp   = (p.xp   ?? 0) + xpShare;
-    p.gold = (p.gold ?? 0) + (loot.gold ?? 0);
+    p.gold = (p.gold ?? 0) + (result.loot?.gold ?? 0);
     _send(p.ws, {
       type: "player_stat_update",
       hp: p.hp, maxHp: p.maxHp,
-      xp: p.xp, gold: p.gold,
-      mana: p.mana, maxMana: p.maxMana
+      xp: p.xp, gold: p.gold
     });
   }
 
-  // Item loot — only goes to the killer
-  // Each player gets their own roll in future; for now killer gets the item
-  _send(session.ws, {
+  _broadcast(session.worldId, {
     type: "npc_killed", npcId,
-    killerName: session.name,
-    xpShare,
-    loot: { gold: loot.gold, itemId: loot.itemId ?? null, qty: loot.qty ?? 1 }
+    killerName: session.name, xpShare, loot: result.loot
   });
-
-  // Tell other players about the kill but without item loot
-  for (const p of playersHere) {
-    if (p.playerToken === session.playerToken) continue;
-    _send(p.ws, {
-      type: "npc_killed", npcId,
-      killerName: session.name,
-      xpShare,
-      loot: { gold: loot.gold, itemId: null, qty: 0 }
-    });
-  }
 
   console.log(`[Server] ${session.name} killed ${npcId} (${xpShare} XP × ${count})`);
 }
@@ -435,31 +381,45 @@ function _applyHeal(session, amount, world) {
   });
 }
 
+// ── HTTP Static File Server (Replaces Nginx) ──────────────────────────────
+const server = http.createServer((req, res) => {
+  // Default to index.html for the root route
+  let filePath = path.join(__dirname, '..', req.url === '/' ? 'index.html' : req.url);
+
+  const extname = String(path.extname(filePath)).toLowerCase();
+  const mimeTypes = {
+    '.html': 'text/html',
+    '.js': 'text/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpg',
+  };
+
+  const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if(error.code === 'ENOENT') {
+        res.writeHead(404);
+        res.end('404 Not Found');
+      } else {
+        res.writeHead(500);
+        res.end('500 Internal Server Error');
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
+});
+
 // ── WebSocket server ──────────────────────────────────────────────────────
-const wss = new WebSocketServer({ port: PORT });
-console.log(`[Server] WebSocket listening on ws://localhost:${PORT}`);
+const wss = new WebSocketServer({ server });
+console.log(`[Server] HTTP and WebSocket listening on port ${PORT}`);
 
 wss.on("connection", (ws) => {
   let session = null;
-
-  // Protocol-level ping every 30s to keep Cloudflare tunnel alive
-  // This is different from the JSON ping — it's a WebSocket frame ping
-  const wsPing = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.ping();
-    } else {
-      clearInterval(wsPing);
-    }
-  }, 30000);
-
-  ws.on("pong", () => {
-    // Tunnel is alive — update lastSeen
-    if (session) session.lastSeen = Date.now();
-  });
-
-  ws.on("close", () => {
-    clearInterval(wsPing);
-  });
 
   ws.on("message", async (raw) => {
     let msg;
@@ -654,18 +614,7 @@ wss.on("connection", (ws) => {
 
 // ── Tick loop ─────────────────────────────────────────────────────────────
 let tick = 0;
-let _lastTickTime = Date.now();
-
 setInterval(() => {
-  const now     = Date.now();
-  const elapsed = now - _lastTickTime;
-  _lastTickTime = now;
-
-  // Warn if tick took more than 3x expected (indicates blocking)
-  if (elapsed > TICK_MS * 3 && tick > 10) {
-    console.warn(`[Server] SLOW TICK: ${elapsed}ms (expected ${TICK_MS}ms)`);
-  }
-
   tick++;
 
   // Prune stale players
@@ -690,10 +639,7 @@ setInterval(() => {
   // Tick all worlds
   for (const world of worlds.values()) {
     if (!world.ready) continue;
-    const wt0 = Date.now();
     world.tick(TICK_MS);
-    const wdt = Date.now() - wt0;
-    if (wdt > 20) console.warn(`[Server] Slow world tick (${world.worldId}): ${wdt}ms`);
 
     // Broadcast NPC state every N ticks
     if (tick % NPC_BROADCAST_TICKS === 0) {
@@ -728,22 +674,10 @@ class WorldInstance {
         const data   = rows[0].json;
         this.width   = data.width  ?? this.width;
         this.height  = data.height ?? this.height;
-
-        if (Array.isArray(data.tiles)) {
-          // Flatten 2D array if needed
-          if (Array.isArray(data.tiles[0])) {
-            this.tiles = data.tiles.flat();
-            console.log(`[Server] Flattened 2D tile array: ${this.tiles.length} tiles`);
-          } else {
-            this.tiles = data.tiles;
-            console.log(`[Server] Flat tile array: ${this.tiles.length} tiles`);
-          }
-        } else {
-          console.warn(`[Server] No tile data in world ${this.worldId}`);
-        }
+        this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
       }
 
-      // Load spawn groups + monsters from local DB (sync)
+      // Load spawn groups + monsters from local SQLite DB (sync)
       const groups = loadSpawnGroups(this.worldId);
 
       for (const { group, monsters } of groups) {
@@ -753,11 +687,9 @@ class WorldInstance {
             console.warn(`[Server] Unknown monster_id: ${m.monster_id}`);
             continue;
           }
-
           const roamRadius = m.roam_radius ?? def.roamRadius;
           const isBoss     = m.is_boss     ?? def.isBoss;
           const id         = `${m.monster_id}_${m.x}_${m.y}`;
-
           this.npcs.set(id, {
             id,
             monsterId:   m.monster_id,
@@ -778,15 +710,60 @@ class WorldInstance {
             xpValue:     def.xpValue,
             isBoss,
             state:       "roaming",
-            target:      null,   // playerToken of current aggro target
-            threat:      {},     // playerToken -> threat value
+            target:      null,
+            threat:      {},
             dead:        false,
             actionTimer: 1000 + Math.random() * 2000,
             moveTimer:   Math.random() * 1000,
-            // Respawn support
             respawnSecs: group.respawn_seconds ?? null,
             deadAt:      null
           });
+        }
+      }
+
+      // If no SQLite spawn groups found, check world JSON spawns[] array.
+      // This handles dungeons like goblin_warrens that store spawns in Supabase.
+      if (this.npcs.size === 0 && rows?.length) {
+        const data   = rows[0].json;
+        const spawns = data.spawns ?? [];
+        for (const s of spawns) {
+          const def = monsterDefs.get(s.monsterId);
+          if (!def) {
+            console.warn(`[Server] Unknown monsterId in world JSON: ${s.monsterId}`);
+            continue;
+          }
+          const id = `${s.monsterId}_${s.x}_${s.y}`;
+          this.npcs.set(id, {
+            id,
+            monsterId:   s.monsterId,
+            name:        def.name,
+            icon:        def.icon,
+            x:           s.x,
+            y:           s.y,
+            homeX:       s.x,
+            homeY:       s.y,
+            hp:          def.hp,
+            maxHp:       def.hp,
+            damageMin:   def.damageMin,
+            damageMax:   def.damageMax,
+            speed:       def.speed,
+            perception:  def.perception,
+            attackRange: def.attackRange ?? 1,
+            roamRadius:  s.roamRadius ?? def.roamRadius ?? 3,
+            xpValue:     def.xpValue,
+            isBoss:      s.isBoss ?? def.isBoss ?? false,
+            state:       "roaming",
+            target:      null,
+            threat:      {},
+            dead:        false,
+            actionTimer: 1000 + Math.random() * 2000,
+            moveTimer:   Math.random() * 1000,
+            respawnSecs: null,
+            deadAt:      null
+          });
+        }
+        if (this.npcs.size > 0) {
+          console.log(`[Server] Loaded ${this.npcs.size} NPCs from world JSON spawns[] for ${this.worldId}`);
         }
       }
 
@@ -803,26 +780,16 @@ class WorldInstance {
   // ── Tick ───────────────────────────────────────────────────────────────
 
   tick(dt) {
-    // Build players array once per tick — not per NPC per hit
     const playersHere = [...this.players]
       .map(t => players.get(t))
       .filter(Boolean);
 
     for (const npc of this.npcs.values()) {
-      try {
-        if (npc.dead) {
-          this._tickRespawn(npc, dt);
-          continue;
-        }
-        if (npc._aggroDirty) {
-          npc._aggroDirty = false;
-          this._updateAggroTarget(npc, playersHere);
-        }
-        this._tickNPC(npc, playersHere, dt);
-      } catch(e) {
-        console.error(`[Server] NPC tick error (${npc.id}):`, e.message);
-        // Don't let one bad NPC crash the whole tick
+      if (npc.dead) {
+        this._tickRespawn(npc, dt);
+        continue;
       }
+      this._tickNPC(npc, playersHere, dt);
     }
   }
 
@@ -937,14 +904,11 @@ class WorldInstance {
         // Apply damage to player session server-side
         if (playerSession) {
           playerSession.hp = Math.max(0, (playerSession.hp ?? 0) - dmg);
+          // Send stat update to player
           _send(playerSession.ws, {
-            type:    "player_stat_update",
-            hp:      playerSession.hp,
-            maxHp:   playerSession.maxHp   ?? 80,
-            xp:      playerSession.xp      ?? 0,
-            gold:    playerSession.gold     ?? 0,
-            mana:    Math.ceil(playerSession.mana ?? playerSession.maxMana ?? 100),
-            maxMana: playerSession.maxMana  ?? 100
+            type: "player_stat_update",
+            hp: playerSession.hp, maxHp: playerSession.maxHp,
+            xp: playerSession.xp, gold: playerSession.gold
           });
         }
 
@@ -980,28 +944,29 @@ class WorldInstance {
     const threat     = amount * multiplier;
 
     npc.threat[playerToken] = (npc.threat[playerToken] ?? 0) + threat;
-    // Mark for aggro recalc — processed once per tick not per hit
-    npc._aggroDirty = true;
+
+    // Recalculate aggro target — highest threat player
+    this._updateAggroTarget(npc);
   }
 
   /**
    * Set aggro target to the player with highest threat.
    * Only considers players currently in the world.
    */
-  _updateAggroTarget(npc, playersHere) {
-    // playersHere passed in to avoid rebuilding per-call
-    if (!playersHere) {
-      playersHere = [...this.players].map(t => players.get(t)).filter(Boolean);
-    }
+  _updateAggroTarget(npc) {
+    const playersHere = [...this.players]
+      .map(t => players.get(t))
+      .filter(Boolean);
 
     let topToken  = null;
     let topThreat = 0;
 
     for (const [token, threat] of Object.entries(npc.threat ?? {})) {
+      const player = playersHere.find(p => p.playerToken === token);
+      if (!player) continue; // player left
       if (threat > topThreat) {
-        // Only check if player is actually here
-        const inWorld = playersHere.some(p => p.playerToken === token);
-        if (inWorld) { topThreat = threat; topToken = token; }
+        topThreat = threat;
+        topToken  = token;
       }
     }
 
@@ -1016,11 +981,10 @@ class WorldInstance {
    * Prevents permanent aggro lock on AFK players.
    */
   _decayThreat(npc) {
-    if (!npc.threat) return;
-    const DECAY = 0.998;
-    for (const token in npc.threat) {
+    const DECAY = 0.999; // per tick — very slow decay
+    for (const token of Object.keys(npc.threat ?? {})) {
       npc.threat[token] *= DECAY;
-      if (npc.threat[token] < 0.5) delete npc.threat[token];
+      if (npc.threat[token] < 0.1) delete npc.threat[token];
     }
   }
 
@@ -1092,35 +1056,48 @@ class WorldInstance {
   }
 
   _rollLoot(npc) {
-    const monsterId   = npc.monsterId ?? npc.id.split("_")[0];
-    const lootTableId = monsterLootMap.get(monsterId);
+    // Simple guaranteed gold drop + loot table roll
+    const baseGold = npc.isBoss
+      ? 50 + Math.floor(Math.random() * 100)
+      : 3  + Math.floor(Math.random() * 10);
 
-    // Gold from loot table definition
-    const tableDef = lootTableDefs.get(lootTableId);
-    const goldMin  = tableDef?.goldMin ?? (npc.isBoss ? 50 : 3);
-    const goldMax  = tableDef?.goldMax ?? (npc.isBoss ? 150 : 12);
-    const gold     = goldMin + Math.floor(Math.random() * (goldMax - goldMin + 1));
+    // Look up loot table for this monster
+    const monsterId = npc.monsterId ?? npc.id.split("_")[0];
+    const link = db.prepare(
+      "SELECT loot_table_id FROM monster_loot WHERE monster_id = ?"
+    ).get(monsterId);
 
-    if (!lootTableId) return { gold };
+    if (!link) {
+      return { gold: baseGold };
+    }
 
-    // Roll for item drop
-    const entries = lootTableEntries.get(lootTableId) ?? [];
-    if (!entries.length) return { gold };
+    // Get weighted entries
+    const entries = db.prepare(
+      "SELECT * FROM loot_entries WHERE loot_table_id = ?"
+    ).all(link.loot_table_id);
 
-    const totalWeight = entries.reduce((s, e) => s + (e.weight ?? 1), 0);
-    let roll   = Math.random() * totalWeight;
+    if (!entries.length) return { gold: 0 };
+
+    // Weighted random roll
+    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
+    let roll = Math.random() * totalWeight;
     let chosen = entries[entries.length - 1];
     for (const entry of entries) {
-      roll -= entry.weight ?? 1;
+      roll -= entry.weight;
       if (roll <= 0) { chosen = entry; break; }
     }
 
-    // null item_id = gold only entry
-    const itemId = chosen.item_id ?? null;
-    const qty    = (chosen.min_quantity ?? 1) +
-                   Math.floor(Math.random() * ((chosen.max_quantity ?? 1) - (chosen.min_quantity ?? 1) + 1));
+    if (chosen.item_id === "nothing") return { gold: baseGold };
 
-    return { gold, itemId, qty };
+    const rolledGold = chosen.gold_min > 0
+      ? chosen.gold_min + Math.floor(Math.random() * (chosen.gold_max - chosen.gold_min + 1))
+      : 0;
+
+    return {
+      gold: baseGold + rolledGold,
+      itemId: chosen.item_id !== "gold" ? chosen.item_id : null,
+      qty:    chosen.qty_min + Math.floor(Math.random() * (chosen.qty_max - chosen.qty_min + 1))
+    };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -1139,12 +1116,16 @@ class WorldInstance {
     return [...this.npcs.values()]
       .filter(n => !n.dead)
       .map(n => ({
-        id:    n.id,
-        x:     n.x,
-        y:     n.y,
-        hp:    n.hp,
-        maxHp: n.maxHp,
-        state: n.state
+        id:      n.id,
+        name:    n.name,
+        icon:    n.icon,
+        x:       n.x,
+        y:       n.y,
+        hp:      n.hp,
+        maxHp:   n.maxHp,
+        state:   n.state,
+        isBoss:  n.isBoss,
+        target:  n.target ?? null   // who has aggro
       }));
   }
 
@@ -1284,7 +1265,6 @@ function _removePlayer(token) {
   // Load game data from Supabase (source of truth)
   await loadMonsterDefs();
   await loadAbilityDefs();
-  await loadLootData();
 
   // Init local DB for spawn groups only
   initDB();
@@ -1292,14 +1272,9 @@ function _removePlayer(token) {
   try {
     await registerServer();
   } catch (e) {
-    console.warn("[Server] Registration failed — retrying in 5s:", e.message);
-    setTimeout(async () => {
-      try { await registerServer(); }
-      catch (e2) { console.warn("[Server] Retry failed:", e2.message); }
-    }, 5000);
+    console.warn("[Server] Registration failed — continuing without Supabase registration:", e.message);
   }
 
   setInterval(pingServer, PING_INTERVAL_MS);
-  process.on("SIGINT",  async () => { await deregisterServer(); process.exit(0); });
-  process.on("SIGTERM", async () => { await deregisterServer(); process.exit(0); });
+  server.listen(PORT);
 })();
