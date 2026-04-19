@@ -27,7 +27,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.S
 
 const TICK_MS              = 50;   // 20 ticks/sec
 const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
+const NPC_BROADCAST_TICKS  = 10;   // broadcast NPC state every 500ms
 const PING_INTERVAL_MS     = 10000;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -143,13 +143,22 @@ function _rowToAbility(row) {
 
 async function loadAbilityDefs() {
   try {
-    const rows = await sb("abilities?select=*&order=id");
+    const rows = await sb("abilities?select=id,name,type,data&order=id");
     if (!rows?.length) throw new Error("Empty response");
-    for (const row of rows) abilityDefs.set(row.id, _rowToAbility(row));
+    for (const row of rows) {
+      if (row.data) {
+        const ab = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+        abilityDefs.set(row.id, { ...ab,
+          damageMin: ab.damage?.base ?? 0,
+          damageMax: (ab.damage?.base ?? 0) + (ab.damage?.variance ?? 0),
+          healMin: ab.heal?.base ?? 0, healMax: (ab.heal?.base ?? 0) + (ab.heal?.variance ?? 0),
+          manaCost: ab.cost?.mana ?? 0, rageCost: ab.cost?.rage ?? 0,
+          scalingMult: ab.scaling?.multiplier ?? 1.0, targets: ab.aoe?.maxTargets ?? 1,
+        });
+      } else { abilityDefs.set(row.id, _rowToAbility(row)); }
+    }
     console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from Supabase`);
-  } catch (e) {
-    console.warn(`[Server] Ability load failed (${e.message}) — server will use generic damage`);
-  }
+  } catch (e) { console.warn(`[Server] Ability load failed (${e.message})`); }
 }
 
 // ── Spawn group loader — called per world ─────────────────────────────────
@@ -185,11 +194,32 @@ function loadSpawnGroups(worldId) {
 
 // ── Ability Resolution ────────────────────────────────────────────────────────
 
-function _rollDamage(ability) {
+function _statMod(val) { return Math.floor(((val ?? 10) - 10) / 2); }
+
+function _rollDamage(ability, session = null) {
   const min = ability.damageMin ?? 0;
   const max = ability.damageMax ?? 0;
   if (min === 0 && max === 0) return 0;
-  return min + Math.floor(Math.random() * (max - min + 1));
+  let dmg = min + Math.floor(Math.random() * (max - min + 1));
+  if (session) {
+    const stats = session.stats ?? {};
+    const type  = ability.type ?? "melee";
+    if (type === "ranged") dmg += Math.floor(_statMod(stats.dex ?? stats.DEX ?? 10) * (ability.scalingMult ?? 1.0));
+    else if (type === "melee") dmg += _statMod(stats.str ?? stats.STR ?? 10);
+    if (type === "ranged") {
+      const critChance = 0.05 + _statMod(stats.dex ?? stats.DEX ?? 10) * 0.02;
+      session._lastCrit = Math.random() < critChance;
+      if (session._lastCrit) dmg = Math.floor(dmg * 2);
+    }
+  }
+  return Math.max(1, dmg);
+}
+
+function getRankedAbility(ability, rank) {
+  if (!ability || !rank || rank <= 1) return ability;
+  const override = ability.ranks?.[String(rank)];
+  if (!override) return ability;
+  return { ...ability, ...override };
 }
 
 function _rollHeal(ability) {
@@ -207,6 +237,7 @@ function _inRange(attacker, target, range) {
 
 function _resolveAbility(session, world, msg) {
   const { abilityId, targetId, targetType } = msg;
+  const rank = msg.rank ?? (session.learnedSkills?.[abilityId] ?? 1);
 
   // Check cooldown
   const cdRemaining = session.cooldowns[abilityId] ?? 0;
@@ -215,14 +246,18 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
-  // Look up ability — must come before any ability.x reference
-  const ability = abilityDefs.get(abilityId) ?? {
-    id: abilityId, type: "melee", damageMin: 5, damageMax: 10,
-    range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0, manaCost: 0
-  };
+  const baseAbility = abilityDefs.get(abilityId) ?? { id: abilityId, type: "melee", damageMin: 5, damageMax: 10, range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0, manaCost: 0 };
+  const ability = getRankedAbility(baseAbility, rank);
 
-  // Start cooldown immediately
-  session.cooldowns[abilityId] = ability.cooldown ?? 40;
+  // cooldown stored in ms (ability.cooldown is in frames at 60fps)
+  session.cooldowns[abilityId] = ((ability.cooldown ?? 40) / 60) * 1000;
+
+  if (ability.castTime && ability.castTime > 0 && !msg.skipCastTime) {
+    const castMs = ability.castTime / 60 * 1000;
+    _send(session.ws, { type: "cast_start", abilityId, castTime: castMs });
+    session.pendingCast = { abilityId, targetId, targetType, rank, resolveAt: Date.now() + castMs };
+    return;
+  }
 
   // Check and deduct mana cost
   const manaCost = ability.manaCost ?? 0;
@@ -239,18 +274,24 @@ function _resolveAbility(session, world, msg) {
   const type   = ability.type ?? "melee";
   // Multishot and volley are ranged but hit multiple targets
   const isMultiTarget = (ability.targets ?? 1) > 1;
+  // Melee abilities with centeredOnSelf (e.g. whirlwind) are treated as AOE
+  const isCenteredAoe = ability.aoe?.centeredOnSelf === true;
 
-  // ── AOE / Multishot / Consecrate / Divine Storm ───────────────────────────
-  if (type === "aoe" || isMultiTarget) {
-    const radius     = ability.range ?? 3;
-    const maxTargets = ability.targets ?? 6;
+  // ── AOE / Multishot / Consecrate / Divine Storm / Whirlwind ──────────────
+  if (type === "aoe" || isMultiTarget || isCenteredAoe) {
+    const radius     = ability.aoe?.radius ?? ability.range ?? 3;
+    const maxTargets = ability.targets ?? ability.aoe?.maxTargets ?? 12;
     const npcsHit    = [...world.npcs.values()]
       .filter(n => !n.dead && _inRange(session, n, radius))
       .slice(0, maxTargets);
 
+    let aoeChargeEffect = null, aoeBonusDamage = 0;
+    if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt) {
+      aoeChargeEffect = session.elementalCharge.onHitEffect; aoeBonusDamage = session.elementalCharge.bonusDamage; session.elementalCharge = null;
+    }
     let totalDamage = 0;
     for (const npc of npcsHit) {
-      const dmg    = _rollDamage(ability);
+      const dmg    = _rollDamage(ability, session) + aoeBonusDamage;
       const result = world.resolveAttack(npc.id, dmg, session);
       if (!result) continue;
       totalDamage += dmg;
@@ -305,13 +346,51 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
-  // ── Buff (Divine Shield) ──────────────────────────────────────────────────
-  if (type === "buff") {
-    session.buffActive    = abilityId;
-    session.buffExpiresAt = Date.now() + 6000; // 6 seconds
-    _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 });
-    return;
+  if (type === "self" || type === "buff") {
+    const fx = ability.selfEffect ?? null;
+    if (abilityId === "second_wind") {
+      const healPct  = ability.healPercent ?? 0.20;
+      const conMod   = _statMod(session.stats?.con ?? session.stats?.CON ?? 10);
+      const actual   = Math.floor((session.maxHp ?? 80) * (healPct + conMod * 0.02));
+      session.hp     = Math.min(session.maxHp, (session.hp ?? 0) + actual);
+      if (ability.clearDoTs) {
+        // Clear DoTs from all NPCs targeting this player (handled client-side)
+      }
+      _send(session.ws, { type: "ability_result", abilityId, heal: actual });
+      _send(session.ws, { type: "player_stat_update", hp: session.hp, maxHp: session.maxHp, xp: session.xp, gold: session.gold });
+      return;
+    }
+    if (abilityId === "divine_shield") {
+      session.buffActive = abilityId; session.buffExpiresAt = Date.now() + 6000;
+      _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 }); return;
+    }
+    if (fx?.effect === "elemental_charge") {
+      const durationMs = (fx.duration ?? 600) / 60 * 1000;
+      session.elementalCharge = { element: fx.element, bonusDamage: fx.bonusDamage ?? 0, onHitEffect: fx.onHitEffect ?? null, expiresAt: Date.now() + durationMs };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "elemental_charge", element: fx.element, duration: durationMs }); return;
+    }
+    if (fx?.effect === "battle_cry") {
+      const durationMs = (fx.duration ?? 480) / 60 * 1000;
+      session.battleCry = { expiresAt: Date.now() + durationMs, magnitude: fx.magnitude ?? 0.7 };
+      if (fx.rageBonus > 0) session.rage = Math.min(100, (session.rage ?? 0) + fx.rageBonus);
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "battle_cry", magnitude: fx.magnitude ?? 0.7, duration: durationMs, rage: session.rage });
+      return;
+    }
+    if (fx?.effect === "eagles_eye") {
+      const durationMs = (fx.duration ?? 360) / 60 * 1000;
+      session.eaglesEye = { expiresAt: Date.now() + durationMs, rangeBonus: fx.magnitude ?? 4, damageMult: fx.damageMult ?? 1.0 };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "eagles_eye", rangeBonus: fx.magnitude ?? 4, duration: durationMs }); return;
+    }
+    if (fx?.effect === "fortify") {
+      const durationMs = (fx.duration ?? 180) / 60 * 1000;
+      session.fortify = { expiresAt: Date.now() + durationMs, magnitude: fx.magnitude ?? 0.5, reflect: ability.damageReflect ?? 0 };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "fortify", magnitude: fx.magnitude ?? 0.5, duration: durationMs });
+      return;
+    }
+    if (fx?.effect === "disengage") { _send(session.ws, { type: "ability_result", abilityId, special: "disengage", magnitude: fx.magnitude ?? 3 }); return; }
+    _send(session.ws, { type: "buff_applied", abilityId, duration: (fx?.duration ?? 300) / 60 * 1000 }); return;
   }
+  if (abilityId === "volley") return;
 
   // ── Taunt ─────────────────────────────────────────────────────────────────
   if (type === "taunt") {
@@ -320,31 +399,99 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
+  // ── Charge — leap to target ────────────────────────────────────────────────────────────────────────────
+  if (ability.special === "charge") {
+    const npc = world.npcs.get(targetId);
+    if (!npc || npc.dead) return;
+    const dx = npc.x - session.x, dy = npc.y - session.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    session.x = Math.round(npc.x - Math.round(dx/len));
+    session.y = Math.round(npc.y - Math.round(dy/len));
+    const damage = _rollDamage(ability, session);
+    const result = world.resolveAttack(targetId, damage, session);
+    if (!result) return;
+    const chOnHit = ability.onHit;
+    if (chOnHit?.effect === "stun") {
+      const stunMs = chOnHit.duration / 60 * 1000;
+      npc.stunnedUntil = Date.now() + stunMs;
+      npc.slowedUntil  = Date.now() + stunMs * 2;
+      npc.state = "stunned";
+    }
+    if (session.classId === "fighter") { session.rage = Math.min(100, (session.rage ?? 0) + 8); session.lastCombatAt = Date.now(); }
+    _send(session.ws, { type: "player_charge", token: session.playerToken, x: session.x, y: session.y, targetId });
+    _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name });
+    _send(session.ws, { type: "ability_result", abilityId, targetId, damage, special: "charge", x: session.x, y: session.y });
+    if (result.dead) _handleNPCKill(session, world, targetId, result);
+    return;
+  }
+
   // ── Melee / Ranged — single target ────────────────────────────────────────
   const npc = world.npcs.get(targetId);
   if (!npc || npc.dead) return;
 
-  // Range check
-  if (!_inRange(session, npc, ability.range ?? 1)) {
-    _send(session.ws, { type: "ability_result", abilityId, outOfRange: true });
+  // Execute — massive bonus damage below HP threshold
+  if (ability.special === "execute") {
+    const npc = world.npcs.get(targetId);
+    if (!npc || npc.dead) return;
+    const threshold = ability.executeThreshold ?? 0.25;
+    const mult      = (npc.hp / npc.maxHp) <= threshold ? (ability.executeMultiplier ?? 2.0) : 1.0;
+    let damage = Math.floor(_rollDamage(ability, session) * mult);
+    if (session.classId === "fighter") { session.rage = Math.min(100, (session.rage ?? 0) + 8); session.lastCombatAt = Date.now(); }
+    const result = world.resolveAttack(targetId, damage, session);
+    if (!result) return;
+    _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name, execute: mult > 1 });
+    _send(session.ws, { type: "ability_result", abilityId, targetId, damage, execute: mult > 1 });
+    if (result.dead) _handleNPCKill(session, world, targetId, result);
     return;
   }
 
-  const damage = _rollDamage(ability);
+  const abilityRange = ability.range ?? 1;
+  const eaglesEyeBonus = (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) ? session.eaglesEye.rangeBonus : 0;
+  const ddx = session.x - npc.x, ddy = session.y - npc.y;
+  const dist = Math.sqrt(ddx*ddx + ddy*ddy);
+  if (dist - eaglesEyeBonus > abilityRange + 2) { _send(session.ws, { type: "ability_result", abilityId, outOfRange: true }); return; }
+
+  let damage = _rollDamage(ability, session);
+  if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt && session.eaglesEye.damageMult > 1.0)
+    damage = Math.floor(damage * session.eaglesEye.damageMult);
+
+  let chargeEffect = null;
+  if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt && ability.type === "ranged") {
+    damage += session.elementalCharge.bonusDamage; chargeEffect = session.elementalCharge.onHitEffect; session.elementalCharge = null;
+  }
+
   const result = world.resolveAttack(targetId, damage, session);
   if (!result) return;
 
-  _broadcast(session.worldId, {
-    type: "npc_damaged", npcId: targetId,
-    hp: result.hp, maxHp: result.maxHp,
-    damage, attackerName: session.name
-  });
+  const onHitFx = ability.onHit ?? chargeEffect ?? null;
+  if (onHitFx && !result.dead) {
+    if (["poison","burn","bleed"].includes(onHitFx.effect)) world.applyDoT(targetId, onHitFx.effect, onHitFx.duration*(1000/60), onHitFx.magnitude, session.playerToken);
+    if (onHitFx.effect === "stun") {
+      const npc = world.npcs.get(targetId);
+      if (npc) {
+        const stunMs = onHitFx.duration / 60 * 1000;
+        npc.stunnedUntil = Date.now() + stunMs;
+        npc.slowedUntil  = Date.now() + stunMs * 2;
+        npc.state = "stunned";
+        _broadcast(session.worldId, { type: "npc_effect", npcId: targetId, effect: "stun", duration: stunMs });
+      }
+    }
+    if (onHitFx.effect === "slow") {
+      const npc = world.npcs.get(targetId);
+      if (npc) { npc.slowedUntil = Date.now() + (onHitFx.duration / 60 * 1000); }
+      _broadcast(session.worldId, { type: "npc_effect", npcId: targetId, effect: "slow", duration: onHitFx.duration });
+    }
+  }
 
-  _send(session.ws, {
-    type: "ability_result", abilityId, targetId,
-    damage, hp: result.hp, maxHp: result.maxHp
-  });
+  // Generate rage for fighter from dealing damage
+  if (session.classId === "fighter") {
+    session.rage = Math.min(100, (session.rage ?? 0) + 8);
+    session.lastCombatAt = Date.now();
+    _send(session.ws, { type: "rage_update", rage: session.rage });
+  }
 
+  _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name, chargeEffect, crit: session._lastCrit ?? false });
+  _send(session.ws, { type: "ability_result", abilityId, targetId, damage, hp: result.hp, maxHp: result.maxHp, chargeEffect, crit: session._lastCrit ?? false });
   if (result.dead) _handleNPCKill(session, world, targetId, result);
 }
 
@@ -446,9 +593,19 @@ wss.on("connection", (ws) => {
           xp:       msg.xp      ?? 0,
           mana:     msg.mana    ?? 100,
           maxMana:  msg.maxMana ?? 100,
-          state:    "idle",
-          lastSeen: Date.now(),
-          cooldowns: {}
+          stats:         msg.stats        ?? {},
+          learnedSkills: msg.learnedSkills ?? {},
+          state:         "idle",
+          lastSeen:      Date.now(),
+          cooldowns:     {},
+          elementalCharge: null,
+          eaglesEye:       null,
+          pendingCast:     null,
+          rage:            msg.rage ?? 0,
+          stunned:         {},  // npcId -> expiresAt
+          battleCry:       null, // { expiresAt, magnitude }
+          fortify:         null, // { expiresAt, magnitude, reflect }
+          lastCombatAt:    0
         };
         players.set(playerToken, session);
 
@@ -523,6 +680,39 @@ wss.on("connection", (ws) => {
         const world = worlds.get(session.worldId);
         if (!world?.ready) break;
         _resolveAbility(session, world, msg);
+        break;
+      }
+
+      case "volley_place": {
+        if (!session) break;
+        const world = worlds.get(session.worldId);
+        if (!world?.ready) break;
+        const baseAbility = abilityDefs.get(msg.abilityId ?? "volley");
+        const ability = getRankedAbility(baseAbility, msg.rank ?? 1);
+        if (!ability) { console.warn("[Server] volley_place: not found:", msg.abilityId); break; }
+        const { wx, wy } = msg;
+        const radius = ability.aoe?.radius ?? 2, dmgPerTick = ability.damageMin ?? 4;
+        session.cooldowns[msg.abilityId ?? "volley"] = ((ability.cooldown ?? 300) / 60) * 1000;
+        _broadcast(session.worldId, { type: "volley_zone", wx, wy, radius, duration: 3000, attackerName: session.name });
+        let tick = 0;
+        const iv = setInterval(() => {
+          try {
+            tick++;
+            const dexMod = Math.floor(((session.stats?.dex ?? 10) - 10) / 2);
+            const dmg = Math.max(1, dmgPerTick + Math.floor(dexMod * 0.5));
+            for (const npc of [...world.npcs.values()]) {
+              if (npc.dead) continue;
+              const dx = npc.x - wx, dy = npc.y - wy;
+              if (Math.sqrt(dx*dx+dy*dy) <= radius) {
+                const r = world.resolveAttack(npc.id, dmg, session);
+                if (!r) continue;
+                _broadcast(session.worldId, { type: "npc_damaged", npcId: npc.id, hp: r.hp, maxHp: r.maxHp, damage: dmg, attackerName: session.name, isDot: true });
+                if (r.dead) _handleNPCKill(session, world, npc.id, r);
+              }
+            }
+          } catch(e) { console.error("[Volley]", e.message); }
+          if (tick >= 6) clearInterval(iv);
+        }, 500);
         break;
       }
 
@@ -627,8 +817,8 @@ setInterval(() => {
     }
     // Tick player cooldowns and regen mana
     for (const abilityId of Object.keys(s.cooldowns ?? {})) {
-      s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - 1);
-      if (s.cooldowns[abilityId] === 0) delete s.cooldowns[abilityId];
+      s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - TICK_MS);
+      if (s.cooldowns[abilityId] <= 0) delete s.cooldowns[abilityId];
     }
     // Mana regen — 0.5 mana per tick = 10 mana/sec
     if (s.mana !== undefined && s.maxMana) {
@@ -640,6 +830,28 @@ setInterval(() => {
   for (const world of worlds.values()) {
     if (!world.ready) continue;
     world.tick(TICK_MS);
+    world.tickDoTs(TICK_MS);
+    for (const token of world.players) {
+      const s = players.get(token);
+      if (s?.pendingCast && Date.now() >= s.pendingCast.resolveAt) {
+        const cast = s.pendingCast; s.pendingCast = null;
+        const saved = s.cooldowns[cast.abilityId]; s.cooldowns[cast.abilityId] = 0;
+        _resolveAbility(s, world, { ...cast, skipCastTime: true });
+        s.cooldowns[cast.abilityId] = saved;
+      }
+    }
+
+    // Rage decay for fighters out of combat
+    for (const token of world.players) {
+      const s = players.get(token);
+      if (s?.classId === "fighter" && (s.rage ?? 0) > 0) {
+        const secsSinceCombat = (Date.now() - (s.lastCombatAt ?? 0)) / 1000;
+        if (secsSinceCombat > 5) {
+          s.rage = Math.max(0, s.rage - (0.8 * TICK_MS / 1000));
+          _send(s.ws, { type: "rage_update", rage: s.rage });
+        }
+      }
+    }
 
     // Broadcast NPC state every N ticks
     if (tick % NPC_BROADCAST_TICKS === 0) {
@@ -677,51 +889,43 @@ class WorldInstance {
         this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
       }
 
-      // Load spawn groups + monsters from local DB (sync)
       const groups = loadSpawnGroups(this.worldId);
-
       for (const { group, monsters } of groups) {
         for (const m of monsters) {
           const def = monsterDefs.get(m.monster_id);
-          if (!def) {
-            console.warn(`[Server] Unknown monster_id: ${m.monster_id}`);
-            continue;
-          }
-
-          const roamRadius = m.roam_radius ?? def.roamRadius;
-          const isBoss     = m.is_boss     ?? def.isBoss;
-          const id         = `${m.monster_id}_${m.x}_${m.y}`;
-
+          if (!def) { console.warn(`[Server] Unknown monster_id: ${m.monster_id}`); continue; }
+          const id = `${m.monster_id}_${m.x}_${m.y}`;
           this.npcs.set(id, {
-            id,
-            monsterId:   m.monster_id,
-            name:        def.name,
-            icon:        def.icon,
-            x:           m.x,
-            y:           m.y,
-            homeX:       m.x,
-            homeY:       m.y,
-            hp:          def.hp,
-            maxHp:       def.hp,
-            damageMin:   def.damageMin,
-            damageMax:   def.damageMax,
-            speed:       def.speed,
-            perception:  def.perception,
-            attackRange: def.attackRange ?? 1,
-            roamRadius,
-            xpValue:     def.xpValue,
-            isBoss,
-            state:       "roaming",
-            target:      null,   // playerToken of current aggro target
-            threat:      {},     // playerToken -> threat value
-            dead:        false,
-            actionTimer: 1000 + Math.random() * 2000,
-            moveTimer:   Math.random() * 1000,
-            // Respawn support
-            respawnSecs: group.respawn_seconds ?? null,
-            deadAt:      null
+            id, monsterId: m.monster_id, name: def.name, icon: def.icon,
+            x: m.x, y: m.y, homeX: m.x, homeY: m.y,
+            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
+            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
+            roamRadius: m.roam_radius ?? def.roamRadius, xpValue: def.xpValue,
+            isBoss: m.is_boss ?? def.isBoss, state: "roaming",
+            target: null, threat: {}, dead: false,
+            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
+            respawnSecs: group.respawn_seconds ?? null, deadAt: null
           });
         }
+      }
+      if (this.npcs.size === 0 && rows?.length) {
+        for (const s of (rows[0].json?.spawns ?? [])) {
+          const def = monsterDefs.get(s.monsterId);
+          if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
+          const id = `${s.monsterId}_${s.x}_${s.y}`;
+          this.npcs.set(id, {
+            id, monsterId: s.monsterId, name: def.name, icon: def.icon,
+            x: s.x, y: s.y, homeX: s.x, homeY: s.y,
+            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
+            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
+            roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
+            isBoss: s.isBoss ?? false, state: "roaming",
+            target: null, threat: {}, dead: false,
+            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
+            respawnSecs: null, deadAt: null
+          });
+        }
+        if (this.npcs.size > 0) console.log(`[Server] Loaded ${this.npcs.size} NPCs from JSON spawns[] for ${this.worldId}`);
       }
 
       this.ready = true;
@@ -767,6 +971,16 @@ class WorldInstance {
   }
 
   _tickNPC(npc, playersHere, dt) {
+    // Stunned NPCs skip all actions
+    const now = Date.now();
+    if (npc.stunnedUntil && now < npc.stunnedUntil) {
+      npc.state = "stunned";
+      return;
+    }
+    if (npc.stunnedUntil && now >= npc.stunnedUntil) {
+      npc.stunnedUntil = null; // stun expired, slow lingers via slowedUntil
+    }
+
     npc.actionTimer -= dt;
     npc.moveTimer   -= dt;
 
@@ -808,7 +1022,8 @@ class WorldInstance {
 
     // ── Movement ──
     if (npc.moveTimer <= 0) {
-      npc.moveTimer = 1000 / npc.speed;
+      const isSlowed = npc.slowedUntil && Date.now() < npc.slowedUntil;
+      npc.moveTimer = 1000 / ((isSlowed ? 0.5 : 1) * (npc.speed ?? 3));
 
       if (npc.state === "alert" && nearest) {
         const dx      = nearest.x - npc.x;
@@ -854,18 +1069,33 @@ class WorldInstance {
           return;
         }
 
-        const dmg = npc.damageMin + Math.floor(
+        let dmg = npc.damageMin + Math.floor(
           Math.random() * (npc.damageMax - npc.damageMin + 1)
         );
+
+        // Apply fortify damage reduction
+        if (playerSession?.fortify && Date.now() < playerSession.fortify.expiresAt) {
+          const reflected = Math.floor(dmg * (playerSession.fortify.reflect ?? 0));
+          dmg = Math.floor(dmg * playerSession.fortify.magnitude);
+          if (reflected > 0) {
+            npc.hp = Math.max(0, npc.hp - reflected);
+            _broadcast(playerSession.worldId, { type: "npc_damaged", npcId: npc.id, hp: npc.hp, maxHp: npc.maxHp, damage: reflected, attackerName: "reflect", isDot: true });
+          }
+        }
 
         // Apply damage to player session server-side
         if (playerSession) {
           playerSession.hp = Math.max(0, (playerSession.hp ?? 0) - dmg);
-          // Send stat update to player
+          // Generate rage for fighter on taking damage
+          if (playerSession.classId === "fighter" && dmg > 0) {
+            playerSession.rage = Math.min(100, (playerSession.rage ?? 0) + 5);
+            playerSession.lastCombatAt = Date.now();
+          }
           _send(playerSession.ws, {
             type: "player_stat_update",
             hp: playerSession.hp, maxHp: playerSession.maxHp,
-            xp: playerSession.xp, gold: playerSession.gold
+            xp: playerSession.xp, gold: playerSession.gold,
+            rage: playerSession.rage ?? null
           });
         }
 
@@ -1058,6 +1288,37 @@ class WorldInstance {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
+
+  applyDoT(npcId, effect, duration, magnitude, attackerToken) {
+    const npc = this.npcs.get(npcId);
+    if (!npc || npc.dead) return;
+    if (!npc.dots) npc.dots = [];
+    npc.dots = npc.dots.filter(d => d.effect !== effect);
+    npc.dots.push({ effect, magnitude, ticksRemaining: Math.floor(duration/50), tickInterval: 40, tickTimer: 0, attackerToken });
+  }
+
+  tickDoTs() {
+    for (const npc of this.npcs.values()) {
+      if (npc.dead || !npc.dots?.length) continue;
+      const expired = [];
+      for (const dot of npc.dots) {
+        dot.ticksRemaining--; dot.tickTimer++;
+        if (dot.tickTimer >= dot.tickInterval) {
+          dot.tickTimer = 0;
+          npc.hp = Math.max(0, npc.hp - dot.magnitude);
+          const raw = JSON.stringify({ type: "npc_damaged", npcId: npc.id, hp: npc.hp, maxHp: npc.maxHp, damage: dot.magnitude, attackerName: dot.effect, isDot: true });
+          for (const token of this.players) { const s = players.get(token); if (s?.ws.readyState === 1) s.ws.send(raw); }
+          if (npc.hp <= 0 && !npc.dead) {
+            npc.dead = true; npc.state = "dead"; npc.deadAt = Date.now();
+            const attacker = players.get(dot.attackerToken);
+            if (attacker) _handleNPCKill(attacker, this, npc.id, { hp: 0, dead: true, xpValue: npc.xpValue, loot: this._rollLoot(npc) });
+          }
+        }
+        if (dot.ticksRemaining <= 0) expired.push(dot);
+      }
+      npc.dots = npc.dots.filter(d => !expired.includes(d));
+    }
+  }
 
   _walkable(x, y) {
     if (!this.tiles) return true;

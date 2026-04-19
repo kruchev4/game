@@ -152,10 +152,10 @@ export class LootSystem {
    */
   equipItem(itemId) {
     const def = this.itemDefs[itemId];
-    if (!def || def.type !== "equipment") return;
+    if (!def) return;
 
     const slot = def.slot;
-    if (!slot) return;
+    if (!slot) return;  // no slot = not equippable (e.g. consumables)
 
     // Unequip current item in that slot → back to bag
     const current = this.player.equipment[slot];

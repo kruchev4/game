@@ -1030,7 +1030,8 @@ export class Renderer {
 
   /** Trigger whirlwind animation centered on player */
   spawnWhirlwind(x, y, radius) {
-    this._whirlwindAnims.push({ x, y, radius, startedAt: Date.now(), duration: 400 });
+    // Boost visual radius so it looks impactful
+    this._whirlwindAnims.push({ x, y, radius: radius + 1.5, startedAt: Date.now(), duration: 550 });
   }
 
   _drawWhirlwindAnims() {
@@ -1040,28 +1041,46 @@ export class Renderer {
       const { ctx, camera } = this;
       const tileSize = camera.tileSize;
       const progress = (now - anim.startedAt) / anim.duration; // 0→1
+      const ease     = Math.sin(progress * Math.PI); // peak in middle, fade out
       const { sx, sy } = camera.worldToScreen(anim.x, anim.y);
       const cx = sx + tileSize / 2;
       const cy = sy + tileSize / 2;
       const screenR = anim.radius * tileSize;
-      const numArcs = 6;
+      const numArcs = 8;
+
+      // Outer ring
+      ctx.strokeStyle = `rgba(255, 200, 60, ${ease * 0.4})`;
+      ctx.lineWidth   = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, screenR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Spinning arc blades
       for (let i = 0; i < numArcs; i++) {
-        const angle = (i / numArcs) * Math.PI * 2 + progress * Math.PI * 4; // spin
-        const ax = cx + Math.cos(angle) * screenR * progress;
-        const ay = cy + Math.sin(angle) * screenR * progress;
-        const alpha = 1 - progress;
+        const angle = (i / numArcs) * Math.PI * 2 + progress * Math.PI * 6;
+        const ax = cx + Math.cos(angle) * screenR * (0.4 + progress * 0.6);
+        const ay = cy + Math.sin(angle) * screenR * (0.4 + progress * 0.6);
+        const alpha = ease;
         ctx.strokeStyle = `rgba(255, 160, 30, ${alpha})`;
-        ctx.lineWidth   = 3;
+        ctx.lineWidth   = 3.5;
         ctx.beginPath();
-        ctx.arc(ax, ay, tileSize * 0.3, angle + Math.PI * 0.7, angle + Math.PI * 1.3);
+        ctx.arc(ax, ay, tileSize * 0.35, angle + Math.PI * 0.6, angle + Math.PI * 1.4);
         ctx.stroke();
-        // Inner flash
-        ctx.strokeStyle = `rgba(255, 255, 180, ${alpha * 0.6})`;
+        // Bright inner highlight
+        ctx.strokeStyle = `rgba(255, 240, 160, ${alpha * 0.7})`;
         ctx.lineWidth   = 1.5;
         ctx.beginPath();
-        ctx.arc(cx, cy, screenR * progress * 0.5, 0, Math.PI * 2);
+        ctx.arc(ax, ay, tileSize * 0.15, 0, Math.PI * 2);
         ctx.stroke();
       }
+
+      // Central flash
+      ctx.strokeStyle = `rgba(255, 255, 200, ${ease * 0.5})`;
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, screenR * 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+
       ctx.lineWidth = 1;
     }
   }
