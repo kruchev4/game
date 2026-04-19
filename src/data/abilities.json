@@ -2,7 +2,7 @@
   "slash": {
     "id": "slash",
     "name": "Slash",
-    "icon": "⚔️",
+    "icon": "\u2694\ufe0f",
     "description": "A powerful melee strike.",
     "type": "melee",
     "range": 2,
@@ -21,7 +21,7 @@
   "shield_bash": {
     "id": "shield_bash",
     "name": "Shield Bash",
-    "icon": "🛡️",
+    "icon": "\ud83d\udee1\ufe0f",
     "description": "Bash the enemy with your shield, dealing damage and stunning them for 1.5s.",
     "type": "melee",
     "range": 2,
@@ -48,7 +48,7 @@
   "whirlwind": {
     "id": "whirlwind",
     "name": "Whirlwind",
-    "icon": "🌀",
+    "icon": "\ud83c\udf00",
     "description": "Spin and strike all adjacent enemies.",
     "type": "melee",
     "range": 2,
@@ -74,7 +74,7 @@
   "battle_cry": {
     "id": "battle_cry",
     "name": "Battle Cry",
-    "icon": "📯",
+    "icon": "\ud83d\udcef",
     "description": "Let out a fearsome roar, boosting your attack speed by 30% for 8 seconds.",
     "type": "self",
     "range": 0,
@@ -100,7 +100,7 @@
   "charge": {
     "id": "charge",
     "name": "Charge",
-    "icon": "💨",
+    "icon": "\ud83d\udca8",
     "description": "Rush up to 4 tiles and strike, dealing bonus damage.",
     "type": "melee",
     "range": 2,
@@ -123,7 +123,7 @@
   "execute": {
     "id": "execute",
     "name": "Execute",
-    "icon": "💀",
+    "icon": "\ud83d\udc80",
     "description": "Devastating strike. Deals 200% damage to enemies below 25% HP.",
     "type": "melee",
     "range": 2,
@@ -146,7 +146,7 @@
   "taunt": {
     "id": "taunt",
     "name": "Taunt",
-    "icon": "😤",
+    "icon": "\ud83d\ude24",
     "description": "Force all nearby enemies within 6 tiles to target you.",
     "type": "self",
     "range": 0,
@@ -169,7 +169,7 @@
   "second_wind": {
     "id": "second_wind",
     "name": "Second Wind",
-    "icon": "💨",
+    "icon": "\ud83d\udca8",
     "description": "Recover HP equal to 20% of your maximum health.",
     "type": "self",
     "range": 0,
@@ -191,7 +191,7 @@
   "rend": {
     "id": "rend",
     "name": "Rend",
-    "icon": "🩸",
+    "icon": "\ud83e\ude78",
     "description": "Tear into the enemy, causing them to bleed for 3 seconds.",
     "type": "melee",
     "range": 2,
@@ -218,7 +218,7 @@
   "fortify": {
     "id": "fortify",
     "name": "Fortify",
-    "icon": "🏰",
+    "icon": "\ud83c\udff0",
     "description": "Brace yourself, reducing incoming damage by 50% for 3 seconds.",
     "type": "self",
     "range": 0,
@@ -245,8 +245,8 @@
   "shoot": {
     "id": "shoot",
     "name": "Shoot",
-    "icon": "🏹",
-    "description": "A steady aimed shot.",
+    "icon": "\ud83c\udff9",
+    "description": "A steady aimed shot. Damage scales with DEX.",
     "type": "ranged",
     "range": 5,
     "requiresLoS": true,
@@ -254,52 +254,109 @@
       "base": 8,
       "variance": 4
     },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 1.0
+    },
     "cooldown": 80,
     "cost": {},
     "tags": [
       "physical",
       "ranged"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "damage": {
+          "base": 11,
+          "variance": 4
+        }
+      },
+      "3": {
+        "damage": {
+          "base": 11,
+          "variance": 4
+        },
+        "range": 7
+      }
+    }
   },
   "frost_arrow": {
     "id": "frost_arrow",
     "name": "Frost Arrow",
-    "icon": "❄️",
-    "description": "An enchanted arrow that slows the target by 50% for 1.5 seconds.",
-    "type": "ranged",
-    "range": 5,
-    "requiresLoS": true,
+    "icon": "\u2744\ufe0f",
+    "description": "Enchant your next shot with frost. That shot deals bonus damage and slows the target.",
+    "type": "self",
+    "range": 0,
+    "requiresLoS": false,
     "damage": {
-      "base": 6,
-      "variance": 2
+      "base": 0,
+      "variance": 0
     },
     "cooldown": 120,
     "cost": {
       "mana": 12
     },
-    "onHit": {
-      "effect": "slow",
-      "duration": 90,
-      "magnitude": 0.5
+    "selfEffect": {
+      "effect": "elemental_charge",
+      "element": "frost",
+      "duration": 600,
+      "bonusDamage": 6,
+      "onHitEffect": {
+        "effect": "slow",
+        "duration": 90,
+        "magnitude": 0.5
+      }
     },
     "tags": [
       "magical",
       "ranged",
       "cold",
-      "cc"
-    ]
+      "charge"
+    ],
+    "ranks": {
+      "2": {
+        "selfEffect": {
+          "effect": "elemental_charge",
+          "element": "frost",
+          "duration": 600,
+          "bonusDamage": 8,
+          "onHitEffect": {
+            "effect": "slow",
+            "duration": 150,
+            "magnitude": 0.5
+          }
+        }
+      },
+      "3": {
+        "selfEffect": {
+          "effect": "elemental_charge",
+          "element": "frost",
+          "duration": 600,
+          "bonusDamage": 10,
+          "onHitEffect": {
+            "effect": "freeze",
+            "duration": 90,
+            "magnitude": 0
+          }
+        }
+      }
+    }
   },
   "multishot": {
     "id": "multishot",
     "name": "Multishot",
-    "icon": "🎯",
-    "description": "Fires arrows at all enemies in a cone. Each arrow deals full damage.",
+    "icon": "\ud83c\udfaf",
+    "description": "Fire arrows at all enemies in a cone. Consumes elemental charge if active.",
     "type": "ranged",
     "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 5,
       "variance": 2
+    },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 1.0
     },
     "cooldown": 150,
     "cost": {
@@ -308,25 +365,49 @@
     "aoe": {
       "shape": "cone",
       "spread": 2,
-      "maxTargets": 5
+      "maxTargets": 3
     },
     "tags": [
       "physical",
       "ranged",
       "aoe"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "aoe": {
+          "shape": "cone",
+          "spread": 2,
+          "maxTargets": 4
+        }
+      },
+      "3": {
+        "damage": {
+          "base": 7,
+          "variance": 2
+        },
+        "aoe": {
+          "shape": "cone",
+          "spread": 2,
+          "maxTargets": 5
+        }
+      }
+    }
   },
   "poison_shot": {
     "id": "poison_shot",
     "name": "Poison Shot",
-    "icon": "☠️",
-    "description": "A venomous arrow that poisons the target, dealing 3 damage every 0.67s for 4 seconds.",
+    "icon": "\u2620\ufe0f",
+    "description": "A venomous arrow that poisons the target for 4 seconds.",
     "type": "ranged",
     "range": 5,
     "requiresLoS": true,
     "damage": {
       "base": 5,
       "variance": 2
+    },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 1.0
     },
     "cooldown": 140,
     "cost": {
@@ -342,19 +423,39 @@
       "ranged",
       "dot",
       "poison"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "onHit": {
+          "effect": "poison",
+          "duration": 240,
+          "magnitude": 5
+        }
+      },
+      "3": {
+        "onHit": {
+          "effect": "poison",
+          "duration": 360,
+          "magnitude": 5
+        }
+      }
+    }
   },
   "volley": {
     "id": "volley",
     "name": "Volley",
-    "icon": "🌧️",
-    "description": "Rain arrows on a target area, hitting all enemies in a 2-tile radius.",
+    "icon": "\ud83c\udf27\ufe0f",
+    "description": "Rain arrows on a target area. Consumes elemental charge if active.",
     "type": "ranged",
     "range": 6,
     "requiresLoS": false,
     "damage": {
       "base": 4,
       "variance": 2
+    },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 0.5
     },
     "cooldown": 300,
     "cost": {
@@ -368,19 +469,41 @@
       "physical",
       "ranged",
       "aoe"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "aoe": {
+          "shape": "radius",
+          "radius": 3
+        }
+      },
+      "3": {
+        "damage": {
+          "base": 6,
+          "variance": 2
+        },
+        "aoe": {
+          "shape": "radius",
+          "radius": 3
+        }
+      }
+    }
   },
   "snipe": {
     "id": "snipe",
     "name": "Snipe",
-    "icon": "🔭",
-    "description": "A long-range precision shot. 12 tile range, triple damage, 3 second cast time.",
+    "icon": "\ud83d\udd2d",
+    "description": "A long-range precision shot. 12 tile range, deals massive damage. 3 second cast. Consumes elemental charge.",
     "type": "ranged",
     "range": 12,
     "requiresLoS": true,
     "damage": {
       "base": 30,
       "variance": 8
+    },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 2.0
     },
     "cooldown": 420,
     "cost": {
@@ -391,47 +514,95 @@
       "physical",
       "ranged",
       "cast"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "castTime": 120
+      },
+      "3": {
+        "castTime": 120,
+        "range": 16
+      }
+    }
   },
   "fire_arrow": {
     "id": "fire_arrow",
     "name": "Fire Arrow",
-    "icon": "🔥",
-    "description": "A flaming arrow that burns the target for 3 seconds.",
-    "type": "ranged",
-    "range": 5,
-    "requiresLoS": true,
+    "icon": "\ud83d\udd25",
+    "description": "Enchant your next shot with fire. That shot deals bonus damage and burns the target.",
+    "type": "self",
+    "range": 0,
+    "requiresLoS": false,
     "damage": {
-      "base": 6,
-      "variance": 3
+      "base": 0,
+      "variance": 0
     },
     "cooldown": 130,
     "cost": {
       "mana": 16
     },
-    "onHit": {
-      "effect": "burn",
-      "duration": 180,
-      "magnitude": 2
+    "selfEffect": {
+      "effect": "elemental_charge",
+      "element": "fire",
+      "duration": 600,
+      "bonusDamage": 6,
+      "onHitEffect": {
+        "effect": "burn",
+        "duration": 180,
+        "magnitude": 2
+      }
     },
     "tags": [
       "magical",
       "ranged",
-      "dot",
-      "fire"
-    ]
+      "fire",
+      "charge"
+    ],
+    "ranks": {
+      "2": {
+        "selfEffect": {
+          "effect": "elemental_charge",
+          "element": "fire",
+          "duration": 600,
+          "bonusDamage": 8,
+          "onHitEffect": {
+            "effect": "burn",
+            "duration": 180,
+            "magnitude": 4
+          }
+        }
+      },
+      "3": {
+        "selfEffect": {
+          "effect": "elemental_charge",
+          "element": "fire",
+          "duration": 600,
+          "bonusDamage": 10,
+          "onHitEffect": {
+            "effect": "burn",
+            "duration": 180,
+            "magnitude": 4
+          },
+          "spreadTargets": 1
+        }
+      }
+    }
   },
   "scatter_shot": {
     "id": "scatter_shot",
     "name": "Scatter Shot",
-    "icon": "💥",
-    "description": "Fire a close-range burst that hits all enemies adjacent to you.",
+    "icon": "\ud83d\udca5",
+    "description": "Fire a burst hitting all enemies adjacent to you. Consumes elemental charge.",
     "type": "ranged",
-    "range": 5,
+    "range": 3,
     "requiresLoS": false,
     "damage": {
       "base": 8,
       "variance": 3
+    },
+    "scaling": {
+      "stat": "dex",
+      "multiplier": 1.0
     },
     "cooldown": 160,
     "cost": {
@@ -447,12 +618,36 @@
       "ranged",
       "aoe",
       "close"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "aoe": {
+          "shape": "radius",
+          "radius": 3,
+          "centeredOnSelf": true
+        }
+      },
+      "3": {
+        "damage": {
+          "base": 10,
+          "variance": 3
+        },
+        "aoe": {
+          "shape": "radius",
+          "radius": 3,
+          "centeredOnSelf": true
+        },
+        "onHit": {
+          "effect": "knockback",
+          "magnitude": 1
+        }
+      }
+    }
   },
   "eagles_eye": {
     "id": "eagles_eye",
     "name": "Eagle's Eye",
-    "icon": "🦅",
+    "icon": "\ud83e\udd85",
     "description": "Heighten your senses, increasing range of all shots by 4 for 6 seconds.",
     "type": "self",
     "range": 0,
@@ -473,39 +668,29 @@
     "tags": [
       "buff",
       "self"
-    ]
-  },
-  "shadow_step": {
-    "id": "shadow_step",
-    "name": "Shadow Step",
-    "icon": "🌑",
-    "description": "Vanish and reappear behind your target. Next attack crits.",
-    "type": "ranged",
-    "range": 5,
-    "requiresLoS": false,
-    "damage": {
-      "base": 0,
-      "variance": 0
-    },
-    "cooldown": 300,
-    "cost": {
-      "mana": 28
-    },
-    "special": "shadow_step",
-    "selfEffect": {
-      "effect": "next_crit",
-      "duration": 600,
-      "magnitude": 2.0
-    },
-    "tags": [
-      "mobility",
-      "buff"
-    ]
+    ],
+    "ranks": {
+      "2": {
+        "selfEffect": {
+          "effect": "eagles_eye",
+          "duration": 540,
+          "magnitude": 4
+        }
+      },
+      "3": {
+        "selfEffect": {
+          "effect": "eagles_eye",
+          "duration": 540,
+          "magnitude": 4,
+          "damageMult": 1.15
+        }
+      }
+    }
   },
   "goblinStab": {
     "id": "goblinStab",
     "name": "Goblin Stab",
-    "icon": "🗡️",
+    "icon": "\ud83d\udde1\ufe0f",
     "description": "A quick dirty jab.",
     "type": "melee",
     "range": 1,
@@ -525,7 +710,7 @@
   "goblinSling": {
     "id": "goblinSling",
     "name": "Goblin Sling",
-    "icon": "🪨",
+    "icon": "\ud83e\udea8",
     "description": "A rock hurled from a sling.",
     "type": "ranged",
     "range": 6,
@@ -545,7 +730,7 @@
   "holy_strike": {
     "id": "holy_strike",
     "name": "Holy Strike",
-    "icon": "⚔️",
+    "icon": "\u2694\ufe0f",
     "description": "A melee strike infused with holy light. Deals bonus damage to undead.",
     "type": "melee",
     "range": 1,
@@ -567,7 +752,7 @@
   "heal": {
     "id": "heal",
     "name": "Heal",
-    "icon": "💚",
+    "icon": "\ud83d\udc9a",
     "description": "Restores health to yourself or a nearby ally.",
     "type": "heal",
     "range": 5,
@@ -588,7 +773,7 @@
   "consecrate": {
     "id": "consecrate",
     "name": "Consecrate",
-    "icon": "✨",
+    "icon": "\u2728",
     "description": "Consecrates the ground around you, damaging all nearby enemies.",
     "type": "aoe",
     "range": 0,
@@ -615,7 +800,7 @@
   "divine_shield": {
     "id": "divine_shield",
     "name": "Divine Shield",
-    "icon": "🛡️",
+    "icon": "\ud83d\udee1\ufe0f",
     "description": "Grants brief invulnerability. Cannot attack while shielded.",
     "type": "buff",
     "range": 0,
@@ -637,7 +822,7 @@
   "judgment": {
     "id": "judgment",
     "name": "Judgment",
-    "icon": "⚡",
+    "icon": "\u26a1",
     "description": "Calls down holy judgment on a single target for massive damage.",
     "type": "ranged",
     "range": 6,
@@ -658,7 +843,7 @@
   "holy_light": {
     "id": "holy_light",
     "name": "Holy Light",
-    "icon": "🌟",
+    "icon": "\ud83c\udf1f",
     "description": "A powerful heal that restores a large amount of health.",
     "type": "heal",
     "range": 5,
@@ -679,7 +864,7 @@
   "hammer_of_justice": {
     "id": "hammer_of_justice",
     "name": "Hammer of Justice",
-    "icon": "🔨",
+    "icon": "\ud83d\udd28",
     "description": "Throws a holy hammer that stuns the target.",
     "type": "ranged",
     "range": 4,
@@ -705,7 +890,7 @@
   "aura_of_protection": {
     "id": "aura_of_protection",
     "name": "Aura of Protection",
-    "icon": "🌐",
+    "icon": "\ud83c\udf10",
     "description": "Emits a holy aura that reduces damage taken by nearby allies.",
     "type": "buff",
     "range": 0,
@@ -729,7 +914,7 @@
   "resurrection": {
     "id": "resurrection",
     "name": "Resurrection",
-    "icon": "✝️",
+    "icon": "\u271d\ufe0f",
     "description": "Brings a fallen ally back to life with 50% health.",
     "type": "rez",
     "range": 3,
@@ -751,7 +936,7 @@
   "divine_storm": {
     "id": "divine_storm",
     "name": "Divine Storm",
-    "icon": "⛈️",
+    "icon": "\u26c8\ufe0f",
     "description": "Unleashes a storm of holy energy hitting all nearby enemies and healing nearby allies.",
     "type": "aoe",
     "range": 0,
@@ -779,5 +964,50 @@
       "aoe",
       "heal"
     ]
+  },
+  "disengage": {
+    "id": "disengage",
+    "name": "Disengage",
+    "icon": "\ud83c\udf2a\ufe0f",
+    "description": "Leap backwards 3 tiles away from your target, creating distance to keep firing.",
+    "type": "self",
+    "range": 0,
+    "requiresLoS": false,
+    "damage": {
+      "base": 0,
+      "variance": 0
+    },
+    "cooldown": 240,
+    "cost": {
+      "mana": 15
+    },
+    "special": "disengage",
+    "selfEffect": {
+      "effect": "disengage",
+      "magnitude": 3
+    },
+    "tags": [
+      "mobility",
+      "self"
+    ],
+    "ranks": {
+      "2": {
+        "selfEffect": {
+          "effect": "disengage",
+          "magnitude": 4
+        }
+      },
+      "3": {
+        "selfEffect": {
+          "effect": "disengage",
+          "magnitude": 4
+        },
+        "onHit": {
+          "effect": "speed_boost",
+          "duration": 60,
+          "magnitude": 1.3
+        }
+      }
+    }
   }
 }
