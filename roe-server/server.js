@@ -346,6 +346,18 @@ function _resolveAbility(session, world, msg) {
 
   if (type === "self" || type === "buff") {
     const fx = ability.selfEffect ?? null;
+    if (abilityId === "second_wind") {
+      const healPct  = ability.healPercent ?? 0.20;
+      const conMod   = _statMod(session.stats?.con ?? session.stats?.CON ?? 10);
+      const actual   = Math.floor((session.maxHp ?? 80) * (healPct + conMod * 0.02));
+      session.hp     = Math.min(session.maxHp, (session.hp ?? 0) + actual);
+      if (ability.clearDoTs) {
+        // Clear DoTs from all NPCs targeting this player (handled client-side)
+      }
+      _send(session.ws, { type: "ability_result", abilityId, heal: actual });
+      _send(session.ws, { type: "player_stat_update", hp: session.hp, maxHp: session.maxHp, xp: session.xp, gold: session.gold });
+      return;
+    }
     if (abilityId === "divine_shield") {
       session.buffActive = abilityId; session.buffExpiresAt = Date.now() + 6000;
       _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 }); return;
@@ -355,10 +367,23 @@ function _resolveAbility(session, world, msg) {
       session.elementalCharge = { element: fx.element, bonusDamage: fx.bonusDamage ?? 0, onHitEffect: fx.onHitEffect ?? null, expiresAt: Date.now() + durationMs };
       _send(session.ws, { type: "buff_applied", abilityId, buffType: "elemental_charge", element: fx.element, duration: durationMs }); return;
     }
+    if (fx?.effect === "battle_cry") {
+      const durationMs = (fx.duration ?? 480) / 60 * 1000;
+      session.battleCry = { expiresAt: Date.now() + durationMs, magnitude: fx.magnitude ?? 0.7 };
+      if (fx.rageBonus > 0) session.rage = Math.min(100, (session.rage ?? 0) + fx.rageBonus);
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "battle_cry", magnitude: fx.magnitude ?? 0.7, duration: durationMs, rage: session.rage });
+      return;
+    }
     if (fx?.effect === "eagles_eye") {
       const durationMs = (fx.duration ?? 360) / 60 * 1000;
       session.eaglesEye = { expiresAt: Date.now() + durationMs, rangeBonus: fx.magnitude ?? 4, damageMult: fx.damageMult ?? 1.0 };
       _send(session.ws, { type: "buff_applied", abilityId, buffType: "eagles_eye", rangeBonus: fx.magnitude ?? 4, duration: durationMs }); return;
+    }
+    if (fx?.effect === "fortify") {
+      const durationMs = (fx.duration ?? 180) / 60 * 1000;
+      session.fortify = { expiresAt: Date.now() + durationMs, magnitude: fx.magnitude ?? 0.5, reflect: ability.damageReflect ?? 0 };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "fortify", magnitude: fx.magnitude ?? 0.5, duration: durationMs });
+      return;
     }
     if (fx?.effect === "disengage") { _send(session.ws, { type: "ability_result", abilityId, special: "disengage", magnitude: fx.magnitude ?? 3 }); return; }
     _send(session.ws, { type: "buff_applied", abilityId, duration: (fx?.duration ?? 300) / 60 * 1000 }); return;
@@ -372,9 +397,51 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
+  // ── Charge — leap to target ────────────────────────────────────────────────────────────────────────────
+  if (ability.special === "charge") {
+    const npc = world.npcs.get(targetId);
+    if (!npc || npc.dead) return;
+    const dx = npc.x - session.x, dy = npc.y - session.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    session.x = Math.round(npc.x - Math.round(dx/len));
+    session.y = Math.round(npc.y - Math.round(dy/len));
+    const damage = _rollDamage(ability, session);
+    const result = world.resolveAttack(targetId, damage, session);
+    if (!result) return;
+    const chOnHit = ability.onHit;
+    if (chOnHit?.effect === "stun") {
+      const stunMs = chOnHit.duration / 60 * 1000;
+      npc.stunnedUntil = Date.now() + stunMs;
+      npc.slowedUntil  = Date.now() + stunMs * 2;
+      npc.state = "stunned";
+    }
+    if (session.classId === "fighter") { session.rage = Math.min(100, (session.rage ?? 0) + 8); session.lastCombatAt = Date.now(); }
+    _broadcast(session.worldId, { type: "player_charge", token: session.playerToken, x: session.x, y: session.y, targetId });
+    _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name });
+    _send(session.ws, { type: "ability_result", abilityId, targetId, damage, special: "charge", x: session.x, y: session.y });
+    if (result.dead) _handleNPCKill(session, world, targetId, result);
+    return;
+  }
+
   // ── Melee / Ranged — single target ────────────────────────────────────────
   const npc = world.npcs.get(targetId);
   if (!npc || npc.dead) return;
+
+  // Execute — massive bonus damage below HP threshold
+  if (ability.special === "execute") {
+    const npc = world.npcs.get(targetId);
+    if (!npc || npc.dead) return;
+    const threshold = ability.executeThreshold ?? 0.25;
+    const mult      = (npc.hp / npc.maxHp) <= threshold ? (ability.executeMultiplier ?? 2.0) : 1.0;
+    let damage = Math.floor(_rollDamage(ability, session) * mult);
+    if (session.classId === "fighter") { session.rage = Math.min(100, (session.rage ?? 0) + 8); session.lastCombatAt = Date.now(); }
+    const result = world.resolveAttack(targetId, damage, session);
+    if (!result) return;
+    _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name, execute: mult > 1 });
+    _send(session.ws, { type: "ability_result", abilityId, targetId, damage, execute: mult > 1 });
+    if (result.dead) _handleNPCKill(session, world, targetId, result);
+    return;
+  }
 
   const abilityRange = ability.range ?? 1;
   const eaglesEyeBonus = (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) ? session.eaglesEye.rangeBonus : 0;
@@ -397,7 +464,28 @@ function _resolveAbility(session, world, msg) {
   const onHitFx = ability.onHit ?? chargeEffect ?? null;
   if (onHitFx && !result.dead) {
     if (["poison","burn","bleed"].includes(onHitFx.effect)) world.applyDoT(targetId, onHitFx.effect, onHitFx.duration*(1000/60), onHitFx.magnitude, session.playerToken);
-    if (["slow","stun","freeze"].includes(onHitFx.effect)) _broadcast(session.worldId, { type: "npc_effect", npcId: targetId, effect: onHitFx.effect, duration: onHitFx.duration, magnitude: onHitFx.magnitude });
+    if (onHitFx.effect === "stun") {
+      const npc = world.npcs.get(targetId);
+      if (npc) {
+        const stunMs = onHitFx.duration / 60 * 1000;
+        npc.stunnedUntil = Date.now() + stunMs;
+        npc.slowedUntil  = Date.now() + stunMs * 2;
+        npc.state = "stunned";
+        _broadcast(session.worldId, { type: "npc_effect", npcId: targetId, effect: "stun", duration: stunMs });
+      }
+    }
+    if (onHitFx.effect === "slow") {
+      const npc = world.npcs.get(targetId);
+      if (npc) { npc.slowedUntil = Date.now() + (onHitFx.duration / 60 * 1000); }
+      _broadcast(session.worldId, { type: "npc_effect", npcId: targetId, effect: "slow", duration: onHitFx.duration });
+    }
+  }
+
+  // Generate rage for fighter from dealing damage
+  if (session.classId === "fighter") {
+    session.rage = Math.min(100, (session.rage ?? 0) + 8);
+    session.lastCombatAt = Date.now();
+    _send(session.ws, { type: "rage_update", rage: session.rage });
   }
 
   _broadcast(session.worldId, { type: "npc_damaged", npcId: targetId, hp: result.hp, maxHp: result.maxHp, damage, attackerName: session.name, chargeEffect, crit: session._lastCrit ?? false });
@@ -510,7 +598,12 @@ wss.on("connection", (ws) => {
           cooldowns:     {},
           elementalCharge: null,
           eaglesEye:       null,
-          pendingCast:     null
+          pendingCast:     null,
+          rage:            msg.rage ?? 0,
+          stunned:         {},  // npcId -> expiresAt
+          battleCry:       null, // { expiresAt, magnitude }
+          fortify:         null, // { expiresAt, magnitude, reflect }
+          lastCombatAt:    0
         };
         players.set(playerToken, session);
 
@@ -746,6 +839,18 @@ setInterval(() => {
       }
     }
 
+    // Rage decay for fighters out of combat
+    for (const token of world.players) {
+      const s = players.get(token);
+      if (s?.classId === "fighter" && (s.rage ?? 0) > 0) {
+        const secsSinceCombat = (Date.now() - (s.lastCombatAt ?? 0)) / 1000;
+        if (secsSinceCombat > 5) {
+          s.rage = Math.max(0, s.rage - (2 * TICK_MS / 1000));
+          _send(s.ws, { type: "rage_update", rage: s.rage });
+        }
+      }
+    }
+
     // Broadcast NPC state every N ticks
     if (tick % NPC_BROADCAST_TICKS === 0) {
       const state = world.getNPCState();
@@ -864,6 +969,16 @@ class WorldInstance {
   }
 
   _tickNPC(npc, playersHere, dt) {
+    // Stunned NPCs skip all actions
+    const now = Date.now();
+    if (npc.stunnedUntil && now < npc.stunnedUntil) {
+      npc.state = "stunned";
+      return;
+    }
+    if (npc.stunnedUntil && now >= npc.stunnedUntil) {
+      npc.stunnedUntil = null; // stun expired, slow lingers via slowedUntil
+    }
+
     npc.actionTimer -= dt;
     npc.moveTimer   -= dt;
 
@@ -905,7 +1020,8 @@ class WorldInstance {
 
     // ── Movement ──
     if (npc.moveTimer <= 0) {
-      npc.moveTimer = 1000 / npc.speed;
+      const isSlowed = npc.slowedUntil && Date.now() < npc.slowedUntil;
+      npc.moveTimer = 1000 / ((isSlowed ? 0.5 : 1) * (npc.speed ?? 3));
 
       if (npc.state === "alert" && nearest) {
         const dx      = nearest.x - npc.x;
@@ -951,18 +1067,33 @@ class WorldInstance {
           return;
         }
 
-        const dmg = npc.damageMin + Math.floor(
+        let dmg = npc.damageMin + Math.floor(
           Math.random() * (npc.damageMax - npc.damageMin + 1)
         );
+
+        // Apply fortify damage reduction
+        if (playerSession?.fortify && Date.now() < playerSession.fortify.expiresAt) {
+          const reflected = Math.floor(dmg * (playerSession.fortify.reflect ?? 0));
+          dmg = Math.floor(dmg * playerSession.fortify.magnitude);
+          if (reflected > 0) {
+            npc.hp = Math.max(0, npc.hp - reflected);
+            _broadcast(playerSession.worldId, { type: "npc_damaged", npcId: npc.id, hp: npc.hp, maxHp: npc.maxHp, damage: reflected, attackerName: "reflect", isDot: true });
+          }
+        }
 
         // Apply damage to player session server-side
         if (playerSession) {
           playerSession.hp = Math.max(0, (playerSession.hp ?? 0) - dmg);
-          // Send stat update to player
+          // Generate rage for fighter on taking damage
+          if (playerSession.classId === "fighter" && dmg > 0) {
+            playerSession.rage = Math.min(100, (playerSession.rage ?? 0) + 5);
+            playerSession.lastCombatAt = Date.now();
+          }
           _send(playerSession.ws, {
             type: "player_stat_update",
             hp: playerSession.hp, maxHp: playerSession.maxHp,
-            xp: playerSession.xp, gold: playerSession.gold
+            xp: playerSession.xp, gold: playerSession.gold,
+            rage: playerSession.rage ?? null
           });
         }
 

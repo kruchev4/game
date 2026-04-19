@@ -64,6 +64,9 @@ export class Renderer {
     this.elementalCharge = null;  // "frost" | "fire" | null
     this.eaglesEye       = null;
     this.castBar             = null;
+    this.battleCry           = null;
+    this.fortify             = null;
+    this._whirlwindAnims     = [];
     this.groundTargeting     = null;  // { abilityId, range, radius } — targeting mode
     this.groundTargetingMouse = null; // { px, py } screen coords
     this.volleyZones         = [];    // active haze zones
@@ -160,6 +163,20 @@ export class Renderer {
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
     ctx.fillText(entity.name ?? "", cx, sy - 4);
+    // Stun indicator
+    if (entity._stunned) {
+      ctx.font      = "14px serif";
+      ctx.textAlign = "center";
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.02);
+      ctx.globalAlpha = pulse;
+      ctx.fillText("💫", sx + tileSize / 2, sy - 4);
+      ctx.globalAlpha = 1;
+    } else if (entity._slowed) {
+      ctx.font      = "10px serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#88aaff";
+      ctx.fillText("❄", sx + tileSize / 2, sy - 4);
+    }
     ctx.textAlign = "left";
 
     // HP bar below name
@@ -308,6 +325,9 @@ export class Renderer {
     this._drawElementalCharge();
     this._drawEaglesEye();
     this._drawCastBar();
+    this._drawBattleCry();
+    this._drawFortify();
+    this._drawWhirlwindAnims();
     this._drawMinimap(entities);
     if (this.paused) this._drawPauseMenu();
   }
@@ -1002,6 +1022,84 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.fillText("🎯 Casting...", ctx.canvas.width / 2, barY + 13);
     ctx.textAlign = "left";
+  }
+
+  /** Trigger whirlwind animation centered on player */
+  spawnWhirlwind(x, y, radius) {
+    this._whirlwindAnims.push({ x, y, radius, startedAt: Date.now(), duration: 400 });
+  }
+
+  _drawWhirlwindAnims() {
+    const now = Date.now();
+    this._whirlwindAnims = this._whirlwindAnims.filter(a => now < a.startedAt + a.duration);
+    for (const anim of this._whirlwindAnims) {
+      const { ctx, camera } = this;
+      const tileSize = camera.tileSize;
+      const progress = (now - anim.startedAt) / anim.duration; // 0→1
+      const { sx, sy } = camera.worldToScreen(anim.x, anim.y);
+      const cx = sx + tileSize / 2;
+      const cy = sy + tileSize / 2;
+      const screenR = anim.radius * tileSize;
+      const numArcs = 6;
+      for (let i = 0; i < numArcs; i++) {
+        const angle = (i / numArcs) * Math.PI * 2 + progress * Math.PI * 4; // spin
+        const ax = cx + Math.cos(angle) * screenR * progress;
+        const ay = cy + Math.sin(angle) * screenR * progress;
+        const alpha = 1 - progress;
+        ctx.strokeStyle = `rgba(255, 160, 30, ${alpha})`;
+        ctx.lineWidth   = 3;
+        ctx.beginPath();
+        ctx.arc(ax, ay, tileSize * 0.3, angle + Math.PI * 0.7, angle + Math.PI * 1.3);
+        ctx.stroke();
+        // Inner flash
+        ctx.strokeStyle = `rgba(255, 255, 180, ${alpha * 0.6})`;
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, screenR * progress * 0.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+    }
+  }
+
+  _drawBattleCry() {
+    if (!this.battleCry || Date.now() >= this.battleCry.expiresAt) { this.battleCry = null; return; }
+    const secsLeft = Math.ceil((this.battleCry.expiresAt - Date.now()) / 1000);
+    this._drawBuffPill("⚔️ BATTLE CRY", `${secsLeft}s`, "rgba(255,140,30,0.95)", "rgba(80,30,5,0.85)", 0);
+  }
+
+  _drawFortify() {
+    if (!this.fortify || Date.now() >= this.fortify.expiresAt) { this.fortify = null; return; }
+    const secsLeft = Math.ceil((this.fortify.expiresAt - Date.now()) / 1000);
+    this._drawBuffPill("🏰 FORTIFY", `${secsLeft}s`, "rgba(100,180,255,0.95)", "rgba(10,30,60,0.85)", 1);
+  }
+
+  /** Draw a generic buff pill above the ability bar */
+  _drawBuffPill(label, sublabel, color, bgColor, slot) {
+    const { ctx } = this;
+    const { slotSize, gap, paddingY } = ABILITY_BAR;
+    const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const totalW    = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const barStartX = (ctx.canvas.width - totalW) / 2;
+    const barStartY = ctx.canvas.height - slotSize - paddingY;
+    const text  = `${label} (${sublabel})`;
+    ctx.font    = "bold 11px monospace";
+    const textW = ctx.measureText(text).width;
+    const padX  = 10;
+    const pillW = textW + padX * 2;
+    const pillH = 18;
+    const pillX = barStartX + totalW / 2 - pillW / 2 + slot * (pillW + 8);
+    const pillY = barStartY - pillH - 4;
+    const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.008);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = bgColor;
+    this._roundRect(pillX, pillY, pillW, pillH, 6); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    this._roundRect(pillX, pillY, pillW, pillH, 6); ctx.stroke();
+    ctx.lineWidth = 1; ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.fillText(text, pillX + pillW / 2, pillY + 13);
+    ctx.textAlign = "left"; ctx.globalAlpha = 1;
   }
 
   _drawEaglesEye() {

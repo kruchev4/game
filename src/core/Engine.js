@@ -105,29 +105,46 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    const [abilitiesRes, classesRes, itemsRes, skillsRes, spawnRes] = await Promise.all([
-      fetch("./src/data/abilities.json"),
-      fetch("./src/data/classes.json"),
-      fetch("./src/data/items.json"),
-      fetch("./src/data/skills.json"),
-      fetch("./src/data/spawnGroups.json").catch(() => null)
+    // All game data lives in Supabase — single source of truth for online-only play
+    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm");
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = await import("./src/config/supabaseConfig.js");
+    const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const [abilitiesRes, classesRes, itemsRes] = await Promise.all([
+      sb.from("abilities").select("id, data"),
+      sb.from("classes").select("*"),
+      sb.from("items").select("*"),
     ]);
-    if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
-    if (!classesRes.ok)   throw new Error("Failed to load classes.json");
-    if (!itemsRes.ok)     throw new Error("Failed to load items.json");
-    if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
 
-    this._abilities  = await abilitiesRes.json();
-    this._classes    = await classesRes.json();
-    this._itemDefs   = await itemsRes.json();
-    this._skills     = await skillsRes.json();
-    // loot.json removed — server rolls all loot via Supabase loot tables
-    this._spawnData  = spawnRes?.ok ? await spawnRes.json()
-                     : { spawnGroups: [], randomEncounters: { enabled: false } };
-
-    if (!spawnRes?.ok) {
-      console.warn("[Engine] spawnGroups.json not found — no world spawns loaded");
+    // Abilities — read from full `data` jsonb column
+    if (abilitiesRes.error) throw new Error(`Abilities: ${abilitiesRes.error.message}`);
+    this._abilities = {};
+    for (const row of (abilitiesRes.data ?? [])) {
+      const ab = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      if (ab) this._abilities[row.id] = ab;
     }
+
+    // Classes — from data jsonb column
+    if (classesRes.error) throw new Error(`Classes: ${classesRes.error.message}`);
+    this._classes = {};
+    for (const row of (classesRes.data ?? [])) {
+      const def = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      if (def) this._classes[row.id] = def;
+    }
+
+    // Items
+    if (itemsRes.error) throw new Error(`Items: ${itemsRes.error.message}`);
+    this._itemDefs = {};
+    for (const row of (itemsRes.data ?? [])) {
+      const def = typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? row);
+      this._itemDefs[row.id] = def;
+    }
+
+    // Skills and spawnGroups not needed client-side
+    this._skills    = {};
+    this._spawnData = { spawnGroups: [], randomEncounters: { enabled: false } };
+
+    console.log(`[Engine] Loaded from Supabase: ${Object.keys(this._abilities).length} abilities, ${Object.keys(this._classes).length} classes, ${Object.keys(this._itemDefs).length} items`);
   }
 
   // ─────────────────────────────────────────────
@@ -699,6 +716,15 @@ export class Engine {
       this._syncAbilityBar();
     }
 
+    // Set up Fighter rage resource
+    if (this._playerClassId === "fighter") {
+      const classDef = this._classes?.["fighter"] ?? {};
+      const rageConfig = classDef.resource ?? {};
+      this.player.resource     = 0;
+      this.player.maxResource  = rageConfig.max ?? 100;
+      this.player.resourceDef  = { type: "rage", label: "Rage", color: rageConfig.color ?? "#cc3333" };
+    }
+
     // Start multiplayer presence — wrapped so any error doesn't block rendering
     try {
       this._initMultiplayer();
@@ -1081,7 +1107,8 @@ export class Engine {
         this.renderer.elementalCharge = null;
       }
 
-      // Send to server — server validates range, rolls damage, applies effects
+      // Start cooldown immediately for responsive UI — server also enforces
+      this.combatSystem?._startCooldown?.("player", abilityId);
       this.multiplayerSystem.sendAbility({ abilityId, targetId, targetType, rank });
       return;
     }
@@ -1471,6 +1498,10 @@ export class Engine {
         if (npc && !this._currentTarget) {
           this._setTarget(npc);
         }
+        // Rage from taking damage
+        if (this.player.classId === "fighter") {
+          this.player.resource = Math.min(this.player.maxResource ?? 100, (this.player.resource ?? 0) + 5);
+        }
         if (damage > 0) {
           this.combatLog?.push({
             text: `${npc?.name ?? npc?.classId ?? "Monster"} hits you for ${damage}!`,
@@ -1533,6 +1564,10 @@ export class Engine {
     });
 
     // ── New server-authoritative callbacks ────────────────────────────────
+    this.multiplayerSystem.onRageUpdate = (rage) => {
+      this.player.resource = rage;
+    };
+
     this.multiplayerSystem.onVolleyZone = ({ wx, wy, radius, duration }) => {
       this.renderer.volleyZones.push({
         wx, wy, radius,
@@ -1540,6 +1575,13 @@ export class Engine {
         expiresAt: Date.now() + duration,
         duration
       });
+    };
+
+    this.multiplayerSystem.onCharge = ({ x, y, targetId }) => {
+      // Animate charge — snap player to new position
+      this.player.x = x;
+      this.player.y = y;
+      this.animSystem?.playAttack("player", 0, 0);
     };
 
     this.multiplayerSystem.onCastStart = ({ abilityId, castTime }) => {
@@ -1551,11 +1593,26 @@ export class Engine {
       }, castTime + 300);
     };
 
-    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
+    this.multiplayerSystem.onNPCEffect = ({ npcId, effect, duration }) => {
+      const npc = this.npcs.find(n => n.id === npcId);
+      if (!npc) return;
+      if (effect === "stun") {
+        npc._stunned = true;
+        npc._stunnedUntil = Date.now() + duration;
+        setTimeout(() => { npc._stunned = false; npc._slowed = true;
+          setTimeout(() => { npc._slowed = false; }, duration);
+        }, duration);
+        this.combatLog?.push({ text: `${npc.name ?? npc.classId} is stunned!`, type: "system" });
+      }
+      if (effect === "slow") { npc._slowed = true; setTimeout(() => { npc._slowed = false; }, duration / 60 * 1000); }
+    };
+
+    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold, rage }) => {
       if (hp      !== undefined) this.player.hp    = hp;
       if (maxHp   !== undefined) this.player.maxHp = maxHp;
       if (xp      !== undefined) this.player.xp    = xp;
       if (gold    !== undefined) this.player.gold   = gold;
+      if (rage    !== undefined && this.player.classId === "fighter") this.player.resource = rage;
 
       // Don't trigger death during invulnerability window (e.g. just respawned)
       if (hp <= 0 && !this._playerDead && !this.player.invulnerable) {
@@ -1574,10 +1631,29 @@ export class Engine {
         return;
       }
 
-      // Server confirmed ability fired — start local cooldown for UI feedback now
-      this.combatSystem?._startCooldown?.("player", abilityId);
-
       // Handle special client-side ability effects
+      // Charge — server moved player, update position
+      if (msg.special === "charge") {
+        this.player.x = msg.x;
+        this.player.y = msg.y;
+        this.animSystem?.playAttack("player", 0, 0);
+        this.combatLog?.push({ text: `Charge! ${msg.damage} damage!`, type: "damage_out" });
+      }
+
+      // Execute bonus
+      if (msg.execute) {
+        this.combatLog?.push({ text: `EXECUTE! ${msg.damage} damage!`, type: "kill" });
+      }
+
+      // Whirlwind — trigger spin animation
+      if (abilityId === "whirlwind") {
+        const ab = this._abilities?.["whirlwind"];
+        const rank = this.player.learnedSkills?.["whirlwind"] ?? 1;
+        const ranked = getRankedAbility(ab, rank);
+        const radius = ranked?.aoe?.radius ?? 2;
+        this.renderer.spawnWhirlwind?.(this.player.x, this.player.y, radius);
+      }
+
       if (msg.special === "disengage" && this._currentTarget) {
         const target = this._currentTarget;
         const dx  = this.player.x - target.x;
@@ -1608,6 +1684,15 @@ export class Engine {
         setTimeout(() => { this.renderer.elementalCharge = null; }, msg.duration ?? 10000);
       }
       // Eagle's Eye — show range indicator on HUD
+      if (msg.buffType === "battle_cry") {
+        this.renderer.battleCry = { expiresAt: Date.now() + (msg.duration ?? 8000), magnitude: msg.magnitude };
+        if (msg.rage !== undefined) this.player.resource = msg.rage;
+        this.combatLog?.push({ text: `⚔️ Battle Cry! Attack speed +${Math.round((1-msg.magnitude)*100)}%`, type: "system" });
+      }
+      if (msg.buffType === "fortify") {
+        this.renderer.fortify = { expiresAt: Date.now() + (msg.duration ?? 3000) };
+        this.combatLog?.push({ text: `🏰 Fortify! Damage reduced by ${Math.round((1-msg.magnitude)*100)}%`, type: "system" });
+      }
       if (msg.buffType === "eagles_eye") {
         this.renderer.eaglesEye = {
           expiresAt:  Date.now() + (msg.duration ?? 6000),
