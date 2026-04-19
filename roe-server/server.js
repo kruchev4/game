@@ -27,7 +27,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.S
 
 const TICK_MS              = 50;   // 20 ticks/sec
 const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
+const NPC_BROADCAST_TICKS  = 10;   // broadcast NPC state every 500ms
 const PING_INTERVAL_MS     = 10000;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -185,43 +185,27 @@ function loadSpawnGroups(worldId) {
 
 // ── Ability Resolution ────────────────────────────────────────────────────────
 
-function _statMod(val) {
-  return Math.floor(((val ?? 10) - 10) / 2);
-}
+function _statMod(val) { return Math.floor(((val ?? 10) - 10) / 2); }
 
 function _rollDamage(ability, session = null) {
   const min = ability.damageMin ?? 0;
   const max = ability.damageMax ?? 0;
   if (min === 0 && max === 0) return 0;
   let dmg = min + Math.floor(Math.random() * (max - min + 1));
-
-  // Stat scaling — ranged abilities scale with DEX, melee with STR
   if (session) {
     const stats = session.stats ?? {};
     const type  = ability.type ?? "melee";
     if (type === "ranged") {
-      const dexMod = _statMod(stats.dex ?? stats.DEX ?? 10);
-      const scaleMult = ability.scalingMult ?? 1.0;
-      dmg += Math.floor(dexMod * scaleMult);
+      dmg += Math.floor(_statMod(stats.dex ?? stats.DEX ?? 10) * (ability.scalingMult ?? 1.0));
     } else if (type === "melee") {
-      const strMod = _statMod(stats.str ?? stats.STR ?? 10);
-      dmg += strMod;
+      dmg += _statMod(stats.str ?? stats.STR ?? 10);
+    }
+    if (type === "ranged") {
+      const critChance = 0.05 + _statMod(stats.dex ?? stats.DEX ?? 10) * 0.02;
+      session._lastCrit = Math.random() < critChance;
+      if (session._lastCrit) dmg = Math.floor(dmg * 2);
     }
   }
-
-  // Crit check for ranged
-  if (session && (ability.type === "ranged")) {
-    const stats = session.stats ?? {};
-    const dexMod = _statMod(stats.dex ?? stats.DEX ?? 10);
-    const critChance = 0.05 + dexMod * 0.02;
-    if (Math.random() < critChance) {
-      dmg = Math.floor(dmg * 2);
-      session._lastCrit = true;
-    } else {
-      session._lastCrit = false;
-    }
-  }
-
   return Math.max(1, dmg);
 }
 
@@ -281,18 +265,9 @@ function _resolveAbility(session, world, msg) {
       .filter(n => !n.dead && _inRange(session, n, radius))
       .slice(0, maxTargets);
 
-    // Consume elemental charge for AOE — applies to all targets
-    let aoeChargeEffect = null;
-    let aoeBonusDamage  = 0;
-    if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt) {
-      aoeChargeEffect  = session.elementalCharge.onHitEffect;
-      aoeBonusDamage   = session.elementalCharge.bonusDamage;
-      session.elementalCharge = null;
-    }
-
     let totalDamage = 0;
     for (const npc of npcsHit) {
-      const dmg    = _rollDamage(ability, session) + aoeBonusDamage;
+      const dmg    = _rollDamage(ability);
       const result = world.resolveAttack(npc.id, dmg, session);
       if (!result) continue;
       totalDamage += dmg;
@@ -347,11 +322,36 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
-  // ── Buff (Divine Shield) ──────────────────────────────────────────────────
-  if (type === "buff") {
-    session.buffActive    = abilityId;
-    session.buffExpiresAt = Date.now() + 6000; // 6 seconds
-    _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 });
+  // ── Self / Buff ──────────────────────────────────────────────────────────
+  if (type === "self" || type === "buff") {
+    const fx = ability.selfEffect ?? ability.effect ?? null;
+    if (type === "buff" && abilityId === "divine_shield") {
+      session.buffActive    = abilityId;
+      session.buffExpiresAt = Date.now() + 6000;
+      _send(session.ws, { type: "buff_applied", abilityId, duration: 6000 });
+      return;
+    }
+    if (fx?.effect === "elemental_charge") {
+      const durationMs = (fx.duration ?? 600) / 60 * 1000;
+      session.elementalCharge = {
+        element: fx.element, bonusDamage: fx.bonusDamage ?? 0,
+        onHitEffect: fx.onHitEffect ?? null, expiresAt: Date.now() + durationMs
+      };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "elemental_charge", element: fx.element, duration: durationMs });
+      return;
+    }
+    if (fx?.effect === "eagles_eye") {
+      const durationMs = (fx.duration ?? 360) / 60 * 1000;
+      session.eaglesEye = { expiresAt: Date.now() + durationMs, rangeBonus: fx.magnitude ?? 4, damageMult: fx.damageMult ?? 1.0 };
+      _send(session.ws, { type: "buff_applied", abilityId, buffType: "eagles_eye", rangeBonus: fx.magnitude ?? 4, duration: durationMs });
+      return;
+    }
+    if (fx?.effect === "disengage") {
+      _send(session.ws, { type: "ability_result", abilityId, special: "disengage", magnitude: fx.magnitude ?? 3 });
+      return;
+    }
+    // Generic self buff
+    _send(session.ws, { type: "buff_applied", abilityId, duration: (fx?.duration ?? 300) / 60 * 1000 });
     return;
   }
 
@@ -362,52 +362,30 @@ function _resolveAbility(session, world, msg) {
     return;
   }
 
-  // ── Self buffs (elemental charge, disengage, eagles_eye etc) ────────────
-  if (type === "self") {
-    const fx = ability.selfEffect ?? null;
-    if (fx?.effect === "elemental_charge") {
-      session.elementalCharge = {
-        element:      fx.element,
-        bonusDamage:  fx.bonusDamage ?? 0,
-        onHitEffect:  fx.onHitEffect ?? null,
-        spreadTargets: fx.spreadTargets ?? 0,
-        expiresAt:    Date.now() + ((fx.duration ?? 600) / 60 * 1000)
-      };
-      _send(session.ws, {
-        type: "buff_applied",
-        abilityId,
-        buffType: "elemental_charge",
-        element: fx.element,
-        duration: (fx.duration ?? 600) / 60 * 1000
-      });
-    } else if (fx?.effect === "disengage") {
-      // Client handles the leap visually; server just confirms
-      _send(session.ws, { type: "ability_result", abilityId, special: "disengage", magnitude: fx.magnitude ?? 3 });
-    } else {
-      // Generic self buff (eagles_eye etc)
-      _send(session.ws, { type: "buff_applied", abilityId, duration: (fx?.duration ?? 300) / 60 * 1000 });
-    }
-    return;
-  }
-
   // ── Melee / Ranged — single target ────────────────────────────────────────
   const npc = world.npcs.get(targetId);
   if (!npc || npc.dead) return;
 
-  // Range check
-  if (!_inRange(session, npc, ability.range ?? 1)) {
+  // Range check — Eagle's Eye extends range if active
+  let effectiveRange = ability.range ?? 1;
+  if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) {
+    effectiveRange += session.eaglesEye.rangeBonus;
+  }
+  if (!_inRange(session, npc, effectiveRange)) {
     _send(session.ws, { type: "ability_result", abilityId, outOfRange: true });
     return;
   }
 
   let damage = _rollDamage(ability, session);
+  if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt && session.eaglesEye.damageMult > 1.0) {
+    damage = Math.floor(damage * session.eaglesEye.damageMult);
+  }
 
-  // Consume elemental charge if active
+  // Consume elemental charge before resolveAttack so bonus is included
   let chargeEffect = null;
-  if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt) {
-    const charge = session.elementalCharge;
-    damage += charge.bonusDamage;
-    chargeEffect = charge.onHitEffect;
+  if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt && ability.type === "ranged") {
+    damage += session.elementalCharge.bonusDamage;
+    chargeEffect = session.elementalCharge.onHitEffect;
     session.elementalCharge = null;
   }
 
@@ -418,15 +396,13 @@ function _resolveAbility(session, world, msg) {
     type: "npc_damaged", npcId: targetId,
     hp: result.hp, maxHp: result.maxHp,
     damage, attackerName: session.name,
-    chargeEffect,
-    crit: session._lastCrit ?? false
+    chargeEffect, crit: session._lastCrit ?? false
   });
 
   _send(session.ws, {
     type: "ability_result", abilityId, targetId,
     damage, hp: result.hp, maxHp: result.maxHp,
-    chargeEffect,
-    crit: session._lastCrit ?? false
+    chargeEffect, crit: session._lastCrit ?? false
   });
 
   if (result.dead) _handleNPCKill(session, world, targetId, result);
@@ -534,7 +510,8 @@ wss.on("connection", (ws) => {
           state:    "idle",
           lastSeen: Date.now(),
           cooldowns: {},
-          elementalCharge: null
+          elementalCharge: null,
+          eaglesEye: null
         };
         players.set(playerToken, session);
 
@@ -763,51 +740,45 @@ class WorldInstance {
         this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
       }
 
-      // Load spawn groups + monsters from local DB (sync)
+      // Load spawn groups from SQLite
       const groups = loadSpawnGroups(this.worldId);
-
       for (const { group, monsters } of groups) {
         for (const m of monsters) {
           const def = monsterDefs.get(m.monster_id);
-          if (!def) {
-            console.warn(`[Server] Unknown monster_id: ${m.monster_id}`);
-            continue;
-          }
-
-          const roamRadius = m.roam_radius ?? def.roamRadius;
-          const isBoss     = m.is_boss     ?? def.isBoss;
-          const id         = `${m.monster_id}_${m.x}_${m.y}`;
-
+          if (!def) { console.warn(`[Server] Unknown monster_id: ${m.monster_id}`); continue; }
+          const id = `${m.monster_id}_${m.x}_${m.y}`;
           this.npcs.set(id, {
-            id,
-            monsterId:   m.monster_id,
-            name:        def.name,
-            icon:        def.icon,
-            x:           m.x,
-            y:           m.y,
-            homeX:       m.x,
-            homeY:       m.y,
-            hp:          def.hp,
-            maxHp:       def.hp,
-            damageMin:   def.damageMin,
-            damageMax:   def.damageMax,
-            speed:       def.speed,
-            perception:  def.perception,
-            attackRange: def.attackRange ?? 1,
-            roamRadius,
-            xpValue:     def.xpValue,
-            isBoss,
-            state:       "roaming",
-            target:      null,   // playerToken of current aggro target
-            threat:      {},     // playerToken -> threat value
-            dead:        false,
-            actionTimer: 1000 + Math.random() * 2000,
-            moveTimer:   Math.random() * 1000,
-            // Respawn support
-            respawnSecs: group.respawn_seconds ?? null,
-            deadAt:      null
+            id, monsterId: m.monster_id, name: def.name, icon: def.icon,
+            x: m.x, y: m.y, homeX: m.x, homeY: m.y,
+            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
+            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
+            roamRadius: m.roam_radius ?? def.roamRadius, xpValue: def.xpValue,
+            isBoss: m.is_boss ?? def.isBoss, state: "roaming",
+            target: null, threat: {}, dead: false,
+            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
+            respawnSecs: group.respawn_seconds ?? null, deadAt: null
           });
         }
+      }
+      // Fallback: read spawns[] from world JSON for dungeons
+      if (this.npcs.size === 0 && rows?.length) {
+        for (const s of (rows[0].json.spawns ?? [])) {
+          const def = monsterDefs.get(s.monsterId);
+          if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
+          const id = `${s.monsterId}_${s.x}_${s.y}`;
+          this.npcs.set(id, {
+            id, monsterId: s.monsterId, name: def.name, icon: def.icon,
+            x: s.x, y: s.y, homeX: s.x, homeY: s.y,
+            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
+            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
+            roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
+            isBoss: s.isBoss ?? false, state: "roaming",
+            target: null, threat: {}, dead: false,
+            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
+            respawnSecs: null, deadAt: null
+          });
+        }
+        if (this.npcs.size > 0) console.log(`[Server] Loaded ${this.npcs.size} NPCs from JSON spawns[] for ${this.worldId}`);
       }
 
       this.ready = true;
