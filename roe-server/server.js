@@ -142,13 +142,41 @@ function _rowToAbility(row) {
 }
 
 async function loadAbilityDefs() {
+  // Abilities are the single source of truth in abilities.json (client+server share the same file)
+  // This avoids maintaining a separate Supabase abilities table with different field names
   try {
-    const rows = await sb("abilities?select=*&order=id");
-    if (!rows?.length) throw new Error("Empty response");
-    for (const row of rows) abilityDefs.set(row.id, _rowToAbility(row));
-    console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from Supabase`);
+    const fs   = await import("fs");
+    const path = await import("path");
+    // ABILITIES_PATH env var lets you point to the game folder without hardcoding
+    const defaultPath = path.join(__dirname, "..", "game", "src", "data", "abilities.json");
+    const filePath = process.env.ABILITIES_PATH ?? defaultPath;
+    const raw  = fs.readFileSync(filePath, "utf8");
+    const defs = JSON.parse(raw);
+    for (const [id, def] of Object.entries(defs)) {
+      // Normalise to server field names while keeping full JSON structure
+      abilityDefs.set(id, {
+        ...def,
+        damageMin:  def.damage?.base ?? 0,
+        damageMax:  (def.damage?.base ?? 0) + (def.damage?.variance ?? 0),
+        healMin:    def.heal?.base ?? 0,
+        healMax:    (def.heal?.base ?? 0) + (def.heal?.variance ?? 0),
+        manaCost:   def.cost?.mana ?? 0,
+        rageCost:   def.cost?.rage ?? 0,
+        scalingMult: def.scaling?.multiplier ?? 1.0,
+        targets:    def.aoe?.maxTargets ?? 1,
+      });
+    }
+    console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from abilities.json`);
   } catch (e) {
-    console.warn(`[Server] Ability load failed (${e.message}) — server will use generic damage`);
+    console.warn(`[Server] abilities.json load failed (${e.message}) — trying Supabase`);
+    try {
+      const rows = await sb("abilities?select=*&order=id");
+      if (!rows?.length) throw new Error("Empty response");
+      for (const row of rows) abilityDefs.set(row.id, _rowToAbility(row));
+      console.log(`[Server] Loaded ${abilityDefs.size} ability definitions from Supabase fallback`);
+    } catch (e2) {
+      console.warn(`[Server] Ability load failed entirely — using generic damage`);
+    }
   }
 }
 
