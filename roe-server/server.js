@@ -278,6 +278,9 @@ function _resolveAbility(session, world, msg) {
     return; // actual resolution happens in the tick when resolveAt is reached
   }
 
+  // Volley uses ground-targeting — handled by volley_place message, not here
+  if (abilityId === "volley") return;
+
   // Check and deduct mana cost
   const manaCost = ability.manaCost ?? 0;
   if (manaCost > 0) {
@@ -403,12 +406,14 @@ function _resolveAbility(session, world, msg) {
   const npc = world.npcs.get(targetId);
   if (!npc || npc.dead) return;
 
-  // Range check — Eagle's Eye extends range if active
-  let effectiveRange = ability.range ?? 1;
-  if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) {
-    effectiveRange += session.eaglesEye.rangeBonus;
-  }
-  if (!_inRange(session, npc, effectiveRange)) {
+  // Range check — Eagle's Eye reduces effective distance rather than extending range
+  const abilityRange  = ability.range ?? 1;
+  const eaglesEyeBonus = (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt)
+    ? session.eaglesEye.rangeBonus : 0;
+  const dx = Math.abs(session.x - npc.x);
+  const dy = Math.abs(session.y - npc.y);
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist - eaglesEyeBonus > abilityRange + 2) { // +2 tile sync tolerance
     _send(session.ws, { type: "ability_result", abilityId, outOfRange: true });
     return;
   }
@@ -640,6 +645,60 @@ wss.on("connection", (ws) => {
         const world = worlds.get(session.worldId);
         if (!world?.ready) break;
         _resolveAbility(session, world, msg);
+        break;
+      }
+
+      case "volley_place": {
+        if (!session) break;
+        const world = worlds.get(session.worldId);
+        if (!world?.ready) break;
+        const { abilityId, wx, wy, rank } = msg;
+        const baseAbility = abilityDefs.get(abilityId ?? "volley");
+        const ability     = getRankedAbility(baseAbility, rank ?? 1);
+        const radius      = ability?.aoe?.radius ?? 2;
+        const dmgPerTick  = (ability?.damageMin ?? 4);
+        const totalTicks  = 6;
+        const tickIntervalMs = 500; // every 0.5s
+
+        // Start cooldown
+        session.cooldowns[abilityId ?? "volley"] = ability?.cooldown ?? 300;
+
+        // Broadcast zone start to all players
+        _broadcast(session.worldId, {
+          type: "volley_zone",
+          wx, wy, radius,
+          duration: totalTicks * tickIntervalMs,
+          attackerName: session.name
+        });
+
+        // Tick damage 6 times
+        let tick = 0;
+        const interval = setInterval(() => {
+          tick++;
+          const dexMod = Math.floor(((session.stats?.dex ?? session.stats?.DEX ?? 10) - 10) / 2);
+          const dmg    = dmgPerTick + Math.floor(dexMod * 0.5);
+
+          for (const npc of world.npcs.values()) {
+            if (npc.dead) continue;
+            const dx   = Math.abs(npc.x - wx);
+            const dy   = Math.abs(npc.y - wy);
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist <= radius) {
+              const result = world.resolveAttack(npc.id, dmg, session);
+              if (!result) continue;
+              _broadcast(session.worldId, {
+                type: "npc_damaged", npcId: npc.id,
+                hp: result.hp, maxHp: result.maxHp,
+                damage: dmg, attackerName: session.name, isDot: true
+              });
+              if (result.dead) {
+                clearInterval(interval);
+                _handleNPCKill(session, world, npc.id, result);
+              }
+            }
+          }
+          if (tick >= totalTicks) clearInterval(interval);
+        }, tickIntervalMs);
         break;
       }
 
