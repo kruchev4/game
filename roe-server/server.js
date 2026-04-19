@@ -406,14 +406,16 @@ function _resolveAbility(session, world, msg) {
   const npc = world.npcs.get(targetId);
   if (!npc || npc.dead) return;
 
-  // Range check — Eagle's Eye reduces effective distance rather than extending range
-  const abilityRange  = ability.range ?? 1;
+  // Range check — Eagle's Eye reduces effective distance
+  const abilityRange   = ability.range ?? 1;
   const eaglesEyeBonus = (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt)
     ? session.eaglesEye.rangeBonus : 0;
-  const dx = Math.abs(session.x - npc.x);
-  const dy = Math.abs(session.y - npc.y);
+  const dx   = session.x - npc.x;
+  const dy   = session.y - npc.y;
   const dist = Math.sqrt(dx*dx + dy*dy);
-  if (dist - eaglesEyeBonus > abilityRange + 2) { // +2 tile sync tolerance
+  const effectiveDist = dist - eaglesEyeBonus;
+  console.log(`[Range] ${abilityId} dist=${dist.toFixed(1)} range=${abilityRange} eaglesEye=${eaglesEyeBonus} effective=${effectiveDist.toFixed(1)} pass=${effectiveDist <= abilityRange + 2}`);
+  if (effectiveDist > abilityRange + 2) {
     _send(session.ws, { type: "ability_result", abilityId, outOfRange: true });
     return;
   }
