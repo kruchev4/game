@@ -1,3 +1,16 @@
+# Go compiled binaries
+echoes-engine
+*.exe
+
+# Go module artifacts
+vendor/
+
+# Local database persistence (if mounted locally instead of via named volume)
+.pgdata/
+*.db
+
+# Environment variables
+.env
 roe-server/node_modules/
 roe-server/db/*.db
 roe-server/db/*.db-wal
