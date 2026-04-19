@@ -1,0 +1,96 @@
+# k8s/helm/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realm-of-echoes
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: realm-of-echoes
+  template:
+    metadata:
+      labels:
+        app: realm-of-echoes
+    spec:
+      imagePullSecrets:
+        - name: gitlab-registry-auth
+      containers:
+        - name: realm-of-echoes
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_NAME
+              value: "Garflak"
+            - name: SERVER_URL
+              value: "wss://echoes.garflak.com"
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-auth-secret
+                  key: SUPABASE_URL
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-auth-secret
+                  key: SUPABASE_SERVICE_ROLE_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: realm-of-echoes-svc
+spec:
+  selector:
+    app: realm-of-echoes
+  ports:
+    - port: 80
+      targetPort: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: realm-of-echoes-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: "internal-acme-issuer"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - {{ .Values.ingress.internalHost }} # CHANGED
+      secretName: realm-of-echoes-tls
+  rules:
+    - host: {{ .Values.ingress.internalHost }} # CHANGED
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: realm-of-echoes-svc
+                port:
+                  number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: realm-of-echoes-ingress-external
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.ingress.externalHost }} # CHANGED
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: realm-of-echoes-svc
+                port:
+                  number: 80
