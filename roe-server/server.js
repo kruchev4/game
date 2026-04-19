@@ -269,6 +269,15 @@ function _resolveAbility(session, world, msg) {
   // Start cooldown immediately
   session.cooldowns[abilityId] = ability.cooldown ?? 40;
 
+  // Cast time — delay resolution (Snipe etc), unless this is a re-resolve
+  if (ability.castTime && ability.castTime > 0 && !msg.skipCastTime) {
+    const castMs = ability.castTime / 60 * 1000;
+    _send(session.ws, { type: "cast_start", abilityId, castTime: castMs });
+    // Store pending cast — resolved after delay
+    session.pendingCast = { abilityId, targetId, targetType, rank, resolveAt: Date.now() + castMs };
+    return; // actual resolution happens in the tick when resolveAt is reached
+  }
+
   // Check and deduct mana cost
   const manaCost = ability.manaCost ?? 0;
   if (manaCost > 0) {
@@ -420,6 +429,22 @@ function _resolveAbility(session, world, msg) {
   const result = world.resolveAttack(targetId, damage, session);
   if (!result) return;
 
+  // Apply onHit effect (DoT, slow, stun etc)
+  const onHitFx = ability.onHit ?? chargeEffect ?? null;
+  if (onHitFx && result && !result.dead) {
+    const fx = onHitFx;
+    if (["poison","burn","bleed"].includes(fx.effect)) {
+      world.applyDoT(targetId, fx.effect, fx.duration * (1000/60), fx.magnitude, session.playerToken);
+    }
+    // slow/stun/freeze — broadcast for client to handle visually
+    if (["slow","stun","freeze"].includes(fx.effect)) {
+      _broadcast(session.worldId, {
+        type: "npc_effect", npcId: targetId,
+        effect: fx.effect, duration: fx.duration, magnitude: fx.magnitude
+      });
+    }
+  }
+
   _broadcast(session.worldId, {
     type: "npc_damaged", npcId: targetId,
     hp: result.hp, maxHp: result.maxHp,
@@ -539,7 +564,8 @@ wss.on("connection", (ws) => {
           lastSeen: Date.now(),
           cooldowns: {},
           elementalCharge: null,
-          eaglesEye: null
+          eaglesEye: null,
+          learnedSkills: msg.learnedSkills ?? {}
         };
         players.set(playerToken, session);
 
@@ -731,6 +757,21 @@ setInterval(() => {
   for (const world of worlds.values()) {
     if (!world.ready) continue;
     world.tick(TICK_MS);
+    world.tickDoTs(TICK_MS);
+
+    // Resolve pending casts (e.g. Snipe)
+    for (const token of world.players) {
+      const s = players.get(token);
+      if (s?.pendingCast && Date.now() >= s.pendingCast.resolveAt) {
+        const cast = s.pendingCast;
+        s.pendingCast = null;
+        // Re-resolve as if just cast (without cast time this time)
+        const savedCooldown = s.cooldowns[cast.abilityId];
+        s.cooldowns[cast.abilityId] = 0; // bypass cooldown check
+        _resolveAbility(s, world, { ...cast, skipCastTime: true });
+        s.cooldowns[cast.abilityId] = savedCooldown; // restore
+      }
+    }
 
     // Broadcast NPC state every N ticks
     if (tick % NPC_BROADCAST_TICKS === 0) {
@@ -1143,6 +1184,61 @@ class WorldInstance {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
+
+  // ── DoT System ────────────────────────────────────────────────────────────
+  applyDoT(npcId, effect, duration, magnitude, attackerToken) {
+    const npc = this.npcs.get(npcId);
+    if (!npc || npc.dead) return;
+    if (!npc.dots) npc.dots = [];
+    // Replace existing DoT of same type
+    npc.dots = npc.dots.filter(d => d.effect !== effect);
+    npc.dots.push({
+      effect,
+      magnitude,        // damage per tick
+      ticksRemaining:   Math.floor(duration / 50), // duration in ms / tick interval
+      tickInterval:     40,                          // ticks between damage (every 2s at 50ms/tick)
+      tickTimer:        0,
+      attackerToken
+    });
+  }
+
+  tickDoTs(dt) {
+    for (const npc of this.npcs.values()) {
+      if (npc.dead || !npc.dots?.length) continue;
+      const expired = [];
+      for (const dot of npc.dots) {
+        dot.ticksRemaining -= 1;
+        dot.tickTimer      += 1;
+        if (dot.tickTimer >= dot.tickInterval) {
+          dot.tickTimer = 0;
+          // Apply dot damage
+          const dmg = dot.magnitude;
+          npc.hp = Math.max(0, npc.hp - dmg);
+          // Broadcast tick damage
+          const raw = JSON.stringify({
+            type: "npc_damaged", npcId: npc.id,
+            hp: npc.hp, maxHp: npc.maxHp,
+            damage: dmg, attackerName: `${dot.effect}`,
+            isDot: true
+          });
+          for (const token of this.players) {
+            const s = players.get(token);
+            if (s?.ws.readyState === 1) s.ws.send(raw);
+          }
+          if (npc.hp <= 0 && !npc.dead) {
+            npc.dead = true;
+            const attacker = players.get(dot.attackerToken);
+            if (attacker) _handleNPCKill(attacker, this, npc.id, {
+              hp: 0, dead: true, xpValue: npc.xpValue,
+              loot: this._rollLoot(npc)
+            });
+          }
+        }
+        if (dot.ticksRemaining <= 0) expired.push(dot);
+      }
+      npc.dots = npc.dots.filter(d => !expired.includes(d));
+    }
+  }
 
   _walkable(x, y) {
     if (!this.tiles) return true;
