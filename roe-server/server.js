@@ -657,8 +657,12 @@ wss.on("connection", (ws) => {
         const { abilityId, wx, wy, rank } = msg;
         const baseAbility = abilityDefs.get(abilityId ?? "volley");
         const ability     = getRankedAbility(baseAbility, rank ?? 1);
-        const radius      = ability?.aoe?.radius ?? 2;
-        const dmgPerTick  = (ability?.damageMin ?? 4);
+        if (!ability) {
+          console.warn("[Server] volley_place: ability not found:", abilityId);
+          break;
+        }
+        const radius      = ability.aoe?.radius ?? 2;
+        const dmgPerTick  = ability.damageMin ?? 4;
         const totalTicks  = 6;
         const tickIntervalMs = 500; // every 0.5s
 

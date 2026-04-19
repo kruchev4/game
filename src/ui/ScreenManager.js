@@ -28,6 +28,14 @@ const CLASS_META = {
 };
 
 const STAT_NAMES  = ["STR","DEX","INT","CON","WIS","CHA"];
+
+const RACE_BONUSES = {
+  "human":    { STR:1, DEX:1, INT:1, CON:1, WIS:1, CHA:1 },
+  "elf":      { DEX:2, INT:1 },
+  "dwarf":    { CON:2, STR:1 },
+  "halfling": { DEX:2, CHA:1 },
+  "half-orc": { STR:2, CON:1 }
+};
 const MAX_REROLLS = 3;
 
 export class ScreenManager {
@@ -570,11 +578,17 @@ export class ScreenManager {
     this._step$('#b-back').addEventListener('click', () => { this._step = 3; this._renderStep(); });
     this._step$('#b-enter').addEventListener('click', async () => {
       this.hide();
+      // Apply race stat bonuses
+      const raceBonus  = RACE_BONUSES[this._raceId] ?? {};
+      const finalStats = { ...this._stats };
+      for (const [stat, bonus] of Object.entries(raceBonus)) {
+        finalStats[stat] = (finalStats[stat] ?? 10) + bonus;
+      }
       await this.onCreate?.(this._newSlot, {
         name:    this._name.trim(),
         raceId:  this._raceId,
         classId: this._classId,
-        stats:   { ...this._stats }
+        stats:   finalStats
       }, this._selectedServer?.ws_url);
     });
   }
