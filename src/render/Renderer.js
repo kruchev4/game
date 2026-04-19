@@ -59,8 +59,17 @@ export class Renderer {
     this.currentWorld    = null;
     this._lastWorld      = null;
     this.paused          = false;
-    this._minimapCanvas  = null;  // offscreen canvas — rebuilt on world change
-    this._minimapWorld   = null;  // which world the minimap was built for
+    this._minimapCanvas  = null;
+    this._minimapWorld   = null;
+    this.elementalCharge = null;  // "frost" | "fire" | null
+    this.eaglesEye       = null;
+    this.castBar             = null;
+    this.battleCry           = null;
+    this.fortify             = null;
+    this._whirlwindAnims     = [];
+    this.groundTargeting     = null;  // { abilityId, range, radius } — targeting mode
+    this.groundTargetingMouse = null; // { px, py } screen coords
+    this.volleyZones         = [];    // active haze zones
     this._decorationImgs = {};    // cache: src -> HTMLImageElement
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -72,7 +81,9 @@ export class Renderer {
   }
   // ── Entity drawing ────────────────────────────────────────────────────────
   drawEntity(entity) {
+    if (!entity) return;
     const { ctx, tileSize, camera } = this;
+    if (!ctx || !tileSize || !camera) return;
     const { sx, sy } = camera.worldToScreen(entity.x, entity.y);
 
     if (entity.type === "corpse")       { this._drawCorpse(entity, sx, sy); return; }
@@ -106,9 +117,10 @@ export class Renderer {
         ctx.stroke();
         ctx.lineWidth = 1;
       }
-      // Sprite
-      drawSprite(ctx, entity.classId, cx + anim.offsetX, cy + anim.offsetY,
-                 tileSize, SPRITE_COLORS[entity.classId], anim.alpha, anim);
+      // Sprite — guard against unknown classId
+      const npcClassId = entity.classId ?? entity.monsterId ?? "goblinMelee";
+      drawSprite(ctx, npcClassId, cx + anim.offsetX, cy + anim.offsetY,
+                 tileSize, SPRITE_COLORS[npcClassId], anim.alpha, anim);
       // Flash overlay
       if (anim.flash) {
         ctx.fillStyle = anim.flash;
@@ -121,9 +133,10 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(cx, cy, tileSize * 0.55, 0, Math.PI * 2);
       ctx.fill();
-      // Sprite
-      drawSprite(ctx, entity.classId, cx + anim.offsetX, cy + anim.offsetY,
-                 tileSize, SPRITE_COLORS[entity.classId], anim.alpha, anim);
+      // Sprite — guard against unknown classId
+      const npcClassId = entity.classId ?? entity.monsterId ?? "goblinMelee";
+      drawSprite(ctx, npcClassId, cx + anim.offsetX, cy + anim.offsetY,
+                 tileSize, SPRITE_COLORS[npcClassId], anim.alpha, anim);
       // Flash overlay
       if (anim.flash) {
         ctx.fillStyle = anim.flash;
@@ -154,6 +167,20 @@ export class Renderer {
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
     ctx.fillText(entity.name ?? "", cx, sy - 4);
+    // Stun indicator
+    if (entity._stunned) {
+      ctx.font      = "14px serif";
+      ctx.textAlign = "center";
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.02);
+      ctx.globalAlpha = pulse;
+      ctx.fillText("💫", sx + tileSize / 2, sy - 4);
+      ctx.globalAlpha = 1;
+    } else if (entity._slowed) {
+      ctx.font      = "10px serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#88aaff";
+      ctx.fillText("❄", sx + tileSize / 2, sy - 4);
+    }
     ctx.textAlign = "left";
 
     // HP bar below name
@@ -297,6 +324,14 @@ export class Renderer {
     this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
 
+    this._drawGroundTargeting();
+    this._drawVolleyZones();
+    this._drawElementalCharge();
+    this._drawEaglesEye();
+    this._drawCastBar();
+    this._drawBattleCry();
+    this._drawFortify();
+    this._drawWhirlwindAnims();
     this._drawMinimap(entities);
     if (this.paused) this._drawPauseMenu();
   }
@@ -659,49 +694,107 @@ export class Renderer {
     const totalW = abilities.length * slotSize + (abilities.length - 1) * gap;
     const startX = (ctx.canvas.width - totalW) / 2;
     const startY = ctx.canvas.height - slotSize - paddingY;
-    const hasTarget   = this.currentTarget && !this.currentTarget.dead;
-    const cooldowns   = this.player?.abilityCooldowns ?? {};
+    const hasTarget = this.currentTarget && !this.currentTarget.dead;
+    const cooldowns = this.player?.abilityCooldowns ?? {};
+    const resource  = this.player?.resource  ?? 0;
+    const resDef    = this.player?.resourceDef;
+
     for (let i = 0; i < abilities.length; i++) {
       const ability = abilities[i];
-      const sx      = startX + i * (slotSize + gap);
-      const sy      = startY;
-      const cx      = sx + slotSize / 2;
-      const cy      = sy + slotSize / 2;
+      const sx = startX + i * (slotSize + gap);
+      const sy = startY;
+      const cx = sx + slotSize / 2;
+      const cy = sy + slotSize / 2;
+
       const cd      = cooldowns[ability.id] ?? null;
       const onCD    = cd && cd.remaining > 0;
+
+      // Check if player can afford this ability
+      const manaCost = ability.cost?.mana ?? 0;
+      const rageCost = ability.cost?.rage ?? 0;
+      const noMana   = manaCost > 0 && resource < manaCost;
+      const noRage   = rageCost > 0 && resource < rageCost;
+      const noResource = noMana || noRage;
+
+      // Is this an elemental charge ability that matches active charge?
+      // Eagle's Eye active — glow on all ranged slots
+      const isEaglesEyeActive = this.eaglesEye && Date.now() < this.eaglesEye.expiresAt;
+      const isChargeAbility = ability.tags?.includes("charge");
+      const chargeActive    = isChargeAbility &&
+        ((this.elementalCharge === "frost" && ability.id === "frost_arrow") ||
+         (this.elementalCharge === "fire"  && ability.id === "fire_arrow"));
+
+      // Slot background
       ctx.fillStyle = onCD
         ? "rgba(6, 6, 14, 0.92)"
-        : "rgba(10, 10, 20, 0.88)";
+        : noResource
+          ? "rgba(14, 6, 6, 0.92)"   // dark red tint = no resource
+          : "rgba(10, 10, 20, 0.88)";
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.fill();
-      ctx.strokeStyle = onCD
-        ? "rgba(80, 80, 100, 0.5)"
-        : hasTarget
-          ? "rgba(255, 180, 50, 0.85)"
-          : "rgba(120, 120, 140, 0.55)";
+
+      // Slot border — charge active = elemental color, eagles eye = green glow
+      const isRanged = ability.type === "ranged" || ability.tags?.includes("ranged");
+      if (chargeActive) {
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
+        ctx.strokeStyle = this.elementalCharge === "frost"
+          ? `rgba(100,180,255,${pulse})`
+          : `rgba(255,120,30,${pulse})`;
+      } else if (isEaglesEyeActive && isRanged && !onCD && !noResource) {
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.006);
+        ctx.strokeStyle = `rgba(80,220,120,${pulse})`;
+      } else {
+        ctx.strokeStyle = onCD
+          ? "rgba(80, 80, 100, 0.5)"
+          : noResource
+            ? "rgba(160, 50, 50, 0.6)"   // red border = can't afford
+            : hasTarget
+              ? "rgba(255, 180, 50, 0.85)"
+              : "rgba(120, 120, 140, 0.55)";
+      }
       ctx.lineWidth = 1.5;
       this._roundRect(sx, sy, slotSize, slotSize, borderR);
       ctx.stroke();
       ctx.lineWidth = 1;
-      ctx.fillStyle = onCD ? "rgba(130,130,130,0.7)" : "#ffffff";
+
+      // Ability name — grayed if on CD or no resource
+      ctx.fillStyle = (onCD || noResource) ? "rgba(130,130,130,0.7)" : "#ffffff";
       ctx.font      = "bold 10px monospace";
       ctx.textAlign = "center";
       this._drawWrappedText(ability.name, cx, sy + 18, slotSize - 8, 12);
-      ctx.fillStyle = onCD
+
+      // Type/range label
+      ctx.fillStyle = onCD || noResource
         ? "rgba(100,100,120,0.6)"
         : ability.type === "melee" ? "#ffaa55" : "#88aaff";
       ctx.font = "9px monospace";
       ctx.fillText(
-        ability.type === "melee" ? "MELEE" : `${ability.range}t`,
-        cx,
-        sy + slotSize - 18
+        ability.type === "melee" ? "MELEE" : `${ability.range ?? 0}t`,
+        cx, sy + slotSize - 18
       );
+
+      // Mana cost hint when player is low — show cost in red
+      if (noResource && !onCD) {
+        ctx.fillStyle = "rgba(255,80,80,0.8)";
+        ctx.font      = "8px monospace";
+        ctx.fillText(manaCost > 0 ? `${manaCost}mp` : `${rageCost}rage`, cx, sy + slotSize - 18);
+      }
+
+      // Keybind
       ctx.fillStyle = "rgba(200,200,200,0.55)";
       ctx.font      = "10px monospace";
       ctx.fillText(`[${i + 1}]`, cx, sy + slotSize - 6);
       ctx.textAlign = "left";
+
       if (onCD) {
         this._drawCooldownRing(cx, cy, slotSize, cd);
+      }
+
+      // Gray overlay for no-resource (distinct from cooldown ring)
+      if (noResource && !onCD) {
+        ctx.fillStyle = "rgba(80, 0, 0, 0.25)";
+        this._roundRect(sx, sy, slotSize, slotSize, borderR);
+        ctx.fill();
       }
     }
   }
@@ -756,6 +849,304 @@ export class Renderer {
       this._decorationImgs[src] = undefined;
     };
     return null;
+  }
+
+  // ── Ground Targeting (Volley placement) ──────────────────────────────────
+  _drawGroundTargeting() {
+    if (!this.groundTargeting || !this.groundTargetingMouse) return;
+    const { ctx, camera } = this;
+    const tileSize = camera.tileSize;
+    const { px, py }  = this.groundTargetingMouse;
+    const worldPos    = camera.screenToWorldF(px, py);
+    const { range, radius } = this.groundTargeting;
+
+    // Clamp to max range from player
+    const player = this.player;
+    if (!player) return;
+    const dx    = worldPos.x - player.x;
+    const dy    = worldPos.y - player.y;
+    const dist  = Math.sqrt(dx*dx + dy*dy);
+    const clamp = dist > range ? range / dist : 1;
+    const cx    = player.x + dx * clamp;
+    const cy    = player.y + dy * clamp;
+
+    const { sx, sy } = camera.worldToScreen(cx, cy);
+    const screenR    = radius * tileSize;
+
+    // Max range ring around player
+    const { sx: psx, sy: psy } = camera.worldToScreen(player.x, player.y);
+    ctx.strokeStyle = "rgba(255,80,80,0.25)";
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(psx + tileSize/2, psy + tileSize/2, range * tileSize, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Volley impact circle at cursor
+    const pulse = 0.5 + 0.3 * Math.sin(Date.now() * 0.01);
+    ctx.fillStyle   = `rgba(220,50,50,${pulse * 0.25})`;
+    ctx.strokeStyle = `rgba(255,80,80,${pulse * 0.9})`;
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.arc(sx + tileSize/2, sy + tileSize/2, screenR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // "CLICK TO PLACE" label
+    ctx.fillStyle = "rgba(255,180,180,0.9)";
+    ctx.font      = "bold 10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("CLICK TO PLACE", sx + tileSize/2, sy + tileSize/2 - screenR - 6);
+    ctx.textAlign = "left";
+  }
+
+  _drawVolleyZones() {
+    const now    = Date.now();
+    const { ctx, camera } = this;
+    const tileSize = camera.tileSize;
+
+    // Remove expired zones
+    this.volleyZones = this.volleyZones.filter(z => now < z.expiresAt);
+
+    for (const zone of this.volleyZones) {
+      const progress = (now - zone.startedAt) / zone.duration; // 0→1
+      const alpha    = Math.max(0, (1 - progress) * 0.45);
+      const { sx, sy } = camera.worldToScreen(zone.wx, zone.wy);
+      const screenR    = zone.radius * tileSize;
+
+      // Red haze
+      ctx.fillStyle = `rgba(220,50,30,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx + tileSize/2, sy + tileSize/2, screenR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Arrow rain particles — simple dashes
+      const seed = Math.floor(now / 200) + zone.wx * 13 + zone.wy * 7;
+      ctx.strokeStyle = `rgba(255,120,80,${alpha * 1.5})`;
+      ctx.lineWidth   = 1.5;
+      for (let i = 0; i < 6; i++) {
+        const angle  = (seed * 2654435761 + i * 999983) % 360;
+        const r      = ((seed * 1234567 + i * 7654321) % 100) / 100 * screenR;
+        const ax     = sx + tileSize/2 + Math.cos(angle) * r;
+        const ay     = sy + tileSize/2 + Math.sin(angle) * r;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay - 8);
+        ctx.lineTo(ax, ay + 4);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+    }
+  }
+
+  // ── Elemental Charge Indicator ───────────────────────────────────────────
+  _drawElementalCharge() {
+    if (!this.elementalCharge) return;
+    const { ctx } = this;
+    const { slotSize, gap, paddingY, borderR } = ABILITY_BAR;
+    const isFrost = this.elementalCharge === "frost";
+    const icon    = isFrost ? "❄️" : "🔥";
+    const label   = isFrost ? "FROST CHARGED" : "FIRE CHARGED";
+    const color   = isFrost ? "rgba(100,180,255,0.95)" : "rgba(255,140,40,0.95)";
+    const bgColor = isFrost ? "rgba(20,40,80,0.85)"    : "rgba(80,30,10,0.85)";
+
+    // Small pill badge centered just above the ability bar
+    const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const totalW    = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const barStartX = (ctx.canvas.width - totalW) / 2;
+    const barStartY = ctx.canvas.height - slotSize - paddingY;
+
+    ctx.font = "bold 11px monospace";
+    const textW  = ctx.measureText(`${icon} ${label}`).width;
+    const padX   = 10;
+    const pillW  = textW + padX * 2;
+    const pillH  = 18;
+    const pillX  = barStartX + totalW / 2 - pillW / 2;
+    const pillY  = barStartY - pillH - 4;
+
+    // Pulsing alpha
+    const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.008);
+    ctx.globalAlpha = pulse;
+
+    // Background pill
+    ctx.fillStyle = bgColor;
+    this._roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    this._roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Text
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.fillText(`${icon} ${label}`, pillX + pillW / 2, pillY + 13);
+    ctx.textAlign    = "left";
+    ctx.globalAlpha  = 1;
+  }
+
+  _drawCastBar() {
+    if (!this.castBar) return;
+    const { ctx } = this;
+    const elapsed  = Date.now() - this.castBar.startedAt;
+    const progress = Math.min(1, elapsed / this.castBar.duration);
+
+    const barW = 220;
+    const barH = 18;
+    const barX = (ctx.canvas.width - barW) / 2;
+    const barY = ctx.canvas.height / 2 + 40;
+
+    // Background
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    this._roundRect(barX - 2, barY - 2, barW + 4, barH + 4, 4);
+    ctx.fill();
+
+    // Fill
+    const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    grad.addColorStop(0, "rgba(180,120,40,0.9)");
+    grad.addColorStop(1, "rgba(240,200,60,0.9)");
+    ctx.fillStyle = grad;
+    this._roundRect(barX, barY, barW * progress, barH, 3);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = "rgba(200,160,50,0.7)";
+    ctx.lineWidth   = 1.5;
+    this._roundRect(barX, barY, barW, barH, 3);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Label
+    ctx.fillStyle = "#ffffff";
+    ctx.font      = "bold 11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("🎯 Casting...", ctx.canvas.width / 2, barY + 13);
+    ctx.textAlign = "left";
+  }
+
+  /** Trigger whirlwind animation centered on player */
+  spawnWhirlwind(x, y, radius) {
+    this._whirlwindAnims.push({ x, y, radius, startedAt: Date.now(), duration: 400 });
+  }
+
+  _drawWhirlwindAnims() {
+    const now = Date.now();
+    this._whirlwindAnims = this._whirlwindAnims.filter(a => now < a.startedAt + a.duration);
+    for (const anim of this._whirlwindAnims) {
+      const { ctx, camera } = this;
+      const tileSize = camera.tileSize;
+      const progress = (now - anim.startedAt) / anim.duration; // 0→1
+      const { sx, sy } = camera.worldToScreen(anim.x, anim.y);
+      const cx = sx + tileSize / 2;
+      const cy = sy + tileSize / 2;
+      const screenR = anim.radius * tileSize;
+      const numArcs = 6;
+      for (let i = 0; i < numArcs; i++) {
+        const angle = (i / numArcs) * Math.PI * 2 + progress * Math.PI * 4; // spin
+        const ax = cx + Math.cos(angle) * screenR * progress;
+        const ay = cy + Math.sin(angle) * screenR * progress;
+        const alpha = 1 - progress;
+        ctx.strokeStyle = `rgba(255, 160, 30, ${alpha})`;
+        ctx.lineWidth   = 3;
+        ctx.beginPath();
+        ctx.arc(ax, ay, tileSize * 0.3, angle + Math.PI * 0.7, angle + Math.PI * 1.3);
+        ctx.stroke();
+        // Inner flash
+        ctx.strokeStyle = `rgba(255, 255, 180, ${alpha * 0.6})`;
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, screenR * progress * 0.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+    }
+  }
+
+  _drawBattleCry() {
+    if (!this.battleCry || Date.now() >= this.battleCry.expiresAt) { this.battleCry = null; return; }
+    const secsLeft = Math.ceil((this.battleCry.expiresAt - Date.now()) / 1000);
+    this._drawBuffPill("⚔️ BATTLE CRY", `${secsLeft}s`, "rgba(255,140,30,0.95)", "rgba(80,30,5,0.85)", 0);
+  }
+
+  _drawFortify() {
+    if (!this.fortify || Date.now() >= this.fortify.expiresAt) { this.fortify = null; return; }
+    const secsLeft = Math.ceil((this.fortify.expiresAt - Date.now()) / 1000);
+    this._drawBuffPill("🏰 FORTIFY", `${secsLeft}s`, "rgba(100,180,255,0.95)", "rgba(10,30,60,0.85)", 1);
+  }
+
+  /** Draw a generic buff pill above the ability bar */
+  _drawBuffPill(label, sublabel, color, bgColor, slot) {
+    const { ctx } = this;
+    const { slotSize, gap, paddingY } = ABILITY_BAR;
+    const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const totalW    = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const barStartX = (ctx.canvas.width - totalW) / 2;
+    const barStartY = ctx.canvas.height - slotSize - paddingY;
+    const text  = `${label} (${sublabel})`;
+    ctx.font    = "bold 11px monospace";
+    const textW = ctx.measureText(text).width;
+    const padX  = 10;
+    const pillW = textW + padX * 2;
+    const pillH = 18;
+    const pillX = barStartX + totalW / 2 - pillW / 2 + slot * (pillW + 8);
+    const pillY = barStartY - pillH - 4;
+    const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.008);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = bgColor;
+    this._roundRect(pillX, pillY, pillW, pillH, 6); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    this._roundRect(pillX, pillY, pillW, pillH, 6); ctx.stroke();
+    ctx.lineWidth = 1; ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.fillText(text, pillX + pillW / 2, pillY + 13);
+    ctx.textAlign = "left"; ctx.globalAlpha = 1;
+  }
+
+  _drawEaglesEye() {
+    if (!this.eaglesEye || Date.now() >= this.eaglesEye.expiresAt) {
+      this.eaglesEye = null;
+      return;
+    }
+    const { ctx } = this;
+    const { slotSize, gap, paddingY, borderR } = ABILITY_BAR;
+    const abilities = (this.playerAbilities ?? []).slice(0, ABILITY_BAR.count);
+    const totalW    = abilities.length * slotSize + (abilities.length - 1) * gap;
+    const barStartX = (ctx.canvas.width - totalW) / 2;
+    const barStartY = ctx.canvas.height - slotSize - paddingY;
+
+    // Show remaining time
+    const secsLeft = Math.ceil((this.eaglesEye.expiresAt - Date.now()) / 1000);
+    const label    = `🦅 +${this.eaglesEye.rangeBonus} RANGE (${secsLeft}s)`;
+
+    ctx.font = "bold 11px monospace";
+    const textW = ctx.measureText(label).width;
+    const padX  = 10;
+    const pillW = textW + padX * 2;
+    const pillH = 18;
+    // Place to right of elemental charge pill if both active
+    const offsetX = this.elementalCharge ? pillW + 8 : 0;
+    const pillX   = barStartX + totalW / 2 - pillW / 2 + offsetX;
+    const pillY   = barStartY - pillH - 4;
+
+    const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.006);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = "rgba(20,60,30,0.85)";
+    this._roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80,220,120,0.9)";
+    ctx.lineWidth   = 1.5;
+    this._roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.stroke();
+    ctx.lineWidth   = 1;
+    ctx.fillStyle   = "rgba(80,220,120,0.95)";
+    ctx.textAlign   = "center";
+    ctx.fillText(label, pillX + pillW / 2, pillY + 13);
+    ctx.textAlign   = "left";
+    ctx.globalAlpha = 1;
   }
 
   // ── Minimap ───────────────────────────────────────────────────────────────

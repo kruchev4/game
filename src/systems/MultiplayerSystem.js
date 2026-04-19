@@ -21,6 +21,9 @@ export class MultiplayerSystem {
     this.onNPCKilled       = onNPCKilled       ?? (() => {});
     this.onNPCState        = onNPCState        ?? (() => {});
     this.onNPCAttackPlayer = onNPCAttackPlayer ?? (() => {});
+    this.onRageUpdate  = null;
+    this.onCharge      = null;
+    this.onNPCEffect   = null;
 
     this._ws             = null;
     this._remotePlayers  = new Map(); // token -> entity
@@ -108,6 +111,19 @@ export class MultiplayerSystem {
     this._send({ type: "taunt", radius });
   }
 
+  sendVolley({ abilityId, wx, wy, rank }) {
+    this._send({ type: "volley_place", abilityId, wx, wy, rank });
+  }
+
+  /**
+   * Notify server of world transition without reconnecting.
+   * Server moves the player to the new world instance and sends back npc_state.
+   */
+  sendWorldChange({ worldId, x, y }) {
+    this.worldId = worldId;
+    this._send({ type: "world_change", worldId, x, y });
+  }
+
   sendHealThreat(targetToken, amount) {
     this._send({ type: "heal_threat", targetToken, amount });
   }
@@ -182,8 +198,10 @@ export class MultiplayerSystem {
         level:       p.level   ?? 1,
         x:           p.x       ?? 0,
         y:           p.y       ?? 0,
-        gold:        p.gold    ?? 0,
-        xp:          p.xp      ?? 0
+        gold:        p.gold          ?? 0,
+        xp:          p.xp            ?? 0,
+        stats:       p.stats         ?? {},
+        learnedSkills: p.learnedSkills ?? {}
       });
     });
 
@@ -414,6 +432,28 @@ export class MultiplayerSystem {
         }
         break;
       }
+
+      case "cast_start": {
+        if (this.onCastStart) this.onCastStart(msg);
+        break;
+      }
+
+      case "volley_zone": {
+        if (this.onVolleyZone) this.onVolleyZone(msg);
+        break;
+      }
+
+      case "rage_update":
+        if (this.onRageUpdate) this.onRageUpdate(msg.rage);
+        break;
+
+      case "player_charge":
+        if (msg.token !== this.playerToken && this.onCharge) this.onCharge(msg);
+        break;
+
+      case "npc_effect":
+        if (this.onNPCEffect) this.onNPCEffect(msg);
+        break;
 
       case "pong": break;
 

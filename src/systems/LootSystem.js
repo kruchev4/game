@@ -26,10 +26,10 @@ export class LootSystem {
    * @param {Function} opts.onCorpseRemove - (corpse) => {} — remove from world entities
    * @param {Function} opts.onEvent        - combat-log style event callback
    */
-  constructor({ player, itemDefs, onCorpseSpawn, onCorpseRemove, onEvent }) {
+  constructor({ player, lootTables, itemDefs, onCorpseSpawn, onCorpseRemove, onEvent }) {
     this.player         = player;
+    this.lootTables     = lootTables;
     this.itemDefs       = itemDefs;
-    // lootTables removed — server is sole source of truth for loot rolling
     this.onCorpseSpawn  = onCorpseSpawn  ?? (() => {});
     this.onCorpseRemove = onCorpseRemove ?? (() => {});
     this.onEvent        = onEvent        ?? (() => {});
@@ -43,23 +43,22 @@ export class LootSystem {
   // ─────────────────────────────────────────────
 
   /**
-   * Called when the server confirms an NPC kill.
-   * Server is the sole source of truth for loot — no client-side rolling.
-   * @param {object} npc        - dead NPC entity (for position/classId)
-   * @param {object} serverLoot - { gold, itemId, qty } from server
+   * Called when an NPC is killed. Rolls loot and spawns a corpse.
+   * @param {object} npc - the dead NPC entity
    */
-  onNPCKilled(npc, serverLoot) {
-    const gold  = serverLoot?.gold ?? 0;
-    const items = [];
-
-    if (serverLoot?.itemId &&
-        serverLoot.itemId !== "nothing" &&
-        serverLoot.itemId !== "gold" &&
-        this.itemDefs[serverLoot.itemId]) {
-      items.push({ itemId: serverLoot.itemId, qty: serverLoot.qty ?? 1 });
+  onNPCKilled(npc, serverLoot = null) {
+    // In multiplayer the server pre-rolls loot — use it directly.
+    // In singleplayer fall back to local loot table rolling.
+    let gold, items;
+    if (serverLoot) {
+      gold  = serverLoot.gold  ?? 0;
+      items = serverLoot.itemId ? [serverLoot.itemId] : [];
+    } else {
+      const table = this.lootTables[npc.classId] ?? this.lootTables["default"] ?? {};
+      gold  = this._rollGold(table);
+      items = this._rollDrops(table);
     }
 
-    // Always spawn corpse — even gold-only drops deserve a clickable corpse
     const corpse = new Corpse({
       id:         `corpse_${this._nextId++}`,
       x:          npc.x,
@@ -115,15 +114,17 @@ export class LootSystem {
     if (!bagSlot) return false;
 
     const effect = def.onUse;
+    // Support both {effect:"heal"} and {type:"heal"} shapes
+    const effectType = effect.effect ?? effect.type;
 
-    if (effect.effect === "heal") {
+    if (effectType === "heal") {
       const before = this.player.hp;
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + effect.amount);
       const healed = this.player.hp - before;
       this.onEvent({ type: "item_used", item: def, healed });
     }
 
-    if (effect.effect === "restore_resource") {
+    if (effectType === "restore_resource" || effectType === "mana") {
       const before = this.player.resource;
       this.player.resource = Math.min(
         this.player.maxResource,
@@ -213,6 +214,29 @@ export class LootSystem {
       this.corpses = this.corpses.filter(x => x.id !== c.id);
       this.onCorpseRemove(c);
     }
+  }
+
+  // ─────────────────────────────────────────────
+  // LOOT ROLLING
+  // ─────────────────────────────────────────────
+
+  _rollGold(table) {
+    const min = table.goldMin ?? 0;
+    const max = table.goldMax ?? 0;
+    return min + Math.floor(Math.random() * (max - min + 1));
+  }
+
+  _rollDrops(table) {
+    const drops = [];
+    for (const entry of (table.drops ?? [])) {
+      if (Math.random() < entry.chance) {
+        const qty = entry.qtyMin + Math.floor(
+          Math.random() * (entry.qtyMax - entry.qtyMin + 1)
+        );
+        drops.push({ itemId: entry.itemId, qty });
+      }
+    }
+    return drops;
   }
 
   // ─────────────────────────────────────────────
