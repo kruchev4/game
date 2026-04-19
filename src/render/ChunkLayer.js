@@ -32,14 +32,16 @@ export class ChunkLayer {
   draw(ctx, camera) {
     if (!this.world) return;
 
-    const ts = this.tileSize;
-    const cs = this.chunkSize;
+    // Always use camera.tileSize for display — this.tileSize is the baked size.
+    const ts  = camera.tileSize;   // display size
+    const bts = this.tileSize;     // baked size
+    const cs  = this.chunkSize;
+    const scale = ts / bts;
 
-    // camera.x/y are tile units (per your worldToScreen)
-    const viewX = Math.floor(camera.x);
-    const viewY = Math.floor(camera.y);
+    const viewX = camera.x;
+    const viewY = camera.y;
 
-    const tilesWide = Math.ceil(ctx.canvas.width / ts) + 2;
+    const tilesWide = Math.ceil(ctx.canvas.width  / ts) + 2;
     const tilesHigh = Math.ceil(ctx.canvas.height / ts) + 2;
 
     const endX = viewX + tilesWide;
@@ -47,23 +49,22 @@ export class ChunkLayer {
 
     const startCX = Math.floor(viewX / cs);
     const startCY = Math.floor(viewY / cs);
-    const endCX = Math.floor(endX / cs);
-    const endCY = Math.floor(endY / cs);
+    const endCX   = Math.floor(endX  / cs);
+    const endCY   = Math.floor(endY  / cs);
 
     for (let cy = startCY; cy <= endCY; cy++) {
       for (let cx = startCX; cx <= endCX; cx++) {
         const chunkCanvas = this._getOrBuildChunk(cx, cy);
 
-        // chunk origin in world tiles
         const chunkWorldX = cx * cs;
         const chunkWorldY = cy * cs;
+        const px = (chunkWorldX - camera.x) * ts;
+        const py = (chunkWorldY - camera.y) * ts;
 
-        // convert world tile coords -> screen pixels
-        const px = Math.floor((chunkWorldX - camera.x) * ts);
-        const py = Math.floor((chunkWorldY - camera.y) * ts);
-        
-        ctx.drawImage(chunkCanvas, px, py);
-        
+        // Scale chunk to current display tileSize
+        const drawW = chunkCanvas.width  * scale;
+        const drawH = chunkCanvas.height * scale;
+        ctx.drawImage(chunkCanvas, px, py, drawW, drawH);
       }
     }
   }
@@ -247,6 +248,3 @@ function hash2(x, y, salt = 0) {
   n = (n ^ (n >> 13)) * 1274126177;
   return (n ^ (n >> 16)) >>> 0;
 }
-  
-
- 

@@ -96,6 +96,15 @@ export class Camera {
     };
   }
 
+
+  /** Fractional world position — use for zoom anchoring */
+  screenToWorldF(px, py) {
+    return {
+      x: this.x + px / this.tileSize,
+      y: this.y + py / this.tileSize
+    };
+  }
+
   screenToWorld(px, py) {
     return {
       x: this.x + Math.floor(px / this.tileSize),

@@ -34,6 +34,7 @@ export class SupabaseOverworldProvider {
       encounters:  raw.encounters  ?? [],
       entryPoints: raw.entryPoints ?? {},
       meta:        raw.meta        ?? {},
+      decorations: raw.decorations  ?? [],
       _raw:        raw,
       getTile(x, y) {
         if (x < 0 || y < 0 || x >= this.width || y >= this.height) return 0;

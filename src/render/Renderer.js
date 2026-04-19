@@ -9,11 +9,11 @@ const DIM   = "#888899";
 const GOLD  = "#e8c84a";
 // ── UI Layout constants ───────────────────────────────────────────────────────
 const ABILITY_BAR = {
-  slotSize: 56,
-  gap:      8,
+  slotSize: 50,
+  gap:      6,
   paddingY: 12,
   borderR:  10,
-  count:    4
+  count:    6
 };
 const TARGET_FRAME = {
   width:     220,
@@ -58,6 +58,10 @@ export class Renderer {
     // Set by Engine when in a town
     this.currentWorld    = null;
     this._lastWorld      = null;
+    this.paused          = false;
+    this._minimapCanvas  = null;  // offscreen canvas — rebuilt on world change
+    this._minimapWorld   = null;  // which world the minimap was built for
+    this._decorationImgs = {};    // cache: src -> HTMLImageElement
     this.resize();
     window.addEventListener("resize", () => this.resize());
   }
@@ -264,10 +268,16 @@ export class Renderer {
       ctx.arc(sx + tileSize / 2, sy + tileSize / 2, 4, 0, Math.PI * 2);
       ctx.fill();
     }
+    // ── Decorations (ground layer — player walks in front) ──
+    this._drawDecorations(world, camera, tileSize, "ground");
+
     // ── Entities ──
     for (const entity of entities) {
       if (!entity.dead) this.drawEntity(entity);
     }
+
+    // ── Decorations (tall layer — player walks behind) ──
+    this._drawDecorations(world, camera, tileSize, "tall");
     // ── Effect indicators ──
     if (this.effectSystem) {
       this._drawEffectIndicators(entities);
@@ -286,40 +296,64 @@ export class Renderer {
     this._drawQuickSlots();
     this._drawBagIcon();
     this.combatLog?.draw(ctx, ctx.canvas.width, ctx.canvas.height);
+
+    this._drawMinimap(entities);
+    if (this.paused) this._drawPauseMenu();
   }
   // ── Town overlays ─────────────────────────────────────────────────────────
   _drawTownOverlays(world, camera, tileSize) {
     if (!world) return;
     const { ctx } = this;
-    // Overworld: draw town entry markers + name labels
+
     if (world.type !== "town") {
+      // ── Overworld: draw town markers ──
       const towns = world._raw?.towns ?? world.towns ?? [];
       for (const town of towns) {
         const { sx, sy } = camera.worldToScreen(town.x, town.y);
-        // Skip if off-screen
         if (sx < -tileSize || sy < -tileSize ||
             sx > ctx.canvas.width + tileSize ||
             sy > ctx.canvas.height + tileSize) continue;
-        // Green town marker
         ctx.fillStyle   = "rgba(20, 60, 20, 0.75)";
         ctx.strokeStyle = "#44cc44";
         ctx.lineWidth   = 1.5;
         ctx.fillRect(sx, sy, tileSize, tileSize);
         ctx.strokeRect(sx, sy, tileSize, tileSize);
         ctx.lineWidth = 1;
-        // Town icon
         ctx.font      = "10px monospace";
         ctx.textAlign = "center";
         ctx.fillText("🏰", sx + tileSize / 2, sy + tileSize / 2 + 3);
-        // Town name label above
         ctx.fillStyle = "#88ee88";
         ctx.font      = "8px monospace";
         ctx.fillText(town.name, sx + tileSize / 2, sy - 2);
         ctx.textAlign = "left";
       }
+
+      // ── Overworld: draw dungeon portal markers ──
+      const portals = world._raw?.portals ?? world.portals ?? [];
+      for (const portal of portals) {
+        const { sx, sy } = camera.worldToScreen(portal.x, portal.y);
+        if (sx < -tileSize || sy < -tileSize ||
+            sx > ctx.canvas.width + tileSize ||
+            sy > ctx.canvas.height + tileSize) continue;
+        const pulse = 0.5 + 0.3 * Math.sin(Date.now() * 0.004);
+        ctx.fillStyle   = `rgba(80, 30, 140, ${pulse})`;
+        ctx.strokeStyle = "#aa55ff";
+        ctx.lineWidth   = 1.5;
+        ctx.fillRect(sx, sy, tileSize, tileSize);
+        ctx.strokeRect(sx, sy, tileSize, tileSize);
+        ctx.lineWidth = 1;
+        ctx.font      = "10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("🌀", sx + tileSize / 2, sy + tileSize / 2 + 3);
+        ctx.fillStyle = "#cc99ff";
+        ctx.font      = "8px monospace";
+        ctx.fillText(portal.name ?? portal.campaignId, sx + tileSize / 2, sy - 2);
+        ctx.textAlign = "left";
+      }
       return;
     }
-    // Town map: draw pulsing exit markers
+
+    // ── Town/dungeon map: draw pulsing exit markers ──
     for (const exit of (world.exits ?? [])) {
       const { sx, sy } = camera.worldToScreen(exit.x, exit.y);
       if (sx < -tileSize || sy < -tileSize ||
@@ -671,6 +705,271 @@ export class Renderer {
       }
     }
   }
+  // ── Decoration Layer ─────────────────────────────────────────────────────
+
+  /**
+   * Draw decoration props for the given zOrder pass.
+   * Decorations live in world.decorations[] (stored in Supabase world JSON):
+   *   { src, x, y, w, h, zOrder }
+   *   src     — filename in src/assets/decorations/ (e.g. "giant_oak.png")
+   *   x, y    — world tile position (top-left corner of the prop)
+   *   w, h    — size in tiles (default 1×1)
+   *   zOrder  — "ground" (player in front) or "tall" (player behind)
+   */
+  _drawDecorations(world, camera, tileSize, zOrder) {
+    const decorations = world?._raw?.decorations ?? world?.decorations ?? [];
+    if (!decorations.length) return;
+    const { ctx } = this;
+
+    for (const dec of decorations) {
+      if ((dec.zOrder ?? "ground") !== zOrder) continue;
+
+      const w = dec.w ?? 1;
+      const h = dec.h ?? 1;
+
+      // Frustum cull — skip if entirely off screen
+      const { sx, sy } = camera.worldToScreen(dec.x, dec.y);
+      const drawW = w * tileSize;
+      const drawH = h * tileSize;
+      if (sx + drawW < 0 || sy + drawH < 0 ||
+          sx > ctx.canvas.width || sy > ctx.canvas.height) continue;
+
+      const img = this._getDecorationImg(dec.src);
+      if (!img) continue; // still loading
+
+      ctx.drawImage(img, sx, sy, drawW, drawH);
+    }
+  }
+
+  /** Load and cache a decoration image. Returns null while loading. */
+  _getDecorationImg(src) {
+    if (this._decorationImgs[src]) return this._decorationImgs[src];
+
+    // Mark as loading so we don't spawn duplicate requests
+    this._decorationImgs[src] = null;
+    const img = new Image();
+    img.src = `./src/assets/decorations/${src}`;
+    img.onload  = () => { this._decorationImgs[src] = img; };
+    img.onerror = () => {
+      console.warn(`[Renderer] Decoration not found: ${src}`);
+      // Use a sentinel so we don't retry every frame
+      this._decorationImgs[src] = undefined;
+    };
+    return null;
+  }
+
+  // ── Minimap ───────────────────────────────────────────────────────────────
+  _drawMinimap(entities) {
+    const world = this.currentWorld;
+    if (!world || !this.player) return;
+    const { ctx } = this;
+
+    // Fixed 192px (8 × 24px standard tile size) — never scales with zoom
+    const tileSize  = this.camera.tileSize;
+    const mapPx     = 192;
+    const padding   = 10;
+    const mx        = padding;           // top-left X
+    const my        = padding;           // top-left Y
+
+    // ── Rebuild offscreen terrain canvas when world changes ──
+    if (this._minimapWorld !== world) {
+      this._minimapWorld  = world;
+      this._minimapCanvas = this._buildMinimapTerrain(world, mapPx);
+    }
+
+    // ── Panel background ──
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.strokeStyle = "rgba(100,100,140,0.6)";
+    ctx.lineWidth = 1.5;
+    this._roundRect(mx - 3, my - 3, mapPx + 6, mapPx + 6, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // ── Draw cached terrain ──
+    if (this._minimapCanvas) {
+      ctx.drawImage(this._minimapCanvas, mx, my, mapPx, mapPx);
+    }
+
+    // Scale factors: world tile → minimap pixel
+    const scaleX = mapPx / world.width;
+    const scaleY = mapPx / world.height;
+
+    // ── Towns ──
+    const towns = world._raw?.towns ?? world.towns ?? [];
+    for (const t of towns) {
+      const tx = mx + t.x * scaleX;
+      const ty = my + t.y * scaleY;
+      ctx.fillStyle = "#44cc44";
+      ctx.beginPath();
+      ctx.arc(tx, ty, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── Portals ──
+    const portals = world._raw?.portals ?? world.portals ?? [];
+    for (const p of portals) {
+      const px = mx + p.x * scaleX;
+      const py = my + p.y * scaleY;
+      ctx.fillStyle = "#aa55ff";
+      ctx.beginPath();
+      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── NPCs ──
+    for (const e of entities) {
+      if (e.type !== "npc" || e.dead) continue;
+      const ex = mx + e.x * scaleX;
+      const ey = my + e.y * scaleY;
+      ctx.fillStyle = e.state === "alert" ? "#ff4444" : "#cc8844";
+      ctx.fillRect(ex - 1, ey - 1, 2, 2);
+    }
+
+    // ── Player ──
+    const px = mx + this.player.x * scaleX;
+    const py = my + this.player.y * scaleY;
+    // Viewport rect
+    const vpW = (this.canvas.width  / tileSize) * scaleX;
+    const vpH = (this.canvas.height / tileSize) * scaleY;
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth   = 0.5;
+    ctx.strokeRect(px - vpW/2, py - vpH/2, vpW, vpH);
+    ctx.lineWidth   = 1;
+    // Player dot
+    ctx.fillStyle   = "#ffffff";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // ── Border ──
+    ctx.strokeStyle = "rgba(120,120,180,0.5)";
+    ctx.strokeRect(mx, my, mapPx, mapPx);
+  }
+
+  /** Build an offscreen canvas with terrain colours — only rebuilt on world change */
+  _buildMinimapTerrain(world, mapPx) {
+    const c   = document.createElement("canvas");
+    c.width   = mapPx;
+    c.height  = mapPx;
+    const ctx = c.getContext("2d");
+
+    // Terrain colour palette keyed by tile ID
+    const COLORS = {
+      0:  "#2d5a24",  // grass
+      1:  "#163a12",  // forest
+      2:  "#4a3e2e",  // mountain
+      3:  "#0f2a4a",  // deep water
+      4:  "#1a4a6a",  // shallow water
+      5:  "#a07818",  // town tile
+      6:  "#4a1010",  // danger
+      7:  "#b89858",  // sand
+      8:  "#111118",  // wall
+      9:  "#1e1810",  // floor
+      12: "#6b3e10",  // door
+      13: "#9a7818",  // chest
+      14: "#602090",  // portal tile
+      15: "#0a2a14",  // jungle
+      20: "#4a4038",  // town floor
+      21: "#141008",  // town wall
+      27: "#6b4a2e",  // road dirt
+      28: "#5a5d62",  // road stone
+      29: "#111118",  // road obsidian
+      33: "#3a2810",  // road bridge
+    };
+
+    const sw = mapPx / world.width;   // screen pixels per world tile
+    const sh = mapPx / world.height;
+
+    for (let y = 0; y < world.height; y++) {
+      for (let x = 0; x < world.width; x++) {
+        const tileId = world.getTile(x, y);
+        ctx.fillStyle = COLORS[tileId] ?? "#1a1a2a";
+        ctx.fillRect(
+          Math.floor(x * sw),
+          Math.floor(y * sh),
+          Math.ceil(sw) + 1,
+          Math.ceil(sh) + 1
+        );
+      }
+    }
+    return c;
+  }
+
+  // ── Pause Menu ────────────────────────────────────────────────────────────
+  _drawPauseMenu() {
+    const { ctx } = this;
+    const cw = ctx.canvas.width;
+    const ch = ctx.canvas.height;
+
+    // Dim overlay
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Panel
+    const pw = 280, ph = 240;
+    const px = (cw - pw) / 2;
+    const py = (ch - ph) / 2;
+
+    ctx.fillStyle = "rgba(10,10,25,0.97)";
+    this._roundRect(px, py, pw, ph, 14);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(120,120,180,0.7)";
+    ctx.lineWidth = 2;
+    this._roundRect(px, py, pw, ph, 14);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Title
+    ctx.fillStyle = "#e8c84a";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("⚙  MENU", cw / 2, py + 38);
+
+    // Divider
+    ctx.strokeStyle = "rgba(120,120,180,0.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 20, py + 50);
+    ctx.lineTo(px + pw - 20, py + 50);
+    ctx.stroke();
+
+    const buttons = this.getPauseMenuButtons();
+    const labels  = { resume: "▶  Return to Game", save: "💾  Save Game", quit: "🚪  Leave Game" };
+    for (const btn of buttons) {
+      ctx.fillStyle   = "rgba(30,30,55,0.9)";
+      ctx.strokeStyle = btn.id === "quit" ? "rgba(180,60,60,0.6)" : "rgba(100,100,160,0.5)";
+      ctx.lineWidth   = 1.5;
+      this._roundRect(btn.x, btn.y, btn.w, btn.h, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.lineWidth  = 1;
+      ctx.fillStyle  = btn.id === "quit" ? "#ff8888" : "#ddddee";
+      ctx.font       = "bold 12px monospace";
+      ctx.textAlign  = "center";
+      ctx.fillText(labels[btn.id], btn.x + btn.w / 2, btn.y + btn.h / 2 + 5);
+    }
+    ctx.textAlign = "left";
+  }
+
+  getPauseMenuButtons() {
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    const pw = 280, ph = 240;
+    const px = (cw - pw) / 2;
+    const py = (ch - ph) / 2;
+    const bw = pw - 40, bh = 44, bx = px + 20;
+    return [
+      { id: "resume", x: bx, y: py + 66,  w: bw, h: bh },
+      { id: "save",   x: bx, y: py + 118, w: bw, h: bh },
+      { id: "quit",   x: bx, y: py + 170, w: bw, h: bh }
+    ];
+  }
+
   _drawCooldownRing(cx, cy, slotSize, cd) {
     const { ctx } = this;
     const radius   = slotSize * 0.38;
