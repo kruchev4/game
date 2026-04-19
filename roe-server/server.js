@@ -506,6 +506,50 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      // Player transitioned to a new world without reconnecting
+      case "world_change": {
+        if (!session) break;
+        const oldWorldId = session.worldId;
+        const newWorldId = msg.worldId;
+        if (!newWorldId || newWorldId === oldWorldId) break;
+
+        // Remove from old world
+        worlds.get(oldWorldId)?.removePlayer(session.playerToken);
+        _broadcast(oldWorldId, { type: "player_left", token: session.playerToken }, session.playerToken);
+
+        // Update session
+        session.worldId   = newWorldId;
+        session.x         = msg.x ?? session.x;
+        session.y         = msg.y ?? session.y;
+        session.cooldowns = {}; // clear cooldowns on world change
+
+        // Get or create new world
+        if (!worlds.has(newWorldId)) {
+          const world = new WorldInstance(newWorldId);
+          worlds.set(newWorldId, world);
+          world.load().catch(e => console.warn(`[Server] Failed to load ${newWorldId}:`, e.message));
+        }
+        const newWorld = worlds.get(newWorldId);
+        newWorld.addPlayer(session.playerToken);
+
+        // Send NPC state for new world
+        if (newWorld.ready) {
+          const npcs = newWorld.getNPCState();
+          _send(session.ws, { type: "npc_state", npcs });
+          console.log(`[Server] world_change: ${session.name} → ${newWorldId} (${npcs.length} NPCs)`);
+        } else {
+          const poll = setInterval(() => {
+            if (newWorld.ready) {
+              clearInterval(poll);
+              const npcs = newWorld.getNPCState();
+              _send(session.ws, { type: "npc_state", npcs });
+              console.log(`[Server] world_change delayed npc_state: ${session.name} → ${newWorldId} (${npcs.length} NPCs)`);
+            }
+          }, 200);
+        }
+        break;
+      }
+
       case "state_update": {
         if (!session) break;
         if (msg.hp    !== undefined) session.hp    = msg.hp;
@@ -677,7 +721,7 @@ class WorldInstance {
         this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
       }
 
-      // Load spawn groups + monsters from local SQLite DB (sync)
+      // Load spawn groups + monsters from local DB (sync)
       const groups = loadSpawnGroups(this.worldId);
 
       for (const { group, monsters } of groups) {
@@ -687,9 +731,11 @@ class WorldInstance {
             console.warn(`[Server] Unknown monster_id: ${m.monster_id}`);
             continue;
           }
+
           const roamRadius = m.roam_radius ?? def.roamRadius;
           const isBoss     = m.is_boss     ?? def.isBoss;
           const id         = `${m.monster_id}_${m.x}_${m.y}`;
+
           this.npcs.set(id, {
             id,
             monsterId:   m.monster_id,
@@ -710,60 +756,15 @@ class WorldInstance {
             xpValue:     def.xpValue,
             isBoss,
             state:       "roaming",
-            target:      null,
-            threat:      {},
+            target:      null,   // playerToken of current aggro target
+            threat:      {},     // playerToken -> threat value
             dead:        false,
             actionTimer: 1000 + Math.random() * 2000,
             moveTimer:   Math.random() * 1000,
+            // Respawn support
             respawnSecs: group.respawn_seconds ?? null,
             deadAt:      null
           });
-        }
-      }
-
-      // If no SQLite spawn groups found, check world JSON spawns[] array.
-      // This handles dungeons like goblin_warrens that store spawns in Supabase.
-      if (this.npcs.size === 0 && rows?.length) {
-        const data   = rows[0].json;
-        const spawns = data.spawns ?? [];
-        for (const s of spawns) {
-          const def = monsterDefs.get(s.monsterId);
-          if (!def) {
-            console.warn(`[Server] Unknown monsterId in world JSON: ${s.monsterId}`);
-            continue;
-          }
-          const id = `${s.monsterId}_${s.x}_${s.y}`;
-          this.npcs.set(id, {
-            id,
-            monsterId:   s.monsterId,
-            name:        def.name,
-            icon:        def.icon,
-            x:           s.x,
-            y:           s.y,
-            homeX:       s.x,
-            homeY:       s.y,
-            hp:          def.hp,
-            maxHp:       def.hp,
-            damageMin:   def.damageMin,
-            damageMax:   def.damageMax,
-            speed:       def.speed,
-            perception:  def.perception,
-            attackRange: def.attackRange ?? 1,
-            roamRadius:  s.roamRadius ?? def.roamRadius ?? 3,
-            xpValue:     def.xpValue,
-            isBoss:      s.isBoss ?? def.isBoss ?? false,
-            state:       "roaming",
-            target:      null,
-            threat:      {},
-            dead:        false,
-            actionTimer: 1000 + Math.random() * 2000,
-            moveTimer:   Math.random() * 1000,
-            respawnSecs: null,
-            deadAt:      null
-          });
-        }
-        if (this.npcs.size > 0) {
-          console.log(`[Server] Loaded ${this.npcs.size} NPCs from world JSON spawns[] for ${this.worldId}`);
         }
       }
 
