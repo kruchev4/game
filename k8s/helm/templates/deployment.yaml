@@ -22,6 +22,10 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: SERVER_NAME
+              value: "Garflak"
+            - name: SERVER_URL
+              value: "wss://echoes.garflak.com"
             - name: SUPABASE_URL
               valueFrom:
                 secretKeyRef:

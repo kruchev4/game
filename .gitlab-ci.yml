@@ -1,4 +1,5 @@
 stages:
+  - deploy
   - build
 
 variables:
@@ -25,3 +26,14 @@ build-image:
   tags:
     - docker
     - linux
+
+deploy-frontend-cloudflare:
+  stage: deploy
+  image: node:20-alpine
+  script:
+    - npm install -g wrangler
+    - wrangler pages deploy . --project-name=realm-of-echoes
+  environment:
+    name: production
+  only:
+    - main
