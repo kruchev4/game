@@ -27,7 +27,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.S
 
 const TICK_MS              = 50;   // 20 ticks/sec
 const STALE_MS             = 900000; // 15 minutes
-const NPC_BROADCAST_TICKS  = 2;    // broadcast NPC state every N ticks
+const NPC_BROADCAST_TICKS  = 10;   // broadcast NPC state every 500ms (was 2=100ms, too spammy)
 const PING_INTERVAL_MS     = 10000;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
