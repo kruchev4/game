@@ -1,83 +1,74 @@
 /**
  * TownWorldProvider.js
  *
- * Loads town and dungeon world JSON from Supabase worlds table.
- * Falls back to local JSON files if Supabase fails.
+ * Loads town and dungeon worlds from Supabase (worlds table).
+ * Supabase is the single source of truth — no local JSON fallback.
+ * Implements the same interface as SupabaseOverworldProvider.
  */
 
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config/supabaseConfig.js";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export class TownWorldProvider {
   async load(worldId) {
-    // Try Supabase first
-    try {
-      const { data, error } = await supabase
-        .from("worlds")
-        .select("json")
-        .eq("id", worldId)
-        .single();
+    const { data, error } = await supabase
+      .from("worlds")
+      .select("json")
+      .eq("id", worldId)
+      .single();
 
-      if (error) throw error;
-      if (!data?.json) throw new Error(`No world data for ${worldId}`);
-
-      console.log(`[TownWorldProvider] Loaded ${worldId} from Supabase`);
-      return this._buildWorld(data.json);
-    } catch (e) {
-      console.warn(`[TownWorldProvider] Supabase failed (${e.message}), trying local...`);
+    if (error || !data) {
+      throw new Error(`[TownWorldProvider] World "${worldId}" not found in Supabase: ${error?.message ?? "no data"}`);
     }
 
-    // Fall back to local JSON files
-    const isTown   = worldId.startsWith("town_");
-    const basePath = isTown ? "./src/data/towns/" : "./src/data/dungeons/";
-    const res      = await fetch(`${basePath}${worldId}.json`);
-    if (!res.ok) throw new Error(`[TownWorldProvider] Failed to load ${worldId}: ${res.status}`);
-
-    const data = await res.json();
-    console.log(`[TownWorldProvider] Loaded ${worldId} from local file`);
-    return this._buildWorld(data);
+    // json column may be stored as a string in older rows
+    const raw = typeof data.json === "string" ? JSON.parse(data.json) : data.json;
+    return this._buildWorld(raw);
   }
 
   _buildWorld(data) {
     const width  = data.width;
     const height = data.height;
-
-    // Handle flat array or 2D array tiles
     const tileArray = new Uint8Array(width * height);
+
     if (Array.isArray(data.tiles)) {
-      if (Array.isArray(data.tiles[0])) {
-        // 2D array
+      // Support both flat arrays [t0,t1,...] and row arrays [[t0,t1],[t2,t3],...]
+      const firstEl = data.tiles[0];
+      if (Array.isArray(firstEl) || typeof firstEl === "string") {
+        // Row-based format
         data.tiles.forEach((row, y) => {
-          row.forEach((tileId, x) => {
+          const values = typeof row === "string"
+            ? row.split(",").map(Number)
+            : row;
+          values.forEach((tileId, x) => {
             if (x < width && y < height) tileArray[y * width + x] = tileId;
           });
         });
       } else {
-        // Flat array
+        // Flat format — standard for dungeon/town JSONs
         data.tiles.forEach((tileId, i) => { tileArray[i] = tileId; });
       }
     }
 
     return {
       id:            data.id,
-      type:          data.type          ?? "dungeon",
-      name:          data.name          ?? data.id,
+      type:          data.type ?? "dungeon",
+      name:          data.name ?? data.id,
       width,
       height,
       meta:          data.meta          ?? {},
       exits:         data.exits         ?? [],
-      npcs:          data.npcs          ?? [],
-      friendlyNPCs:  data.npcs          ?? [],
+      friendlyNPCs:  data.friendlyNPCs  ?? [],
       shopInventory: data.shopInventory ?? [],
       spawnGroups:   data.spawnGroups   ?? [],
-      spawns:        data.spawns        ?? [],
+      spawns:        data.spawns         ?? [],
+      decorations:   data.decorations    ?? [],
       boss:          data.boss          ?? null,
       rooms:         data.rooms         ?? [],
-      towns:         data.towns         ?? [],
-      portals:       data.portals       ?? [],
       entryPoint:    data.entryPoint    ?? { x: Math.floor(width/2), y: Math.floor(height/2) },
+      capitol:       data.entryPoint    ?? { x: Math.floor(width/2), y: Math.floor(height/2) },
       _raw:          data,
 
       getTile(x, y) {

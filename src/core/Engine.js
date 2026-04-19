@@ -19,6 +19,8 @@ import { DeathScreen }         from "../ui/DeathScreen.js";
 import { LootWindow }          from "../ui/LootWindow.js";
 import { InventoryWindow }     from "../ui/InventoryWindow.js";
 import { LevelUpWindow }       from "../ui/LevelUpWindow.js";
+import { CharacterSheet }      from "../ui/CharacterSheet.js";
+import { AbilityPickWindow }   from "../ui/AbilityPickWindow.js";
 import { InnWindow }           from "../ui/InnWindow.js";
 import { ShopWindow }          from "../ui/ShopWindow.js";
 import { TownNPCWindow }       from "../ui/TownNPCWindow.js";
@@ -62,7 +64,9 @@ export class Engine {
     this.effectSystem      = null;
     this._inventoryWindow = null;
     this._lootWindow      = null;
-    this._levelUpWindow   = null;
+    this._levelUpWindow    = null;
+    this._charSheet        = null;
+    this._abilityPickWindow = null;
     this._townNPCWindow   = null;
 
     // World transition state
@@ -79,6 +83,9 @@ export class Engine {
 
     this.onQuitToTitle = null;
 
+    // Pause menu
+    this._paused = false;
+
     // Fallback class for testing only — overridden by character data
     this._playerClassId = null;
   }
@@ -88,31 +95,23 @@ export class Engine {
   // ─────────────────────────────────────────────
 
   async _loadData() {
-    // Use pre-loaded data from Supabase if available (set by main.js)
-    // Fall back to local JSON files
-    const [lootRes, skillsRes, spawnRes] = await Promise.all([
-      fetch("./src/data/loot.json").catch(() => null),
+    const [abilitiesRes, classesRes, itemsRes, skillsRes, spawnRes] = await Promise.all([
+      fetch("./src/data/abilities.json"),
+      fetch("./src/data/classes.json"),
+      fetch("./src/data/items.json"),
       fetch("./src/data/skills.json"),
       fetch("./src/data/spawnGroups.json").catch(() => null)
     ]);
+    if (!abilitiesRes.ok) throw new Error("Failed to load abilities.json");
+    if (!classesRes.ok)   throw new Error("Failed to load classes.json");
+    if (!itemsRes.ok)     throw new Error("Failed to load items.json");
+    if (!skillsRes.ok)    throw new Error("Failed to load skills.json");
 
-    // Abilities and classes come from Supabase via main.js
-    if (!this._abilities) {
-      const r = await fetch("./src/data/abilities.json");
-      this._abilities = await r.json();
-    }
-    if (!this._classes) {
-      const r = await fetch("./src/data/classes.json");
-      this._classes = await r.json();
-    }
-    // Items always load from local JSON — Supabase items lack icon/onUse data
-    {
-      const r = await fetch("./src/data/items.json");
-      this._itemDefs = r.ok ? await r.json() : {};
-    }
-
-    this._lootTables = lootRes?.ok  ? await lootRes.json()  : {};
-    this._skills     = skillsRes.ok ? await skillsRes.json() : {};
+    this._abilities  = await abilitiesRes.json();
+    this._classes    = await classesRes.json();
+    this._itemDefs   = await itemsRes.json();
+    this._skills     = await skillsRes.json();
+    // loot.json removed — server rolls all loot via Supabase loot tables
     this._spawnData  = spawnRes?.ok ? await spawnRes.json()
                      : { spawnGroups: [], randomEncounters: { enabled: false } };
 
@@ -142,6 +141,24 @@ export class Engine {
     this._spawnPlayer();
     this._buildSystems();
     this._initSpawnSystem();
+
+    // Create UI overlays once — they inject a single DOM element each
+    // and must not be recreated on world transitions (_buildSystems is called each time)
+    if (!this._charSheet) {
+      this._charSheet = new CharacterSheet({
+        player:    this.player,
+        abilities: this._abilities,
+        classes:   this._classes,
+        itemDefs:  this._itemDefs,
+        skills:    this._skills
+      });
+    }
+    if (!this._abilityPickWindow) {
+      this._abilityPickWindow = new AbilityPickWindow();
+      this._abilityPickWindow.onPick    = (id) => this._learnAbility(id);
+      this._abilityPickWindow.onUpgrade = (id) => this._upgradeAbility(id);
+    }
+
     this._bindInput();
   }
 
@@ -198,6 +215,8 @@ export class Engine {
     this.player.dead     = false;
 
     this._buildSystems();
+    // Update charSheet player reference after world transition
+    this._charSheet?.setPlayer(this.player);
 
     if (isTown) {
       this._initTownSystem();
@@ -209,12 +228,43 @@ export class Engine {
 
     // Re-center camera
     this.renderer.camera.centerOn(x, y, this.world);
+  }
 
-    // Update HUD minimap with new world
-    if (this.renderer._hud) {
-      this.renderer._hud.setWorld(this.world);
-      this.renderer._overlayWorld = null; // force overlay rebuild
+  /**
+   * Transition to a town or dungeon, resolving entry point from world data.
+   * entryX/entryY are optional hints from the overworld JSON object.
+   * If absent, loads the target world to read its entryPoint field.
+   * This means no coordinates ever need to be hardcoded in Engine.
+   */
+  async _transitionToWorld({ targetWorld, entryX, entryY, returnWorld, returnX, returnY }) {
+    // Explicit entry coords in the JSON — use them directly
+    if (entryX != null && entryY != null) {
+      return this.transition({
+        targetWorld, targetX: entryX, targetY: entryY,
+        returnWorld, returnX, returnY
+      }).catch(err => console.warn(`[Engine] ${targetWorld} not found:`, err.message));
     }
+
+    // No entry coords — load the world to find its entryPoint
+    const isTown    = targetWorld.startsWith("town_");
+    const isDungeon = !isTown && !targetWorld.startsWith("overworld_");
+    let loaded = null;
+    if (isTown || isDungeon) {
+      try {
+        loaded = await new TownWorldProvider().load(targetWorld);
+      } catch (err) {
+        console.warn(`[Engine] Could not pre-load ${targetWorld}:`, err.message);
+      }
+    }
+
+    // Priority: world.entryPoint > world center
+    const tx = loaded?.entryPoint?.x ?? Math.floor((loaded?.width  ?? 20) / 2);
+    const ty = loaded?.entryPoint?.y ?? Math.floor((loaded?.height ?? 20) / 2);
+
+    return this.transition({
+      targetWorld, targetX: tx, targetY: ty,
+      returnWorld, returnX, returnY
+    }).catch(err => console.warn(`[Engine] ${targetWorld} not found:`, err.message));
   }
 
   /** Return to the previous world (pop from return stack) */
@@ -276,7 +326,13 @@ export class Engine {
       this.player.name        = char?.name ?? "Hero";
       this.player.classId     = classId;
       this.player.icon        = classDef.icon ?? "🧙";
-      this.player.abilities   = classDef.abilities ?? [];
+      const savedAbilities = char?.abilities ?? [];
+      if (savedAbilities.length) {
+        this.player.abilities = savedAbilities;
+      } else {
+        const basicAttack = classDef.basicAttack ?? classDef.abilities?.[0];
+        this.player.abilities = basicAttack ? [basicAttack] : [];
+      }
       this.player.actionSpeed = classDef.actionSpeed;
       this.player.actionTimer = classDef.actionSpeed;
 
@@ -324,7 +380,7 @@ export class Engine {
   _initDungeonSpawns() {
     const world = this.world;
 
-    // Reuse TownSystem for exit detection
+    // Reuse TownSystem for exit detection (dungeons have same exits[] format)
     this.townSystem = new TownSystem({
       townData: world,
       world,
@@ -333,49 +389,50 @@ export class Engine {
       onExit:   (exit) => this._exitTown(exit)
     });
 
-    // Support both flat spawns[] and spawnGroups[] formats
-    const spawnList = world.spawns?.length
-      ? world.spawns
-      : (world.spawnGroups ?? []).flatMap(g => g.monsters ?? []);
+    // Normalise to a flat list of spawn defs — support both formats:
+    //   Old: spawnGroups: [{ monsters: [{ classId, x, y }] }]
+    //   New: spawns: [{ monsterId, x, y, roamRadius, isBoss }]
+    const flatSpawns = [];
+    if (world.spawnGroups?.length) {
+      for (const group of world.spawnGroups) {
+        for (const m of (group.monsters ?? [])) {
+          flatSpawns.push({ classId: m.classId, x: m.x, y: m.y,
+                            roamRadius: m.roamRadius, isBoss: false });
+        }
+      }
+    } else if (world.spawns?.length) {
+      for (const s of world.spawns) {
+        flatSpawns.push({ classId: s.monsterId, x: s.x, y: s.y,
+                          roamRadius: s.roamRadius, isBoss: s.isBoss ?? false });
+      }
+    }
 
-    for (const monDef of spawnList) {
-      const monsterId = monDef.monsterId ?? monDef.classId;
-      // Look up monster def from loaded monster data
-      const monsterData = this._monsterDefs?.get?.(monsterId);
-      const classDef    = monsterData
-        ? {
-            name:       monsterData.name,
-            icon:       monsterData.icon,
-            baseStats:  { hp: monsterData.hp },
-            damageMin:  monsterData.damageMin,
-            damageMax:  monsterData.damageMax,
-            speed:      monsterData.speed,
-            perception: monsterData.perception,
-            attackRange:monsterData.attackRange,
-            xpValue:    monsterData.xpValue,
-          }
-        : this._classes[monsterId];
-
+    for (const monDef of flatSpawns) {
+      const classDef = this._classes[monDef.classId];
       if (!classDef) {
-        console.warn(`[Engine] Unknown dungeon monster: ${monsterId}`);
+        console.warn(`[Engine] Unknown dungeon classId: ${monDef.classId}`);
         continue;
       }
 
       let pos;
-      try { pos = findNearestWalkable(world, monDef.x, monDef.y, 3); }
-      catch { continue; }
+      try {
+        pos = findNearestWalkable(world, monDef.x, monDef.y, 3);
+      } catch { continue; }
 
       const npc = new NPC({
-        id:         `${monsterId}_${pos.x}_${pos.y}`,
-        classId:    monsterId,
-        classDef:   { ...classDef, icon: monDef.icon ?? classDef.icon },
+        id:         `${monDef.classId}_${pos.x}_${pos.y}`,
+        classId:    monDef.classId,
+        classDef,
         x:          pos.x,
         y:          pos.y,
         roamCenter: { x: pos.x, y: pos.y },
-        roamRadius: monDef.roamRadius ?? 3
+        roamRadius: monDef.roamRadius ?? classDef.roamRadius ?? 3
       });
-      npc.isBoss = monDef.isBoss ?? false;
-      if (npc.isBoss) npc.name = monDef.name ?? classDef.name ?? monsterId;
+
+      if (monDef.isBoss) {
+        npc.isBoss = true;
+        npc.name   = classDef.name;
+      }
 
       this.npcs.push(npc);
       this.entities.push(npc);
@@ -542,7 +599,6 @@ export class Engine {
     // Loot system
     this.lootSystem = new LootSystem({
       player,
-      lootTables: this._lootTables,
       itemDefs:   this._itemDefs,
       onCorpseSpawn:  (corpse) => {
         this.entities.push(corpse);
@@ -578,11 +634,8 @@ export class Engine {
       this._syncAbilityBar();
     };
 
-    // Push player abilities and item defs to renderer for HUD
+    // Push player abilities to renderer (only what player has learned)
     const classDef = this._classes[this._playerClassId];
-    renderer.playerAbilities = (classDef?.abilities ?? [])
-      .map(id => this._abilities[id])
-      .filter(Boolean);
     renderer.abilities     = this._abilities;
     renderer.itemDefs      = this._itemDefs;
     renderer.currentTarget = null;
@@ -590,16 +643,6 @@ export class Engine {
 
     this.combatLog     = new CombatLog();
     renderer.combatLog = this.combatLog;
-
-    // If using IsoAdapter, bridge combat log to HUD
-    if (renderer._hud) {
-      const hud     = renderer._hud;
-      const origPush = this.combatLog.push.bind(this.combatLog);
-      this.combatLog.push = (entry) => {
-        origPush(entry);
-        hud.pushLog(entry.text, entry.type);
-      };
-    }
 
     // Inventory window (created once, shown/hidden)
     this._inventoryWindow = new InventoryWindow({
@@ -644,28 +687,21 @@ export class Engine {
     window.addEventListener("keydown", (e) => {
       const key = e.key.toLowerCase();
 
-      // Ability slots 1-4
+      // Ability slots 1-6
       const slot = parseInt(e.key) - 1;
-      if (slot >= 0 && slot <= 3) { this._useAbilitySlot(slot); return; }
+      if (slot >= 0 && slot <= 5) { this._useAbilitySlot(slot); return; }
 
-      // Quick slots 5-8
-      if (slot >= 4 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 4); return; }
+      // Quick slots 7-8
+      if (slot >= 6 && slot <= 7) { this.lootSystem?.useQuickSlot(slot - 6); return; }
 
       // Inventory toggle
       if (key === "i") { this._inventoryWindow?.toggle(); return; }
 
-      // Tab — cycle through nearby targets
-      if (e.key === "Tab") {
-        e.preventDefault();
-        this._cycleTarget();
-        return;
-      }
+      // Character sheet
+      if (key === "c") { this._charSheet?.toggle(); return; }
 
-      // Escape — clear target
-      if (e.key === "Escape") {
-        this._setTarget(null);
-        return;
-      }
+      // Pause menu
+      if (e.key === "Escape") { e.preventDefault(); this._togglePauseMenu(); return; }
 
       // Manual save — F5
       if (e.key === "F5") {
@@ -697,6 +733,9 @@ export class Engine {
       const px     = (e.clientX - rect.left) * scaleX;
       const py     = (e.clientY - rect.top)  * scaleY;
 
+      // Pause menu intercepts all clicks when open
+      if (this._paused) { this._handlePauseMenuClick(px, py); return; }
+
       // Ability bar slot click
       const abilitySlot = this.renderer.getAbilitySlotAt(px, py);
       if (abilitySlot >= 0) { this._useAbilitySlot(abilitySlot); return; }
@@ -721,45 +760,45 @@ export class Engine {
         if (hit) return;
       }
 
-      // Town portal click — overworld only
+      // Town + dungeon portal clicks — fully data-driven from world JSON.
+      // No coords hardcoded here. Entry point comes from:
+      //   1. entryX/entryY on the town/portal object in the overworld JSON
+      //   2. entryPoint field on the target world itself (read after load)
+      //   3. Near-center of the target world as final fallback
       if (!this.townSystem && this.world?.type !== "town") {
-        const towns = this.world?._raw?.towns ?? this.world?.towns ?? [];
+        const towns   = this.world?._raw?.towns   ?? this.world?.towns   ?? [];
+        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
+
+        // ── Town click ──
         const clickedTown = towns.find(t =>
-          Math.abs(t.x - worldTile.x) <= 2 && Math.abs(t.y - worldTile.y) <= 2
+          Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
         );
-        if (towns.length > 0) {
-          console.log(`[Engine] Click at (${worldTile.x},${worldTile.y}), towns: ${towns.map(t=>`${t.name}(${t.x},${t.y})`).join(", ")}, hit: ${clickedTown?.name ?? "none"}`);
-        }
         if (clickedTown) {
-          const townId = "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
-          this.transition({
-            targetWorld:  townId,
-            targetX:      19,  // Millhaven north entrance
-            targetY:      1,   // row 1 inside north entrance
-            returnWorld:  this._currentWorldId,
-            returnX:      clickedTown.x,
-            returnY:      clickedTown.y
-          }).catch(err => {
-            console.warn(`[Engine] Town ${townId} not found:`, err.message);
+          const townId = clickedTown.worldId
+            ?? "town_" + clickedTown.name.toLowerCase().replace(/\s+/g, "_");
+          this._transitionToWorld({
+            targetWorld: townId,
+            entryX: clickedTown.entryX ?? null,
+            entryY: clickedTown.entryY ?? null,
+            returnWorld: this._currentWorldId,
+            returnX: clickedTown.x,
+            returnY: clickedTown.y
           });
           return;
         }
 
-        // Dungeon portal click
-        const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
+        // ── Dungeon portal click ──
         const clickedPortal = portals.find(p =>
-          Math.abs(p.x - worldTile.x) <= 2 && Math.abs(p.y - worldTile.y) <= 2
+          Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
         );
         if (clickedPortal) {
-          this.transition({
+          this._transitionToWorld({
             targetWorld: clickedPortal.campaignId,
-            targetX:     15,
-            targetY:     36,
+            entryX: clickedPortal.entryX ?? null,
+            entryY: clickedPortal.entryY ?? null,
             returnWorld: this._currentWorldId,
-            returnX:     clickedPortal.x,
-            returnY:     clickedPortal.y
-          }).catch(err => {
-            console.warn(`[Engine] Dungeon ${clickedPortal.campaignId} not found:`, err.message);
+            returnX: clickedPortal.x,
+            returnY: clickedPortal.y
           });
           return;
         }
@@ -806,33 +845,16 @@ export class Engine {
   // TARGETING
   // ─────────────────────────────────────────────
 
-  _cycleTarget() {
-    // Include town NPCs for targeting
-    const townNPCs = this.townSystem?.npcs ?? [];
-    const liveNPCs = [...this.npcs.filter(n => !n.dead), ...townNPCs];
-    if (!liveNPCs.length) return;
-
-    // Sort by distance from player
-    const sorted = [...liveNPCs].sort((a, b) => {
-      const da = Math.hypot(a.x - this.player.x, a.y - this.player.y);
-      const db = Math.hypot(b.x - this.player.x, b.y - this.player.y);
-      return da - db;
-    });
-
-    const currentIdx = sorted.findIndex(n => n.id === this._currentTarget?.id);
-    const nextIdx    = (currentIdx + 1) % sorted.length;
-    this._setTarget(sorted[nextIdx]);
-  }
-
   _setTarget(entity) {
     this._currentTarget         = entity;
     this.renderer.currentTarget = entity;
-    // Log only in debug mode to prevent console spam
-    if (entity && window._roeDebug) {
+    if (entity) {
       const label = entity.id === "player" ? "yourself"
         : entity.isRemote ? (entity.name ?? "ally")
         : entity.id;
       console.log(`[Target] ${label}`);
+    } else {
+      console.log("[Target] cleared");
     }
   }
 
@@ -1089,10 +1111,8 @@ export class Engine {
         this.entities = this.entities.filter(e => e.id !== event.target.id);
         this.npcs     = this.npcs.filter(n => n.id !== event.target.id);
         if (this._currentTarget?.id === event.target.id) this._setTarget(null);
-        // Spawn loot corpse
-        this.lootSystem?.onNPCKilled(event.target);
+        // Loot corpse spawned by server via onNPCKilled multiplayer callback
         // Award XP — only if not connected to multiplayer server
-        // When connected, server broadcasts shared XP via onNPCKilled callback
         if (event.attacker.id === "player" && !this.multiplayerSystem?._connected) {
           this.xpSystem?.awardKillXP(event.target);
         }
@@ -1228,21 +1248,14 @@ export class Engine {
       },
 
       onNPCState: (serverNPCs) => {
-        const t0 = performance.now();
         const serverIds = new Set(serverNPCs.map(n => n.id));
 
-        // Build id→npc map for O(1) lookup
-        const npcMap = new Map(this.npcs.map(n => [n.id, n]));
-
-        // Remove NPCs no longer on server — only filter if something changed
-        const prevCount = this.npcs.length;
+        // Remove NPCs no longer on server
         this.npcs     = this.npcs.filter(n => serverIds.has(n.id));
-        if (this.npcs.length !== prevCount) {
-          this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
-        }
+        this.entities = this.entities.filter(e => e.type !== "npc" || serverIds.has(e.id));
 
         for (const sNPC of serverNPCs) {
-          const existing = npcMap.get(sNPC.id);
+          const existing = this.npcs.find(n => n.id === sNPC.id);
           if (existing) {
             existing.x     = sNPC.x;
             existing.y     = sNPC.y;
@@ -1272,13 +1285,9 @@ export class Engine {
 
         // Always keep combatSystem.npcs pointing at same array as this.npcs
         if (this.combatSystem) this.combatSystem.npcs = this.npcs;
-
-        const dt = performance.now() - t0;
-        if (dt > 5) console.warn(`[NPC State] Slow: ${dt.toFixed(1)}ms for ${serverNPCs.length} NPCs`);
       },
 
       onNPCAttackPlayer: ({ npcId, damage, blocked }) => {
-        console.log(`[Engine] onNPCAttackPlayer npcId=${npcId} damage=${damage} blocked=${blocked} playerDead=${this._playerDead}`);
         if (this._playerDead) return;
         if (blocked) {
           this.combatLog?.push({ text: "Attack blocked by Divine Shield!", type: "system" });
@@ -1317,57 +1326,57 @@ export class Engine {
           this.entities = this.entities.filter(e => e.id !== npcId);
           this.npcs     = this.npcs.filter(n => n.id !== npcId);
           if (this._currentTarget?.id === npcId) this._setTarget(null);
-
-          // Spawn loot corpse with server-provided loot
-          this.lootSystem?.onNPCKilledWithLoot(npc, loot);
         }
         this.animSystem?.playDying(npcId);
 
         // XP and gold are applied via player_stat_update (server authoritative)
         // We only handle item drops and the combat log here
 
-        // Item drops handled via corpse — player must click to loot
-        // Gold already applied via player_stat_update
+        // Spawn a loot corpse using server-rolled loot — same as offline flow
+        // so player must walk up and click to loot (consistent UX)
+        if (npc && loot) {
+          this.lootSystem?.onNPCKilled(npc, loot);
+        }
 
         // Combat log
-        const isKiller = killerName === this.player.name;
-        const goldStr  = loot?.gold > 0 ? `, +${loot.gold} gold` : "";
-        const xpStr    = xpShare > 0 ? `+${xpShare} XP` : "";
+        const isKiller  = killerName === this.player.name;
+        const npcLabel  = npc
+          ? (npc.name ?? this._npcLabel(npc))
+          : npcId.replace(/_/g, " ");
+        const goldStr   = loot?.gold > 0 ? ` +${loot.gold}g` : "";
+        const xpStr     = xpShare > 0 ? ` +${xpShare} XP` : "";
+        // Item name from itemDefs so we never show raw IDs
+        const itemDef   = loot?.itemId ? this._itemDefs?.[loot.itemId] : null;
+        const itemStr   = itemDef ? ` [${itemDef.name}]` : "";
         this.combatLog?.push({
           text: isKiller
-            ? `You killed ${npcId}! ${xpStr}${goldStr}`
-            : `${killerName} killed ${npcId}! ${xpStr}${goldStr} (shared)`,
+            ? `You killed ${npcLabel}!${xpStr}${goldStr}${itemStr}`
+            : `${killerName} killed ${npcLabel}!${xpStr}${goldStr} (shared)`,
           type: "reward"
         });
       }
     });
 
     // ── New server-authoritative callbacks ────────────────────────────────
-    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold, mana, maxMana }) => {
-      if (hp      !== undefined && !isNaN(hp))      this.player.hp          = hp;
-      if (maxHp   !== undefined && !isNaN(maxHp))   this.player.maxHp       = maxHp;
-      if (xp      !== undefined && !isNaN(xp))      this.player.xp          = xp;
-      if (gold    !== undefined && !isNaN(gold))     this.player.gold         = gold;
-      if (mana    !== undefined && !isNaN(mana))     this.player.resource     = mana;
-      if (maxMana !== undefined && !isNaN(maxMana))  this.player.maxResource  = maxMana;
+    this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
+      if (hp      !== undefined) this.player.hp    = hp;
+      if (maxHp   !== undefined) this.player.maxHp = maxHp;
+      if (xp      !== undefined) this.player.xp    = xp;
+      if (gold    !== undefined) this.player.gold   = gold;
 
-      if (hp !== undefined && hp <= 0 && !this._playerDead && !this.player.invulnerable) {
+      // Don't trigger death during invulnerability window (e.g. just respawned)
+      if (hp <= 0 && !this._playerDead && !this.player.invulnerable) {
         this._onPlayerDeath();
       }
 
-      if (xp !== undefined && !isNaN(xp)) {
+      if (xp !== undefined) {
         this.xpSystem?._checkLevelUp?.();
       }
     };
 
-    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, noMana, aoe, targetsHit, heal }) => {
+    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit, heal }) => {
       if (outOfRange) {
         this.combatLog?.push({ text: "Out of range.", type: "system" });
-        return;
-      }
-      if (noMana) {
-        const def = this.player.resourceDef;
-        this.combatLog?.push({ text: `Not enough ${def?.label ?? "mana"}!`, type: "system" });
         return;
       }
 
@@ -1548,16 +1557,14 @@ export class Engine {
       case "xp_gained":
         log?.push({ text: `+${event.amount} XP`, type: "system" });
         break;
-      case "level_up":
+      case "level_up": {
         this.animSystem?.playLevelUp("player");
         log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
-        if (event.isSpecial) {
-          // Small delay so combat log shows first
-          setTimeout(() => {
-            this._levelUpWindow?.show(event.level);
-          }, 800);
+        if (event.level % 3 === 0) {
+          setTimeout(() => this._showAbilityPick(event.level), 800);
         }
         break;
+      }
       case "skill_learned":
         log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
         this._syncAbilityBar();
@@ -1572,15 +1579,49 @@ export class Engine {
     }
   }
 
-  /** Sync renderer ability bar after skill changes */
+  /** Sync renderer ability bar — slot 1 = basic attack, slots 2-6 = learned */
   _syncAbilityBar() {
-    const classSkills = this._skills?.[this._playerClassId] ?? [];
-    const skillMap    = Object.fromEntries(classSkills.map(s => [s.id, s]));
-
-    // Build ability defs from player's current abilities list
     this.renderer.playerAbilities = (this.player.abilities ?? [])
-      .map(id => skillMap[id] ?? this._abilities?.[id])
+      .slice(0, 6)
+      .map(id => this._abilities?.[id])
       .filter(Boolean);
+  }
+
+  _showAbilityPick(level) {
+    const classDef = this._classes[this._playerClassId];
+    if (!classDef) return;
+    const basicId    = classDef.basicAttack ?? classDef.abilities?.[0];
+    const poolIds    = classDef.abilityPool ?? (classDef.abilities ?? []).filter(id => id !== basicId);
+    const learnedIds = (this.player.abilities ?? []).filter(id => id !== basicId);
+    this._abilityPickWindow?.show({
+      level,
+      learnedIds,
+      poolIds,
+      abilityDefs: this._abilities,
+      upgrades:    this.player.learnedSkills ?? {}
+    });
+  }
+
+  _learnAbility(abilityId) {
+    const ab = this._abilities[abilityId];
+    if (!ab || (this.player.abilities ?? []).includes(abilityId)) return;
+    if (this.player.abilities.length >= 6) {
+      this.combatLog?.push({ text: "Ability bar full (max 6).", type: "system" }); return;
+    }
+    this.player.abilities.push(abilityId);
+    if (!this.player.learnedSkills) this.player.learnedSkills = {};
+    this.player.learnedSkills[abilityId] = 1;
+    this.combatLog?.push({ text: `✦ Learned ${ab.name}!`, type: "kill" });
+    this._syncAbilityBar();
+  }
+
+  _upgradeAbility(abilityId) {
+    const ab = this._abilities[abilityId];
+    if (!ab) return;
+    if (!this.player.learnedSkills) this.player.learnedSkills = {};
+    const rank = (this.player.learnedSkills[abilityId] ?? 1) + 1;
+    this.player.learnedSkills[abilityId] = rank;
+    this.combatLog?.push({ text: `✦ ${ab.name} upgraded to Rank ${rank}!`, type: "kill" });
   }
 
   // ─────────────────────────────────────────────
@@ -1741,6 +1782,40 @@ export class Engine {
   }
 
   // ─────────────────────────────────────────────
+  // PAUSE MENU
+  // ─────────────────────────────────────────────
+
+  _togglePauseMenu() {
+    this._paused = !this._paused;
+    this.renderer.paused = this._paused;
+  }
+
+  _handlePauseMenuClick(px, py) {
+    const buttons = this.renderer.getPauseMenuButtons();
+    for (const btn of buttons) {
+      if (px >= btn.x && px <= btn.x + btn.w && py >= btn.y && py <= btn.y + btn.h) {
+        if (btn.id === "resume") {
+          this._paused = false;
+          this.renderer.paused = false;
+        } else if (btn.id === "save") {
+          this.saveToSlot();
+          this._paused = false;
+          this.renderer.paused = false;
+        } else if (btn.id === "quit") {
+          this.saveToSlot().finally(() => {
+            this.running = false;
+            this.onQuitToTitle?.();
+          });
+        }
+        return;
+      }
+    }
+    // Click outside panel closes menu
+    this._paused = false;
+    this.renderer.paused = false;
+  }
+
+  // ─────────────────────────────────────────────
   // GAME LOOP
   // ─────────────────────────────────────────────
 
@@ -1753,39 +1828,31 @@ export class Engine {
   loop() {
     if (!this.running) return;
 
-    const t0   = performance.now();
-    const slow = 16; // ms threshold for slow frame warnings
-
-    if (!this._playerDead) {
+    if (!this._playerDead && !this._paused) {
       const serverOwnsNPCs = this.multiplayerSystem?._connected;
 
-      const t1 = performance.now();
       if (!this.townSystem && !serverOwnsNPCs) {
+        // Single player / offline — full local simulation
         this.npcPerceptionSystem?.update();
         this.npcMovementSystem?.update();
         this.combatSystem?.update();
         this.npcAISystem?.update(this.world);
       } else if (!this.townSystem && serverOwnsNPCs) {
+        // Multiplayer — server owns NPC movement and attacks
         if (this.combatSystem) this.combatSystem.multiplayerMode = true;
         this.combatSystem?.updatePlayerOnly();
       }
-      const t2 = performance.now();
 
       this.movementSystem?.update();
-      const t3 = performance.now();
-
       this.lootSystem?.update();
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
       this.animSystem?.update();
       this.effectSystem?.update();
-      const t4 = performance.now();
-
       this.multiplayerSystem?.update();
-      const t5 = performance.now();
-
       this._tickPlayerResource();
 
+      // Divine Shield — tick invulnerability timer
       if (this.player.invulnerable) {
         this.player.invulnerableTimer = (this.player.invulnerableTimer ?? 0) - 1;
         if (this.player.invulnerableTimer <= 0) {
@@ -1799,53 +1866,18 @@ export class Engine {
         this._autoSaveTick = 0;
         this.saveToSlot();
       }
-
-      // Log slow systems
-      const slowThreshold = slow;
-      if (t2 - t1 > slowThreshold) console.warn(`[Loop] NPC systems: ${(t2-t1).toFixed(1)}ms`);
-      if (t3 - t2 > slowThreshold) console.warn(`[Loop] Movement: ${(t3-t2).toFixed(1)}ms`);
-      if (t4 - t3 > slowThreshold) console.warn(`[Loop] Loot/anim/effect: ${(t4-t3).toFixed(1)}ms`);
-      if (t5 - t4 > slowThreshold) console.warn(`[Loop] Multiplayer: ${(t5-t4).toFixed(1)}ms`);
     }
 
     this.combatLog?.update();
-
-    // ── Auto-target nearest enemy when no target ──────────────────────────
-    if (this.player && !this._playerDead) {
-      const target = this._currentTarget;
-      const needsTarget = !target || target.dead ||
-        (target.type === "npc" && !this.npcs.find(n => n.id === target.id));
-
-      const allNPCs = [...this.npcs, ...(this.townSystem?.npcs ?? [])];
-      if (needsTarget && allNPCs.length > 0) {
-        const AUTO_RANGE = 8; // tiles
-        let nearest = null, nearestDist = Infinity;
-        for (const npc of allNPCs) {
-          if (npc.dead) continue;
-          const dx = npc.x - this.player.x;
-          const dy = npc.y - this.player.y;
-          const d  = Math.sqrt(dx*dx + dy*dy);
-          if (d < AUTO_RANGE && d < nearestDist) {
-            nearestDist = d;
-            nearest     = npc;
-          }
-        }
-        if (nearest) this._setTarget(nearest);
-      }
-    }
 
     if (this.player) {
       this.renderer.camera.centerOn(this.player.x, this.player.y, this.world);
     }
 
-    const t6 = performance.now();
+    // Don't render game world when death screen is active — it draws on same canvas
     if (!this._deathScreen?.active) {
       this.renderer.render(this.world, this.entities);
     }
-    const t7 = performance.now();
-    if (t7 - t6 > slow) console.warn(`[Loop] Render: ${(t7-t6).toFixed(1)}ms`);
-    const total = t7 - t0;
-    if (total > 50) console.warn(`[Loop] TOTAL SLOW FRAME: ${total.toFixed(1)}ms`);
 
     requestAnimationFrame(() => this.loop());
   }
