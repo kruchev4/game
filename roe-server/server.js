@@ -249,7 +249,8 @@ function _resolveAbility(session, world, msg) {
   const baseAbility = abilityDefs.get(abilityId) ?? { id: abilityId, type: "melee", damageMin: 5, damageMax: 10, range: 1, cooldown: 40, targets: 1, healMin: 0, healMax: 0, manaCost: 0 };
   const ability = getRankedAbility(baseAbility, rank);
 
-  session.cooldowns[abilityId] = ability.cooldown ?? 40;
+  // cooldown stored in ms (ability.cooldown is in frames at 60fps)
+  session.cooldowns[abilityId] = ((ability.cooldown ?? 40) / 60) * 1000;
 
   if (ability.castTime && ability.castTime > 0 && !msg.skipCastTime) {
     const castMs = ability.castTime / 60 * 1000;
@@ -596,7 +597,7 @@ wss.on("connection", (ws) => {
         if (!ability) { console.warn("[Server] volley_place: not found:", msg.abilityId); break; }
         const { wx, wy } = msg;
         const radius = ability.aoe?.radius ?? 2, dmgPerTick = ability.damageMin ?? 4;
-        session.cooldowns[msg.abilityId ?? "volley"] = ability.cooldown ?? 300;
+        session.cooldowns[msg.abilityId ?? "volley"] = ((ability.cooldown ?? 300) / 60) * 1000;
         _broadcast(session.worldId, { type: "volley_zone", wx, wy, radius, duration: 3000, attackerName: session.name });
         let tick = 0;
         const iv = setInterval(() => {
@@ -721,8 +722,8 @@ setInterval(() => {
     }
     // Tick player cooldowns and regen mana
     for (const abilityId of Object.keys(s.cooldowns ?? {})) {
-      s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - 1);
-      if (s.cooldowns[abilityId] === 0) delete s.cooldowns[abilityId];
+      s.cooldowns[abilityId] = Math.max(0, s.cooldowns[abilityId] - TICK_MS);
+      if (s.cooldowns[abilityId] <= 0) delete s.cooldowns[abilityId];
     }
     // Mana regen — 0.5 mana per tick = 10 mana/sec
     if (s.mana !== undefined && s.maxMana) {
