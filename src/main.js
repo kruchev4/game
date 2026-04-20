@@ -19,6 +19,7 @@ import { SaveProvider }              from "./adapters/SaveProvider.js";
 import { ScreenManager }             from "./ui/ScreenManager.js";
 import { fetchAvailableServers }     from "./adapters/ServerDirectory.js";
 import { createClient }              from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { ChatSystem }                from "./systems/ChatSystem.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config/supabaseConfig.js";
 
 const WORLD_ID = "overworld_C";
@@ -91,6 +92,9 @@ async function start() {
 
       engine.start();
       window.engine = engine;
+
+      // start the global chat system
+      window.chatSystem = new ChatSystem(character.name);
     }
 
     // ── Show pre-game screens ─────────────────────────────────────────────
@@ -99,6 +103,12 @@ async function start() {
         window.engine.running = false;
         window.engine.multiplayerSystem?.leave();
         window.engine = null;
+      }
+
+      // hide the chat system and close the socket when quitting the menu
+      if (window.chatSystem) {
+        window.chatSystem.container.style.display = 'none';
+        window.chatSystem.ws.close();
       }
 
       const [slots, servers] = await Promise.all([

@@ -1,4 +1,3 @@
-// chat-server/main.go
 package main
 
 import (
@@ -10,92 +9,86 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for local development
-	},
-}
-
-// Client wraps the WebSocket connection.
-type Client struct {
-	conn *websocket.Conn
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 // Global State
 var (
-	// A map of all connected clients
-	clients = make(map[*Client]bool)
-	// Mutex locks the map so multiple threads don't write to it at the exact same time
+	clients   = make(map[*websocket.Conn]string) // Map the socket to the Player's Name
+	names     = make(map[string]*websocket.Conn) // Map the Player's Name to their socket
 	clientsMu sync.Mutex
-	broadcast = make(chan []byte)
 )
 
-func main() {
-	// 1. Define the WebSocket route
-	http.HandleFunc("/chat", handleConnections)
-
-	// 2. Start the broadcaster in a separate thread (Goroutine)
-	go handleMessages()
-
-	// 3. Start the server
-	log.Println("[Chat Server] Go WebSocket Chat Server started on :8081")
-	err := http.ListenAndServe(":8081", nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
+// Define the exact shape of our JSON payload
+type ChatMessage struct {
+	Name    string `json:"name"`
+	Text    string `json:"text"`
+	To      string `json:"to,omitempty"`      // The target player (if it's a whisper)
+	Private bool   `json:"private,omitempty"` // Flag for the frontend to color it purple
 }
 
-// This function runs every time a new player connects to the chat server
+func main() {
+	http.HandleFunc("/chat", handleConnections)
+	log.Println("[Chat Server] Go WebSocket Chat Server started on :8081")
+	log.Fatal(http.ListenAndServe(":8081", nil))
+}
+
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// Upgrade the HTTP request to a WebSocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Upgrade error:", err)
 		return
 	}
-	defer ws.Close() // Ensure the socket closes when the function finishes
+	defer ws.Close()
 
-	client := &Client{conn: ws}
-
-	// add the new client to the global map
+	// Add the anonymous socket to our map
 	clientsMu.Lock()
-	clients[client] = true
+	clients[ws] = ""
 	clientsMu.Unlock()
 
-	log.Println("[Chat Server] New player connected to Global Chat")
-
-	// Infinite loop: Wait for messages from this specific player
 	for {
-		_, msg, err := ws.ReadMessage()
+		var msg ChatMessage
+
+		err := ws.ReadJSON(&msg)
 		if err != nil {
-			log.Println("[Chat Server] Player disconnected")
-			// Safely remove them from the map
+			// Player disconnected — clean up both maps
 			clientsMu.Lock()
-			delete(clients, client)
+			playerName := clients[ws]
+			delete(clients, ws)
+			delete(names, playerName)
 			clientsMu.Unlock()
 			break
 		}
-		// Shove the message into the broadcast channel for the other thread to handle
-		broadcast <- msg
-	}
-}
 
-// This function runs in its own thread, waiting for messages in the broadcast pipe
-func handleMessages() {
-	for {
-		// Grab the next message from the pipe
-		msg := <-broadcast
-
-		// Lock the clients map so and loop through it
 		clientsMu.Lock()
-		for client := range clients {
-			// Send the message to everyone
-			err := client.conn.WriteMessage(websocket.TextMessage, msg)
-			if err != nil {
-				log.Printf("[Chat Server] Error writing to client: %v", err)
-				client.conn.Close()
-				delete(clients, client)
+
+		// Register the player's name the very first time they send a message
+		if clients[ws] == "" && msg.Name != "" {
+			clients[ws] = msg.Name
+			names[msg.Name] = ws
+		}
+
+		// Routing Logic: Is this a Direct Message?
+		if msg.To != "" {
+			targetConn, exists := names[msg.To]
+			if exists {
+				msg.Private = true
+				targetConn.WriteJSON(msg)
+
+				// Echo it back to the sender so they can see their own outgoing whisper
+				if targetConn != ws {
+					ws.WriteJSON(msg)
+				}
+			} else {
+				// Tell the sender the player isn't online
+				ws.WriteJSON(ChatMessage{Name: "System", Text: msg.To + " is offline or doesn't exist.", Private: true})
+			}
+		} else {
+			// Global Broadcast
+			for conn := range clients {
+				conn.WriteJSON(msg)
 			}
 		}
+
 		clientsMu.Unlock()
 	}
 }
