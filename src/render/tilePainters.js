@@ -22,7 +22,7 @@ export const PAINTERS = {
       const y = (r() * s) | 0;
       ctx.fillRect(x, y, 3, 1);
     }
-    vignette(ctx, s, 0.10);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 4: Shallow Water / Path
@@ -35,7 +35,7 @@ export const PAINTERS = {
       const y = (r() * s) | 0;
       ctx.fillRect(x, y, 2, 1);
     }
-    vignette(ctx, s, 0.06);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 5: Town marker (overworld)
@@ -58,7 +58,7 @@ export const PAINTERS = {
       const y = (r() * s) | 0;
       ctx.fillRect(x, y, 1, 1);
     }
-    vignette(ctx, s, 0.12);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 7: Sand
@@ -200,7 +200,7 @@ export const PAINTERS = {
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("🌀", s/2, s/2);
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    vignette(ctx, s, 0.15);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 15: Jungle
@@ -222,7 +222,7 @@ export const PAINTERS = {
     for (let i = 0; i < 5; i++) {
       ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 2);
     }
-    vignette(ctx, s, 0.15);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 17: Eldritch
@@ -232,7 +232,7 @@ export const PAINTERS = {
     ctx.fillStyle = "rgba(120,40,220,0.18)";
     ctx.fillRect(0, 0, s, s);
     dots(ctx, s, seed + 3, "rgba(180,100,255,0.20)", 8);
-    vignette(ctx, s, 0.12);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 18: Obsidian
@@ -244,7 +244,7 @@ export const PAINTERS = {
     ctx.fillRect(1, 1, s/2 - 2, s/2 - 2);
     ctx.fillStyle = "rgba(255,255,255,0.03)";
     ctx.fillRect(s/2 + 1, s/2 + 1, s/2 - 2, s/2 - 2);
-    vignette(ctx, s, 0.08);
+    vignette(ctx, s, 0.01);
   },
  
   // Tile 19: Blight
@@ -314,7 +314,7 @@ export const PAINTERS = {
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("🌍", s/2, s/2);
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    vignette(ctx, s, 0.08);
+    vignette(ctx, s, 0.01);
   },
 
   0: (ctx, s, def, seed) => {
@@ -590,7 +590,7 @@ function drawTownService(ctx, s, seed, icon, color) {
   ctx.globalAlpha = 1; ctx.lineWidth = 1;
 }
 
-function vignette(ctx, s, strength = 0.10) {
+function vignette(ctx, s, strength = 0.01) {
   ctx.fillStyle = `rgba(0,0,0,${strength})`;
   ctx.fillRect(0, 0, s, 1);
   ctx.fillRect(0, s - 1, s, 1);

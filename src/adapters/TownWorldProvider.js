@@ -60,7 +60,7 @@ export class TownWorldProvider {
       height,
       meta:          data.meta          ?? {},
       exits:         data.exits         ?? [],
-      friendlyNPCs:  data.friendlyNPCs  ?? [],
+      friendlyNPCs:  data.friendlyNPCs ?? data.npcs ?? [],
       shopInventory: data.shopInventory ?? [],
       spawnGroups:   data.spawnGroups   ?? [],
       spawns:        data.spawns         ?? [],
