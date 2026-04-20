@@ -26,6 +26,13 @@ import { ShopWindow }          from "../ui/ShopWindow.js";
 import { TownNPCWindow }       from "../ui/TownNPCWindow.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
 
+function getRankedAbility(ability, rank) {
+  if (!ability || !rank || rank <= 1) return ability;
+  const override = ability.ranks?.[String(rank)];
+  if (!override) return ability;
+  return { ...ability, ...override };
+}
+
 export class Engine {
   constructor({ worldProvider, renderer }) {
     this.worldProvider = worldProvider;
@@ -86,6 +93,9 @@ export class Engine {
     // Pause menu
     this._paused = false;
 
+    // Ground-target mode (e.g. Volley) — set when ability needs a click-to-place
+    this._groundTargeting = null; // { abilityId, range, radius, onPlace(wx,wy) }
+
     // Fallback class for testing only — overridden by character data
     this._playerClassId = null;
   }
@@ -140,7 +150,10 @@ export class Engine {
 
     this._spawnPlayer();
     this._buildSystems();
-    this._initSpawnSystem();
+    // Skip client SpawnSystem if a server is configured — server owns all NPCs
+    if (!this.serverUrl) {
+      this._initSpawnSystem();
+    }
 
     // Create UI overlays once — they inject a single DOM element each
     // and must not be recreated on world transitions (_buildSystems is called each time)
@@ -211,8 +224,11 @@ export class Engine {
     this.entities = [this.player];
     this._setTarget(null);
     this.combatSystem?.combatants?.clear();
-    this.player.inCombat = false;
-    this.player.dead     = false;
+    this.combatSystem?.clearAllCooldowns?.();
+    this.player.inCombat        = false;
+    this.player.dead            = false;
+    this.player.abilityCooldowns = {};
+    this.renderer.elementalCharge = null;
 
     this._buildSystems();
     // Update charSheet player reference after world transition
@@ -223,8 +239,20 @@ export class Engine {
     } else if (this.world.type === "dungeon") {
       this._initDungeonSpawns();
     } else {
-      this._initSpawnSystem();
+      // Skip client SpawnSystem if server configured — server owns all NPCs
+      if (!this.serverUrl) {
+        this._initSpawnSystem();
+      }
     }
+
+    // Re-wire systems to the live npcs array after population.
+    if (this.clickToMoveSystem)   this.clickToMoveSystem.npcs   = this.npcs;
+    if (this.combatSystem)        this.combatSystem.npcs         = this.npcs;
+    if (this.npcPerceptionSystem) this.npcPerceptionSystem.npcs  = this.npcs;
+    if (this.npcMovementSystem)   this.npcMovementSystem.npcs    = this.npcs;
+    if (this.npcAISystem)         this.npcAISystem.npcs          = this.npcs;
+
+    console.log(`[Engine] Transition complete → ${this._currentWorldId} | NPCs: ${this.npcs.length} | world.type: ${this.world?.type}`);
 
     // Re-center camera
     this.renderer.camera.centerOn(x, y, this.world);
@@ -700,6 +728,26 @@ export class Engine {
       // Character sheet
       if (key === "c") { this._charSheet?.toggle(); return; }
 
+      // Tab targeting — cycle through nearby enemies by distance
+      if (e.key === "Tab") {
+        e.preventDefault();
+        this._cycleTarget();
+        return;
+      }
+
+      // Cancel ground targeting first if active
+      if (e.key === "Escape" && this._groundTargeting) {
+        e.preventDefault();
+        // Refund mana
+        const ab = this._abilities[this._groundTargeting.abilityId];
+        const cost = ab?.cost?.mana ?? 0;
+        this.player.resource = Math.min(this.player.maxResource, this.player.resource + cost);
+        this._groundTargeting = null;
+        this.renderer.groundTargeting = null;
+        this.combatLog?.push({ text: "Volley cancelled.", type: "system" });
+        return;
+      }
+
       // Pause menu
       if (e.key === "Escape") { e.preventDefault(); this._togglePauseMenu(); return; }
 
@@ -724,6 +772,16 @@ export class Engine {
     }, { passive: false });
 
     // Canvas click — ability bar, corpse clicks, bag icon
+    this.renderer.canvas.addEventListener("pointermove", (e) => {
+      if (!this._groundTargeting) return;
+      const rect   = this.renderer.canvas.getBoundingClientRect();
+      const scaleX = this.renderer.canvas.width  / rect.width;
+      const scaleY = this.renderer.canvas.height / rect.height;
+      const px = (e.clientX - rect.left) * scaleX;
+      const py = (e.clientY - rect.top)  * scaleY;
+      this.renderer.groundTargetingMouse = { px, py };
+    });
+
     this.renderer.canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
 
@@ -732,6 +790,20 @@ export class Engine {
       const scaleY = this.renderer.canvas.height / rect.height;
       const px     = (e.clientX - rect.left) * scaleX;
       const py     = (e.clientY - rect.top)  * scaleY;
+
+      // Ground targeting mode — place Volley on click
+      if (this._groundTargeting) {
+        const worldTileGT = this.renderer.camera.screenToWorld(px, py);
+        const dx = worldTileGT.x - this.player.x;
+        const dy = worldTileGT.y - this.player.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist <= this._groundTargeting.range) {
+          this._groundTargeting.onPlace(worldTileGT.x, worldTileGT.y);
+        } else {
+          this.combatLog?.push({ text: "Out of range!", type: "system" });
+        }
+        return;
+      }
 
       // Pause menu intercepts all clicks when open
       if (this._paused) { this._handlePauseMenuClick(px, py); return; }
@@ -761,17 +833,15 @@ export class Engine {
       }
 
       // Town + dungeon portal clicks — fully data-driven from world JSON.
-      // No coords hardcoded here. Entry point comes from:
-      //   1. entryX/entryY on the town/portal object in the overworld JSON
-      //   2. entryPoint field on the target world itself (read after load)
-      //   3. Near-center of the target world as final fallback
       if (!this.townSystem && this.world?.type !== "town") {
         const towns   = this.world?._raw?.towns   ?? this.world?.towns   ?? [];
         const portals = this.world?._raw?.portals ?? this.world?.portals ?? [];
 
+        console.log(`[Engine] Overworld click at ${worldTile.x},${worldTile.y} — towns:${towns.length} portals:${portals.length}`);
+
         // ── Town click ──
         const clickedTown = towns.find(t =>
-          Math.abs(t.x - worldTile.x) <= 1 && Math.abs(t.y - worldTile.y) <= 1
+          Math.abs(t.x - worldTile.x) <= 2 && Math.abs(t.y - worldTile.y) <= 2
         );
         if (clickedTown) {
           const townId = clickedTown.worldId
@@ -789,7 +859,7 @@ export class Engine {
 
         // ── Dungeon portal click ──
         const clickedPortal = portals.find(p =>
-          Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
+          Math.abs(p.x - worldTile.x) <= 2 && Math.abs(p.y - worldTile.y) <= 2
         );
         if (clickedPortal) {
           this._transitionToWorld({
@@ -845,6 +915,28 @@ export class Engine {
   // TARGETING
   // ─────────────────────────────────────────────
 
+  /** Tab targeting — cycles through alive NPCs ordered by distance to player */
+  _cycleTarget() {
+    const alive = this.npcs
+      .filter(n => !n.dead)
+      .map(n => ({
+        npc: n,
+        dist: Math.sqrt(
+          (n.x - this.player.x) ** 2 +
+          (n.y - this.player.y) ** 2
+        )
+      }))
+      .sort((a, b) => a.dist - b.dist)
+      .map(e => e.npc);
+
+    if (!alive.length) return;
+
+    // Find index of current target in sorted list, advance to next (wraps)
+    const currentIdx = alive.findIndex(n => n.id === this._currentTarget?.id);
+    const nextIdx = (currentIdx + 1) % alive.length;
+    this._setTarget(alive[nextIdx]);
+  }
+
   _setTarget(entity) {
     this._currentTarget         = entity;
     this.renderer.currentTarget = entity;
@@ -874,8 +966,12 @@ export class Engine {
     const abilityId = abilityBar[slotIndex];
     if (!abilityId) return;
 
-    const ability = this._abilities[abilityId];
-    if (!ability) return;
+    const baseAbility = this._abilities[abilityId];
+    if (!baseAbility) return;
+
+    // Apply rank override
+    const rank    = this.player.learnedSkills?.[abilityId] ?? 1;
+    const ability = getRankedAbility(baseAbility, rank);
 
     // ── Client-side cooldown check (UI only — server also enforces) ──
     const cd = this.combatSystem?.getCooldown?.("player", abilityId);
@@ -900,13 +996,71 @@ export class Engine {
     const target = this._currentTarget;
     const type   = ability.type ?? "melee";
 
+    // Ground-targeted abilities (Volley) — enter targeting mode
+    if (abilityId === "volley") {
+      // Mana already deducted above — don't deduct again
+      this._groundTargeting = {
+        abilityId,
+        rank,
+        range:  ability.range ?? 6,
+        radius: ability.aoe?.radius ?? 2,
+        onPlace: (wx, wy) => {
+          this.multiplayerSystem?.sendVolley({ abilityId, wx, wy, rank });
+          this.combatSystem?._startCooldown?.("player", abilityId);
+          this.renderer.groundTargeting = null;
+          this._groundTargeting = null;
+        }
+      };
+      this.renderer.groundTargeting = this._groundTargeting;
+      // Initialize mouse to canvas center so circle shows immediately
+      const canvas = this.renderer.canvas;
+      this.renderer.groundTargetingMouse = {
+        px: canvas.width / 2,
+        py: canvas.height / 2
+      };
+      this.combatLog?.push({ text: "🌧️ Click to place Volley...", type: "system" });
+      return;
+    }
+
+    // Apply elemental charge visual immediately on client for responsiveness
+    const selfFx = ability.selfEffect;
+    if (type === "self" && selfFx?.effect === "eagles_eye") {
+      const durationMs = (selfFx.duration ?? 360) / 60 * 1000;
+      this.renderer.eaglesEye = {
+        expiresAt:  Date.now() + durationMs,
+        rangeBonus: selfFx.magnitude ?? 4
+      };
+      // Will be confirmed/cleared by server buff_applied
+    }
+
+    if (type === "self" && selfFx?.effect === "elemental_charge") {
+      this.renderer.elementalCharge = selfFx.element;
+      // Store charge locally so we can consume it on next shot
+      this.player._elementalCharge = {
+        element:     selfFx.element,
+        bonusDamage: selfFx.bonusDamage ?? 6,
+        onHitEffect: selfFx.onHitEffect ?? null,
+        expiresAt:   Date.now() + 10000
+      };
+      setTimeout(() => {
+        this.renderer.elementalCharge = null;
+        if (this.player._elementalCharge?.element === selfFx.element) {
+          this.player._elementalCharge = null;
+        }
+      }, 10000);
+      this.combatLog?.push({
+        text: `${selfFx.element === "frost" ? "❄️" : "🔥"} Next shot charged with ${selfFx.element}!`,
+        type: "system"
+      });
+    }
+
     // ── Multiplayer — ALL abilities go to server ──
     if (this.multiplayerSystem?._connected) {
       // Determine target for server
       let targetId   = null;
       let targetType = null;
 
-      if (["buff", "taunt"].includes(type) || ability.aoe?.centeredOnSelf) {
+      if (["buff", "taunt", "self"].includes(type) || ability.aoe?.centeredOnSelf) {
         targetId = "self";
       } else if (type === "aoe") {
         targetId = "aoe";
@@ -921,16 +1075,19 @@ export class Engine {
         return;
       }
 
-      // Send to server — server validates range, rolls damage, applies effects
-      this.multiplayerSystem.sendAbility({ abilityId, targetId, targetType });
+      // Clear elemental charge visual if this is a ranged ability consuming it
+      if (type === "ranged" && this.player._elementalCharge) {
+        this.player._elementalCharge = null;
+        this.renderer.elementalCharge = null;
+      }
 
-      // Start local cooldown for UI feedback
-      this.combatSystem?._startCooldown?.("player", abilityId);
+      // Send to server — server validates range, rolls damage, applies effects
+      this.multiplayerSystem.sendAbility({ abilityId, targetId, targetType, rank });
       return;
     }
 
     // ── Single player — queue through local combat system ──
-    const selfTargeted = ["buff", "taunt"].includes(type)
+    const selfTargeted = ["buff", "taunt", "self"].includes(type)
       || ability.aoe?.centeredOnSelf
       || (type === "aoe" && !target)
       || (type === "heal" && (!target || target.type === "player"));
@@ -1062,6 +1219,10 @@ export class Engine {
         break;
       }
       case "hit": {
+        // Auto-target attacker if hitting the player and no current target
+        if (event.attacker?.type === "npc" && event.target?.id === "player" && !this._currentTarget) {
+          this._setTarget(event.attacker);
+        }
         const isPlayer = event.attacker.id === "player";
         if (isPlayer) {
           log?.push({
@@ -1248,7 +1409,15 @@ export class Engine {
       },
 
       onNPCState: (serverNPCs) => {
+        // If server sends empty list, it may still be loading — don't wipe
+        if (serverNPCs.length === 0) return;
+
         const serverIds = new Set(serverNPCs.map(n => n.id));
+
+        // Only clear target if that specific NPC is gone from server
+        if (this._currentTarget?.type === "npc" && !serverIds.has(this._currentTarget.id)) {
+          this._setTarget(null);
+        }
 
         // Remove NPCs no longer on server
         this.npcs     = this.npcs.filter(n => serverIds.has(n.id));
@@ -1283,8 +1452,12 @@ export class Engine {
           }
         }
 
-        // Always keep combatSystem.npcs pointing at same array as this.npcs
-        if (this.combatSystem) this.combatSystem.npcs = this.npcs;
+        // Re-wire all systems to the new this.npcs array
+        if (this.combatSystem)        this.combatSystem.npcs        = this.npcs;
+        if (this.clickToMoveSystem)   this.clickToMoveSystem.npcs   = this.npcs;
+        if (this.npcPerceptionSystem) this.npcPerceptionSystem.npcs = this.npcs;
+        if (this.npcMovementSystem)   this.npcMovementSystem.npcs   = this.npcs;
+        if (this.npcAISystem)         this.npcAISystem.npcs         = this.npcs;
       },
 
       onNPCAttackPlayer: ({ npcId, damage, blocked }) => {
@@ -1293,9 +1466,11 @@ export class Engine {
           this.combatLog?.push({ text: "Attack blocked by Divine Shield!", type: "system" });
           return;
         }
-        // Server is now authoritative for player HP
-        // player_stat_update will set the actual HP — this just shows the log
         const npc = this.npcs.find(n => n.id === npcId);
+        // Auto-target the attacker if player has no current target
+        if (npc && !this._currentTarget) {
+          this._setTarget(npc);
+        }
         if (damage > 0) {
           this.combatLog?.push({
             text: `${npc?.name ?? npc?.classId ?? "Monster"} hits you for ${damage}!`,
@@ -1358,6 +1533,24 @@ export class Engine {
     });
 
     // ── New server-authoritative callbacks ────────────────────────────────
+    this.multiplayerSystem.onVolleyZone = ({ wx, wy, radius, duration }) => {
+      this.renderer.volleyZones.push({
+        wx, wy, radius,
+        startedAt: Date.now(),
+        expiresAt: Date.now() + duration,
+        duration
+      });
+    };
+
+    this.multiplayerSystem.onCastStart = ({ abilityId, castTime }) => {
+      this.renderer.castBar = { abilityId, startedAt: Date.now(), duration: castTime };
+      const ab = this._abilities?.[abilityId];
+      this.combatLog?.push({ text: `🎯 Casting ${ab?.name ?? abilityId}... (${(castTime/1000).toFixed(1)}s)`, type: "system" });
+      setTimeout(() => {
+        if (this.renderer.castBar?.abilityId === abilityId) this.renderer.castBar = null;
+      }, castTime + 300);
+    };
+
     this.multiplayerSystem.onStatUpdate = ({ hp, maxHp, xp, gold }) => {
       if (hp      !== undefined) this.player.hp    = hp;
       if (maxHp   !== undefined) this.player.maxHp = maxHp;
@@ -1374,10 +1567,53 @@ export class Engine {
       }
     };
 
-    this.multiplayerSystem.onAbilityResult = ({ abilityId, damage, targetId, outOfRange, aoe, targetsHit, heal }) => {
+    this.multiplayerSystem.onAbilityResult = (msg) => {
+      const { abilityId, damage, targetId, outOfRange, aoe, targetsHit, heal } = msg;
       if (outOfRange) {
         this.combatLog?.push({ text: "Out of range.", type: "system" });
         return;
+      }
+
+      // Server confirmed ability fired — start local cooldown for UI feedback now
+      this.combatSystem?._startCooldown?.("player", abilityId);
+
+      // Handle special client-side ability effects
+      if (msg.special === "disengage" && this._currentTarget) {
+        const target = this._currentTarget;
+        const dx  = this.player.x - target.x;
+        const dy  = this.player.y - target.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        const mag = msg.magnitude ?? 3;
+        // Try to land on a walkable tile, stepping back from max distance
+        // Use movementSystem._canEnter if available, else just check world bounds
+        let landed = false;
+        for (let dist = mag; dist >= 1; dist--) {
+          const nx = Math.round(this.player.x + (dx/len) * dist);
+          const ny = Math.round(this.player.y + (dy/len) * dist);
+          if (nx < 0 || ny < 0 || nx >= this.world.width || ny >= this.world.height) continue;
+          if (this.movementSystem?._canEnter(nx, ny) ?? true) {
+            this.player.x = nx;
+            this.player.y = ny;
+            landed = true;
+            break;
+          }
+        }
+        if (!landed) { this.combatLog?.push({ text: "Nowhere to disengage!", type: "system" }); }
+        else { this.combatLog?.push({ text: "Disengaged!", type: "system" }); }
+      }
+
+      // Show elemental charge on HUD
+      if (msg.buffType === "elemental_charge") {
+        this.renderer.elementalCharge = msg.element;
+        setTimeout(() => { this.renderer.elementalCharge = null; }, msg.duration ?? 10000);
+      }
+      // Eagle's Eye — show range indicator on HUD
+      if (msg.buffType === "eagles_eye") {
+        this.renderer.eaglesEye = {
+          expiresAt:  Date.now() + (msg.duration ?? 6000),
+          rangeBonus: msg.rangeBonus ?? 4
+        };
+        this.combatLog?.push({ text: `🦅 Eagle's Eye! +${msg.rangeBonus ?? 4} range for ${Math.round((msg.duration ?? 6000)/1000)}s`, type: "system" });
       }
 
       const ability = this._abilities[abilityId];
@@ -1583,7 +1819,11 @@ export class Engine {
   _syncAbilityBar() {
     this.renderer.playerAbilities = (this.player.abilities ?? [])
       .slice(0, 6)
-      .map(id => this._abilities?.[id])
+      .map(id => {
+        const base = this._abilities?.[id];
+        const rank = this.player.learnedSkills?.[id] ?? 1;
+        return getRankedAbility(base, rank);
+      })
       .filter(Boolean);
   }
 

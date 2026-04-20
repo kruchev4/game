@@ -14,3 +14,7 @@ vendor/
 roe-server/node_modules/
 roe-server/db/*.db
 roe-server/db/*.db-wal
+
+# ignore the docker compose files
+docker-compose.yml
+docker-compose.override.ymls
