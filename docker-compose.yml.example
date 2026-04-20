@@ -1,15 +1,31 @@
-version: '3.8'
-
+# docker-compose.yml.example
 services:
   game:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:80"
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
     volumes:
-      # This mounts your current local directory into the container's web root
-      # Format: /path/on/your/laptop:/path/inside/container
-      - ./:/usr/share/nginx/html
+      - ./index.html:/app/index.html
+      - ./src:/app/src
+      - ./roe-server:/app/roe-server
+      - /app/roe-server/node_modules
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
     environment:
-      - ENVIRONMENT=development
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: echoes
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
