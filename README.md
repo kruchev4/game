@@ -26,13 +26,13 @@ For fast iteration on HTML, CSS, or JS, you can run the game locally using Docke
    ```
 2. **Start the local environment:**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 3. **Develop:**
    Open your browser to `http://localhost:8080`. Any changes you make to the files in this directory will instantly reflect in the browser upon refreshing.
 4. **Stop the environment:**
    ```bash
-   docker-compose down
+   docker compose down
    ```
 
 ---

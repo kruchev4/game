@@ -22,8 +22,19 @@ const LS_PLAYER_TOKEN = "roe2_player_token";
 
 function getPlayerToken() {
   let token = localStorage.getItem(LS_PLAYER_TOKEN);
+
   if (!token) {
-    token = crypto.randomUUID();
+    // Check if we are in a secure context with crypto available
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      token = crypto.randomUUID();
+    } else {
+      // Fallback for insecure LAN IPs (http://192.168.x.x)
+      token = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
     localStorage.setItem(LS_PLAYER_TOKEN, token);
   }
   return token;
