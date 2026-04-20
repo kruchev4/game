@@ -21,6 +21,9 @@ export class MultiplayerSystem {
     this.onNPCKilled       = onNPCKilled       ?? (() => {});
     this.onNPCState        = onNPCState        ?? (() => {});
     this.onNPCAttackPlayer = onNPCAttackPlayer ?? (() => {});
+    this.onRageUpdate  = null;
+    this.onCharge      = null;
+    this.onNPCEffect   = null;
 
     this._ws             = null;
     this._remotePlayers  = new Map(); // token -> entity
@@ -439,6 +442,18 @@ export class MultiplayerSystem {
         if (this.onVolleyZone) this.onVolleyZone(msg);
         break;
       }
+
+      case "rage_update":
+        if (this.onRageUpdate) this.onRageUpdate(msg.rage);
+        break;
+
+      case "player_charge":
+        if (msg.token !== this.playerToken && this.onCharge) this.onCharge(msg);
+        break;
+
+      case "npc_effect":
+        if (this.onNPCEffect) this.onNPCEffect(msg);
+        break;
 
       case "pong": break;
 
