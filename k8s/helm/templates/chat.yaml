@@ -17,7 +17,7 @@ spec:
         - name: gitlab-registry-auth
       containers:
         - name: chat-server
-          image: {{ .Values.image.repository }}-chat:{{ .Values.image.tag }}
+          image: {{ .Values.image.repository }}/chat:{{ .Values.image.tag }}
           imagePullPolicy: Always
           ports:
             - containerPort: 8081

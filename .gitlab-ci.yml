@@ -53,8 +53,8 @@ build-chat-image:
     - /kaniko/executor
       --context "${CI_PROJECT_DIR}/chat-server"
       --dockerfile "${CI_PROJECT_DIR}/chat-server/Dockerfile"
-      --destination "${REGISTRY}/${IMAGE_NAME}-chat:${CI_COMMIT_SHA}"
-      --destination "${REGISTRY}/${IMAGE_NAME}-chat:${CI_COMMIT_REF_SLUG}"
+      --destination "${REGISTRY}/${IMAGE_NAME}/chat:${CI_COMMIT_SHA}"
+      --destination "${REGISTRY}/${IMAGE_NAME}/chat:${CI_COMMIT_REF_SLUG}"
   tags:
     - docker
     - linux
