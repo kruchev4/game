@@ -60,12 +60,21 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - {{ .Values.ingress.internalHost }} # CHANGED
+        - {{ .Values.ingress.internalHost }}
       secretName: realm-of-echoes-tls
   rules:
-    - host: {{ .Values.ingress.internalHost }} # CHANGED
+    - host: {{ .Values.ingress.internalHost }}
       http:
         paths:
+          # adds route /chat to the new microservice
+          - path: /chat
+            pathType: Prefix
+            backend:
+              service:
+                name: realm-of-echoes-chat-svc
+                port:
+                  number: 8081
+          # Original game server routing
           - path: /
             pathType: Prefix
             backend:
@@ -84,9 +93,18 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: {{ .Values.ingress.externalHost }} # CHANGED
+    - host: {{ .Values.ingress.externalHost }}
       http:
         paths:
+          # adds route /chat to the new Go microservice
+          - path: /chat
+            pathType: Prefix
+            backend:
+              service:
+                name: realm-of-echoes-chat-svc
+                port:
+                  number: 8081
+          # Original game server routing
           - path: /
             pathType: Prefix
             backend:
