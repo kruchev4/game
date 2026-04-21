@@ -18,7 +18,7 @@ const STAT_POINTS_PER_SPECIAL = 5;
 // XP required to reach each level (index = level)
 // Level 1 = 0 XP, Level 2 = 100 XP, etc.
 function xpForLevel(level) {
-  // Classic curve: 1 * level^1.5
+  // Classic curve: 100 * level^1.5
   return Math.floor(100 * Math.pow(level, 1.5));
 }
 

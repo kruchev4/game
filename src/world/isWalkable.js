@@ -9,7 +9,7 @@
 const PASSABLE = new Set([
   // Core terrain
   0,   // void / empty (walkable for now — world edges)
-  1,   // grass
+     // grass
   4,   // path / dirt road
   5,   // cobblestone road
   6,   // bridge

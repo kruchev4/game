@@ -1,3 +1,8 @@
+export const SPRITE_TILE_IDS = new Set([100,101,102,103,104,105,106,107,108]);
+export function isTileSpriteReady(tileId) {
+  const img = crestSpriteCache[tileId];
+  return !!(img && img.complete && img.naturalWidth > 0);
+}
 export const PAINTERS = {
   // fallback: flat color (useful while tiles are unfinished)
   __default: (ctx, s, def) => {
@@ -200,7 +205,7 @@ export const PAINTERS = {
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("🌀", s/2, s/2);
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    vignette(ctx, s, 0.01);
+    vignette(ctx, s, 0.15);
   },
  
   // Tile 15: Jungle
@@ -401,6 +406,39 @@ export const PAINTERS = {
     ctx.stroke();
   },
 
+34: (ctx, s, def, seed) => {
+    const r = makeRand(seed);
+    fill(ctx, s, def.color || "#b0a890");
+    ctx.fillStyle = "rgba(80,70,60,0.12)";
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 2, 1);
+    }
+    ctx.fillStyle = "rgba(120,110,100,0.08)";
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect((r() * s) | 0, (r() * s) | 0, 1, 1);
+    }
+    if (r() > 0.7) {
+      ctx.strokeStyle = "rgba(60,50,40,0.18)";
+      ctx.beginPath();
+      ctx.moveTo(2, s - 3);
+      ctx.lineTo(s - 2, 3);
+      ctx.stroke();
+    }
+    vignette(ctx, s, 0.01);
+  },
+
+  100: (ctx, s, def) => drawCrestSprite(ctx, s, 100),
+  101: (ctx, s, def) => drawCrestSprite(ctx, s, 101),
+  102: (ctx, s, def) => drawCrestSprite(ctx, s, 102),
+  103: (ctx, s, def) => drawCrestSprite(ctx, s, 103),
+  104: (ctx, s, def) => drawCrestSprite(ctx, s, 104),
+  105: (ctx, s, def) => drawCrestSprite(ctx, s, 105),
+  106: (ctx, s, def) => drawCrestSprite(ctx, s, 106),
+  107: (ctx, s, def) => drawCrestSprite(ctx, s, 107),
+  108: (ctx, s, def) => drawCrestSprite(ctx, s, 108),
+
+
+
   // Road Dirt (27) – autotile connections
   27: (ctx, s, def, seed, n) => {
     drawRoad(ctx, s, seed, n, {
@@ -447,6 +485,25 @@ export const PAINTERS = {
     });
   },}
 
+
+const crestSpriteCache = {};
+[100,101,102,103,104,105,106,107,108].forEach(id => {
+  const img = new Image();
+  img.src = `./assets/tiles/plaza_crest_${id}.png`;
+  crestSpriteCache[id] = img;
+});
+
+function drawCrestSprite(ctx, s, tileId) {
+  const img = crestSpriteCache[tileId];
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, s, s);
+  } else {
+    fill(ctx, s, "#ffffff");
+    ctx.strokeStyle = "#ffd700";
+    ctx.strokeRect(2, 2, s - 4, s - 4);
+  }
+}
 
 
 function drawRoad(ctx, s, seed, neighbors, style) {
