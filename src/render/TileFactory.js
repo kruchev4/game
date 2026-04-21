@@ -1,5 +1,5 @@
 import { getTileDef } from "../data/tiles.js";
-import { PAINTERS } from "./tilePainters.js";
+import { PAINTERS, SPRITE_TILE_IDS, isTileSpriteReady } from "./tilePainters.js";
 
 export class TileFactory {
   constructor({ tileSize = 16 } = {}) {
@@ -14,6 +14,9 @@ export class TileFactory {
   // Only soften edges where neighbor is NOT grass
   const n = neighbors || {};  
   const key = `${tileId}|v${variant}|${n.n ?? "x"}|${n.e ?? "x"}|${n.s ?? "x"}|${n.w ?? "x"}`;
+  // Don't cache sprite-backed tiles until the sprite is loaded,
+  // otherwise we permanently cache the fallback.
+  
   const cached = this.cache.get(key);
   if (cached) return cached;
   const c = document.createElement("canvas");
@@ -38,7 +41,9 @@ if (tileId === 0 && neighbors) {
   if (neighbors.s !== 0) this.softenEdge(ctx, "s");
   if (neighbors.w !== 0) this.softenEdge(ctx, "w");
 }
-
+  if (SPRITE_TILE_IDS && SPRITE_TILE_IDS.has(tileId) && !isTileSpriteReady(tileId)) {
+    return c;
+  }
   this.cache.set(key, c);
   return c;
   

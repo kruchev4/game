@@ -5,14 +5,14 @@
  * Draw functions live in tilePainters.js.
  *
  * Tile ID map:
- *   0  GRASS       8  WALL        16 VOLCANO    24 TEMPLE
- *   1  FOREST      9  FLOOR       17 ELDRITCH   25 TAVERN
- *   2  MOUNTAIN    10 STAIRS_UP   18 OBSIDIAN   26 VENDOR
- *   3  DEEP_WATER  11 STAIRS_DOWN 19 BLIGHT     27 ROAD_DIRT
- *   4  SHALLOW     12 DOOR        20 TOWN_FLOOR 28 ROAD_STONE
- *   5  TOWN        13 CHEST       21 TOWN_WALL  29 ROAD_OBSIDIAN
- *   6  DANGER      14 PORTAL      22 INN        30 ROAD_BLIGHT
- *   7  SAND        15 JUNGLE      23 SHOP       31 ROAD_RUNIC
+ *   0  GRASS       8  WALL        16 VOLCANO    24 TEMPLE		34 capital_stone_worn	107 plaza_crest_s
+ *   1  FOREST      9  FLOOR       17 ELDRITCH   25 TAVERN		100 plaza_crest_nw	108 plaza_crest_se
+ *   2  MOUNTAIN    10 STAIRS_UP   18 OBSIDIAN   26 VENDOR		101 plaza_crest_n
+ *   3  DEEP_WATER  11 STAIRS_DOWN 19 BLIGHT     27 ROAD_DIRT		102 plaza_crest_ne
+ *   4  SHALLOW     12 DOOR        20 TOWN_FLOOR 28 ROAD_STONE		103 plaza_crest_w
+ *   5  TOWN        13 CHEST       21 TOWN_WALL  29 ROAD_OBSIDIAN	104 plaza_crest_c
+ *   6  DANGER      14 PORTAL      22 INN        30 ROAD_BLIGHT		105 plaza_crest_e
+ *   7  SAND        15 JUNGLE      23 SHOP       31 ROAD_RUNIC		106 plaza_crest_sw
  */
 
 export const TILES = {
@@ -57,6 +57,19 @@ export const TILES = {
   32: { color: "#1a4a1a", walkable: true,  type: "town_exit"    },
   33: { color: "#5a3a18", walkable: true,  type: "road_bridge"  },
   35: { color: "#7a6848", walkable: true,  type: "road_path"    },
+// Capital city tiles
+34: { color: "#b0a890", walkable: true, type: "capital_stone_worn" },
+
+// Plaza crest overlays (transparent, walkable, overlay only)
+100: { color: "#ffffff", walkable: true, type: "plaza_crest_nw" },
+101: { color: "#ffffff", walkable: true, type: "plaza_crest_n" },
+102: { color: "#ffffff", walkable: true, type: "plaza_crest_ne" },
+103: { color: "#ffffff", walkable: true, type: "plaza_crest_w" },
+104: { color: "#ffffff", walkable: true, type: "plaza_crest_c" },
+105: { color: "#ffffff", walkable: true, type: "plaza_crest_e" },
+106: { color: "#ffffff", walkable: true, type: "plaza_crest_sw" },
+107: { color: "#ffffff", walkable: true, type: "plaza_crest_s" },
+108: { color: "#ffffff", walkable: true, type: "plaza_crest_se" },
 };
 
 /**

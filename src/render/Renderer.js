@@ -7,6 +7,7 @@ import { drawSprite, SPRITE_COLORS } from "./CharacterSprites.js";
 const WHITE = "#eeeeee";
 const DIM   = "#888899";
 const GOLD  = "#e8c84a";
+const entitySpriteCache = {};
 // ── UI Layout constants ───────────────────────────────────────────────────────
 const ABILITY_BAR = {
   slotSize: 50,
@@ -33,6 +34,33 @@ const PLAYER_FRAME = {
   barHeight:   10,
   barGap:      6
 };
+function renderEntities(entities, ctx, tileSize) {
+      for (const entity of entities) {
+      // Use 'sprite' property if present, otherwise use 'id'
+      const spriteName = entity.sprite || entity.id;
+      const img = loadEntitySprite(spriteName);
+
+    // Only draw if image is loaded and valid
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(
+          img,
+          entity.x * tileSize,
+          entity.y * tileSize,
+          (entity.w ?? 1) * tileSize,
+          (entity.h ?? 1) * tileSize
+        );
+	renderEntities(world.entities, ctx, tileSize);
+    }
+  }
+}
+function loadEntitySprite(name) {
+  if (entitySpriteCache[name]) return entitySpriteCache[name];
+  const img = new Image();
+  img.src = `./assets/entities/${name}.png`;
+  entitySpriteCache[name] = img;
+  return img;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export class Renderer {
   constructor(canvas) {
@@ -211,6 +239,20 @@ export class Renderer {
     ctx.fillText(npc.name?.split(" ")[0] ?? "", sx + tileSize / 2, sy - 2);
     ctx.textAlign = "left";
   }
+  _drawOverlays(world, camera, tileSize) {
+    const overlays = world?._raw?.overlays ?? world?.overlays ?? [];
+    if (!overlays.length) return;
+    const { ctx } = this;
+
+    for (const ov of overlays) {
+      const { sx, sy } = camera.worldToScreen(ov.x, ov.y);
+      if (sx + tileSize < 0 || sy + tileSize < 0 ||
+          sx > ctx.canvas.width || sy > ctx.canvas.height) continue;
+
+      const canvas = this.tileFactory.getTileCanvas(ov.tileId, ov.x, ov.y);
+      if (canvas) ctx.drawImage(canvas, sx, sy, tileSize, tileSize);
+    }
+  }
   // ── Main render ───────────────────────────────────────────────────────────
   render(world, entities = []) {
     const { ctx, tileSize, camera } = this;
@@ -234,6 +276,7 @@ export class Renderer {
 
     // ── Town overlays ──
     this._drawTownOverlays(world, camera, tileSize);
+    this._drawOverlays(world, camera, tileSize);
     // ── NPC perception rings ──
     for (const entity of entities) {
       if (entity.type !== "npc" || entity.dead) continue;
@@ -296,15 +339,19 @@ export class Renderer {
       ctx.fill();
     }
     // ── Decorations (ground layer — player walks in front) ──
+    // ── Decorations (ground layer — player walks in front) ──
     this._drawDecorations(world, camera, tileSize, "ground");
 
-    // ── Entities ──
-    for (const entity of entities) {
-      if (!entity.dead) this.drawEntity(entity);
+    // ── Entities (NPCs, player, corpses, remote players) ──
+    const sortedEntities = [...entities].sort((a, b) => a.y - b.y);
+    for (const entity of sortedEntities) {
+      if (!entity.dead || entity.type === "corpse") {
+        this.drawEntity(entity);
+      }
     }
 
-    // ── Decorations (tall layer — player walks behind) ──
-    this._drawDecorations(world, camera, tileSize, "tall");
+// ── Decorations (tall layer — player walks behind) ──
+this._drawDecorations(world, camera, tileSize, "tall");
     // ── Effect indicators ──
     if (this.effectSystem) {
       this._drawEffectIndicators(entities);
@@ -493,6 +540,7 @@ export class Renderer {
       }
     }
   }
+
 
   // ── Effect indicators ─────────────────────────────────────────────────
   _drawEffectIndicators(entities) {
@@ -841,7 +889,7 @@ export class Renderer {
     // Mark as loading so we don't spawn duplicate requests
     this._decorationImgs[src] = null;
     const img = new Image();
-    img.src = `./src/assets/decorations/${src}`;
+    img.src = `./assets/decorations/${src}`;
     img.onload  = () => { this._decorationImgs[src] = img; };
     img.onerror = () => {
       console.warn(`[Renderer] Decoration not found: ${src}`);
@@ -1290,6 +1338,7 @@ export class Renderer {
       28: "#5a5d62",  // road stone
       29: "#111118",  // road obsidian
       33: "#3a2810",  // road bridge
+      34: "#b0a890", // worn capital stone
     };
 
     const sw = mapPx / world.width;   // screen pixels per world tile
