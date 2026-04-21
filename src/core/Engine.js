@@ -907,21 +907,6 @@ export class Engine {
         }
       }
 
-      // Friendly player click — target for heals/buffs
-      // Check self first, then remote players
-      if (Math.abs(this.player.x - worldTile.x) <= 1 && Math.abs(this.player.y - worldTile.y) <= 1) {
-        this._setTarget(this.player);
-        return;
-      }
-      const remotePlayers = this.multiplayerSystem?.getRemotePlayers() ?? [];
-      const clickedFriend = remotePlayers.find(p =>
-        Math.abs(p.x - worldTile.x) <= 1 && Math.abs(p.y - worldTile.y) <= 1
-      );
-      if (clickedFriend) {
-        this._setTarget(clickedFriend);
-        return;
-      }
-
       // NPC click — target the NPC
       const clickedNPC = this.npcs.find(n =>
         !n.dead &&
@@ -930,6 +915,22 @@ export class Engine {
       );
       if (clickedNPC) {
         this._setTarget(clickedNPC);
+        return;
+      }
+
+      // Friendly player click — target the player
+      if (this.player.x === worldTile.x && this.player.y === worldTile.y) {
+        this._setTarget(this.player);
+        return;
+      }
+
+      // Remote players - Exact tile only
+      const otherPlayer = this.multiplayerSystem?.getRemotePlayers() ?? [];
+      const clickedPlayer = otherPlayer.find(p =>
+        p.x === worldTile.x && p.y === worldTile.y
+      );
+      if (clickedPlayer) {
+        this._setTarget(clickedPlayer);
         return;
       }
 
