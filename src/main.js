@@ -94,7 +94,7 @@ async function start() {
       window.engine = engine;
 
       // start the global chat system
-      window.chatSystem = new ChatSystem(character.name);
+      window.chatSystem = new ChatSystem(character.name, serverUrl);
     }
 
     // ── Show pre-game screens ─────────────────────────────────────────────

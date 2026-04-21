@@ -1,0 +1,41 @@
+# k8s/helm/templates/chat.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realm-of-echoes-chat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: realm-of-echoes-chat
+  template:
+    metadata:
+      labels:
+        app: realm-of-echoes-chat
+    spec:
+      imagePullSecrets:
+        - name: gitlab-registry-auth
+      containers:
+        - name: chat-server
+          image: {{ .Values.image.repository }}/chat:{{ .Values.image.tag }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: realm-of-echoes-chat-svc
+spec:
+  selector:
+    app: realm-of-echoes-chat
+  ports:
+    - port: 8081
+      targetPort: 8081
