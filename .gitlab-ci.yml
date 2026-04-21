@@ -1,6 +1,6 @@
 stages:
   - deploy
-  - build-
+  - build
 
 variables:
   REGISTRY: "registry.gitlab.internal.garflak.com"
