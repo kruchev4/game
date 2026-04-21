@@ -1,16 +1,34 @@
 export class ChatSystem {
-  constructor(playerName) {
+  constructor(playerName, serverUrl) {
     this.playerName = playerName;
     this.messagesDiv = document.getElementById('chat-messages');
     this.inputField = document.getElementById('chat-input');
     this.container = document.getElementById('chat-container');
     this.toggleBtn = document.getElementById('chat-toggle-btn');
 
-    this.isOpen = false; // Start with chat hidden
+    this.isOpen = false;
 
-    // Automatically determine the correct IP address
-    const host = window.location.hostname;
-    this.ws = new WebSocket(`ws://${host}:8081/chat`);
+    // --- Dynamic URL Routing ---
+    let chatUrl;
+    if (serverUrl) {
+      // Clean up any trailing slashes
+      let base = serverUrl.replace(/\/+$/, '');
+
+      if (base.endsWith(':8080')) {
+        // Local Dev Route: Swap port 8080 for 8081
+        chatUrl = base.replace(':8080', ':8081') + '/chat';
+      } else {
+        // Production Route: Traefik handles the port, just append /chat
+        chatUrl = base + '/chat';
+      }
+    } else {
+      // Absolute Fallback
+      const host = window.location.hostname;
+      chatUrl = `ws://${host}:8081/chat`;
+    }
+
+    // Initialize with the dynamic URL
+    this.ws = new WebSocket(chatUrl);
 
     this.ws.onopen = () => {
       this.addMessage('System', 'Connected to Global Chat', '#00ff00');
