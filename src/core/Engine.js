@@ -139,8 +139,15 @@ export class Engine {
 
     this._itemDefs = {};
     for (const row of (itemsRes.data ?? [])) {
-      // type and slot already match — just map effect -> onUse
-      this._itemDefs[row.id] = { ...row, onUse: row.effect ?? null };
+      const effect = row.effect ?? null;
+      // For consumables: effect IS the onUse payload
+      // For equipment:   effect holds stats — onUse should be null
+      const isConsumable = row.type === "consumable";
+      this._itemDefs[row.id] = {
+        ...row,
+        onUse: isConsumable ? effect : null,
+        stats: !isConsumable && effect?.stats ? effect.stats : (row.stats ?? null),
+      };
     }
 
     this._lootTables = {};
@@ -907,17 +914,6 @@ export class Engine {
         }
       }
 
-      // NPC click — target the NPC
-      const clickedNPC = this.npcs.find(n =>
-        !n.dead &&
-        Math.abs(n.x - worldTile.x) <= 1 &&
-        Math.abs(n.y - worldTile.y) <= 1
-      );
-      if (clickedNPC) {
-        this._setTarget(clickedNPC);
-        return;
-      }
-
       // Friendly player click — target the player
       if (this.player.x === worldTile.x && this.player.y === worldTile.y) {
         this._setTarget(this.player);
@@ -931,6 +927,17 @@ export class Engine {
       );
       if (clickedPlayer) {
         this._setTarget(clickedPlayer);
+        return;
+      }
+
+      // NPC click — target the NPC
+      const clickedNPC = this.npcs.find(n =>
+        !n.dead &&
+        Math.abs(n.x - worldTile.x) <= 1 &&
+        Math.abs(n.y - worldTile.y) <= 1
+      );
+      if (clickedNPC) {
+        this._setTarget(clickedNPC);
         return;
       }
 
