@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Targeting Fix:** Resolved a race condition where `ClickToMoveSystem` would override `InputManager` and clear the player's target when clicking on friendly remote players. `InputManager` is now the strict single source of truth for target selection.
+
+### Refactored
+- **UI Architecture:** Extracted all React/DOM overlay instantiations and lifecycle management out of `Engine.js` into a dedicated `UIManager.js`.
+- **System Standardization:** Engine now acts purely as a coordinator, delegating specific tasks to specialized managers (`InputManager`, `ActionManager`, `GameEventHandler`, `SaveManager`, `UIManager`).
+
+### Fixed
+- **Input Routing:** Fixed lingering underscore references (e.g., `_togglePauseMenu`, `_openLootWindow`) in `InputManager` to correctly point to the public methods in the new `UIManager`.
+- **Initialization Order:** Fixed an order-of-operations bug where UI systems tried to build before the `UIManager` was instantiated during zone loading.
+
+### Refactored
+- **Engine Architecture:** Began dismantling the `Engine.js` "God Object" to prepare for the Go microservice rewrite and improve codebase modularity.
+- **Input Routing:** Extracted all keyboard, mouse, and camera zoom event listeners into a dedicated `InputManager.js`.
+- **Action & Targeting:** Extracted tab-targeting, ability queueing, resource/mana validation, and ground-targeting (Volley) logic into `ActionManager.js`.
+- **Event Standardization:** Centralized all scattered Engine callbacks (`_onCombatEvent`, `_onLootEvent`, `_onXPEvent`, `_onEffectEvent`) into a single, unified `GameEventHandler.js`.
+
+### Fixed
+- **Multiplayer Loot Race Condition:** Fixed a 50ms race condition where the server's heartbeat would garbage-collect a dead NPC before the server's loot packet arrived, causing dropped items to vanish. The engine now correctly caches a "Ghost" of the NPC's coordinates upon death to ensure loot bags always spawn successfully.
+
 ### Added
 - **Global Chat Microservice:** Built a standalone, WebSocket chat server written in Go (runs on port 8081).
 - **Direct Messaging:** Added whisper functionality to the chat system using the `/w [PlayerName]` slash command.
