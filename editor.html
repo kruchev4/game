@@ -399,6 +399,8 @@ let S = {
 let UI = {
   tileSize:14,selTile:21,tool:"paint",painting:false,paintMode:1,
   rectStart:null,rectEnd:null,selExit:-1,selDec:null,
+  selPlacedDec:null,  // index of selected placed decoration
+  draggingDec:false,  // true when dragging a placed decoration
   decLibrary:[...DEFAULT_DEC_LIBRARY],
   decPreviews:{} // src -> blob URL or null
 };
@@ -438,23 +440,38 @@ function drawGrid(){
   // Decorations
   S.decorations.forEach((d,i)=>{
     const img=UI.decPreviews[d.src];
+    const isSelected=i===UI.selPlacedDec;
+    const drawX=(isSelected&&UI.draggingDec&&UI._dragPreviewX!=null)?UI._dragPreviewX:d.x;
+    const drawY=(isSelected&&UI.draggingDec&&UI._dragPreviewY!=null)?UI._dragPreviewY:d.y;
     const drawW=(d.w??1)*ts*(d.scale??1);
     const drawH=(d.h??1)*ts*(d.scale??1);
     const ox=(drawW-(d.w??1)*ts)/2;
     const oy=(drawH-(d.h??1)*ts)/2;
     if(img&&img.complete&&img.naturalWidth>0){
-      ctx.globalAlpha=0.85;
-      ctx.drawImage(img,d.x*ts-ox,d.y*ts-oy,drawW,drawH);
+      ctx.globalAlpha=isSelected?0.6:0.85;
+      ctx.drawImage(img,drawX*ts-ox,drawY*ts-oy,drawW,drawH);
       ctx.globalAlpha=1;
     } else {
-      ctx.strokeStyle="rgba(100,220,150,0.6)";ctx.lineWidth=1.5;
-      ctx.strokeRect(d.x*ts+1,d.y*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
-      ctx.fillStyle="rgba(100,220,150,0.15)";
-      ctx.fillRect(d.x*ts+1,d.y*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
+      ctx.strokeStyle=isSelected?"rgba(232,200,74,0.9)":"rgba(100,220,150,0.6)";
+      ctx.lineWidth=isSelected?2:1.5;
+      ctx.strokeRect(drawX*ts+1,drawY*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
+      ctx.fillStyle=isSelected?"rgba(232,200,74,0.15)":"rgba(100,220,150,0.15)";
+      ctx.fillRect(drawX*ts+1,drawY*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
       if(ts>=10){
-        ctx.fillStyle="rgba(100,220,150,0.9)";ctx.font=`${Math.max(8,ts*0.5)}px monospace`;
-        ctx.textAlign="center";ctx.textBaseline="middle";
-        ctx.fillText("D",d.x*ts+(d.w??1)*ts/2,d.y*ts+(d.h??1)*ts/2);
+        ctx.fillStyle=isSelected?"rgba(232,200,74,0.9)":"rgba(100,220,150,0.9)";
+        ctx.font=`${Math.max(8,ts*0.5)}px monospace`;ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText("D",drawX*ts+(d.w??1)*ts/2,drawY*ts+(d.h??1)*ts/2);
+      }
+    }
+    // Selection highlight
+    if(isSelected){
+      ctx.strokeStyle="rgba(232,200,74,0.9)";ctx.lineWidth=2;ctx.setLineDash([3,3]);
+      ctx.strokeRect(drawX*ts-ox-1,drawY*ts-oy-1,drawW+2,drawH+2);
+      ctx.setLineDash([]);ctx.lineWidth=1;
+      if(ts>=8){
+        ctx.fillStyle="rgba(232,200,74,0.95)";ctx.font="bold 9px monospace";
+        ctx.textAlign="center";ctx.textBaseline="bottom";
+        ctx.fillText(UI.draggingDec?"Click to drop":"Click to drag",drawX*ts+(d.w??1)*ts/2,drawY*ts-oy-2);
       }
     }
   });
@@ -531,6 +548,10 @@ canvas.addEventListener("mousemove",e=>{
     document.getElementById("info-tile").textContent=`${tid} (${all.find(t=>t.id===tid)?.label||"?"})`;
     document.getElementById("info-count").textContent=Array.from(S.grid).filter(t=>t===tid).length;
   }
+  // Live drag preview for selected decoration
+  if(UI.tool==="decplace"&&UI.selPlacedDec!=null&&UI.draggingDec&&inB(x,y)){
+    UI._dragPreviewX=x;UI._dragPreviewY=y;drawGrid();return;
+  }
   if(UI.painting){
     if(UI.tool==="rect"&&UI.rectStart){UI.rectEnd={x,y};drawGrid();}
     else if(UI.tool==="paint")handlePaint(x,y);
@@ -602,13 +623,38 @@ function handleClick(x,y,e){
     }
     renderPortals();drawGrid();
   }
-    if(e.button===2){S.decorations=S.decorations.filter(d=>!(d.x===x&&d.y===y));renderPlacedDecs();drawGrid();}
-    else if(UI.selDec){
-      S.decorations.push({...UI.selDec,x,y});
+  else if(t==="decplace"){
+    if(e.button===2){
+      // Right-click: delete decoration at this position, or deselect
+      const hitIdx = S.decorations.findIndex(d=>d.x===x&&d.y===y);
+      if(hitIdx>=0){ S.decorations.splice(hitIdx,1); UI.selPlacedDec=null; }
+      else { UI.selPlacedDec=null; }
       renderPlacedDecs();drawGrid();
+    } else {
+      // Left-click: check if clicking an existing placed decoration
+      const hitIdx = S.decorations.findIndex(d=>d.x===x&&d.y===y);
+      if(hitIdx>=0){
+        // Select it for dragging
+        UI.selPlacedDec = hitIdx;
+        UI.draggingDec  = true;
+        drawGrid();
+      } else if(UI.selPlacedDec!=null && UI.draggingDec){
+        // Drop the selected decoration at new position
+        S.decorations[UI.selPlacedDec].x = x;
+        S.decorations[UI.selPlacedDec].y = y;
+        UI.draggingDec = false;
+        renderPlacedDecs();drawGrid();
+      } else if(UI.selDec){
+        // Place new decoration from library
+        S.decorations.push({...UI.selDec,x,y});
+        renderPlacedDecs();drawGrid();
+        // Return to paint tool after placing
+        UI.tool="paint";UI.selPlacedDec=null;
+        document.querySelectorAll(".tool-btn").forEach(b=>b.classList.toggle("active",b.dataset.tool==="paint"));
+        document.getElementById("sb-tool").textContent="Tool: paint";
+      }
     }
   }
-
 function handlePaint(x,y){
   if(!inB(x,y))return;
   S.grid[y*S.W+x]=UI.paintMode===1?UI.selTile:fillTile();
@@ -640,6 +686,8 @@ document.querySelectorAll(".tool-btn").forEach(btn=>{
     btn.classList.add("active");
     document.getElementById("sb-tool").textContent="Tool: "+UI.tool;
     UI.rectStart=null;
+    // Clear decoration selection when leaving decplace tool
+    if(UI.tool!=="decplace"){ UI.selPlacedDec=null; UI.draggingDec=false; }
     if(UI.tool==="decplace"){ switchTab("decs"); }
   };
 });
@@ -928,10 +976,10 @@ function buildExportWorld(){
 document.getElementById("btn-export").onclick=()=>{
   const world = buildExportWorld();
   const json  = JSON.stringify(world, null, 2);
-  // Escape single quotes for safe SQL embedding
-  const safeJson = JSON.stringify(world).replace(/'/g, "''");
-  const sql = `-- Safe Supabase merge — preserves fields not managed by editor\nUPDATE worlds\nSET json = json || '${safeJson}'::jsonb\nWHERE id = '${S.worldId.replace(/'/g,"''")}';` +
-    `\n\n-- Verify:\nSELECT jsonb_array_length(json->'tiles'), jsonb_array_length(json->'towns'), jsonb_array_length(json->'portals') FROM worlds WHERE id = '${S.worldId.replace(/'/g,"''")}';`;
+  const safeJson = JSON.stringify(world).split("'").join("''");
+  const safeId   = S.worldId.split("'").join("''");
+  const sql = "-- Safe Supabase merge — preserves fields not managed by editor\nUPDATE worlds\nSET json = json || '" + safeJson + "'::jsonb\nWHERE id = '" + safeId + "';" +
+    "\n\n-- Verify:\nSELECT jsonb_array_length(json->'tiles'), jsonb_array_length(json->'towns'), jsonb_array_length(json->'portals') FROM worlds WHERE id = '" + safeId + "';";
   document.getElementById("export-text").value = json + "\n\n/* ── SUPABASE SQL (safer for partial updates) ──\n" + sql + "\n*/";
   document.getElementById("export-out").style.display="block";
 };
