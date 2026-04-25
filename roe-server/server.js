@@ -606,7 +606,9 @@ function _resolveAbility(session, world, msg) {
   if (npc._condemned && npc._condemned.casterId === session.playerToken && Date.now() < npc._condemned.expiresAt) {
     damage = Math.round(damage * (1 + npc._condemned.damageAmplify));
   }
-    damage = Math.floor(damage * session.eaglesEye.damageMult);
+   if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) {
+  damage = Math.floor(damage * (session.eaglesEye.damageMult ?? 1));
+}
 
   let chargeEffect = null;
   if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt && ability.type === "ranged") {
