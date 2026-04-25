@@ -993,9 +993,13 @@ document.getElementById("btn-copy-export").onclick=()=>{
 };
 document.getElementById("btn-copy-sql").onclick=()=>{
   const full = document.getElementById("export-text").value;
-  const sqlMatch = full.match(/\/\* ── SUPABASE SQL[\s\S]*?\*\//);
-  if(!sqlMatch){setMsg("No SQL found");return;}
-  const sql = sqlMatch[0].replace(/^\/\* ── SUPABASE SQL[^\n]*\n/,"").replace(/\n\*\/$/,"").trim();
+  const marker = "/* ── SUPABASE SQL";
+  const start = full.indexOf(marker);
+  if(start===-1){setMsg("No SQL found");return;}
+  const end = full.lastIndexOf("*/");
+  if(end===-1){setMsg("No SQL found");return;}
+  const block = full.substring(start, end);
+  const sql = block.split("\n").slice(1).join("\n").trim();
   navigator.clipboard.writeText(sql).then(()=>setMsg("SQL copied!"));
 };
 document.getElementById("btn-dl-export").onclick=()=>{
