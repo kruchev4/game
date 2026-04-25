@@ -739,14 +739,9 @@ wss.on("connection", (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
+    console.log(`[Server] message received: ${msg.type}`);
+
     switch (msg.type) {
-	ws.on("message", async (raw) => {
-  let msg;
-  try { msg = JSON.parse(raw); } catch { return; }
-  
-  console.log(`[Server] message received: ${msg.type}`);  // ← add this
-  
-  switch (msg.type) {
 
       case "join": {
         const { playerToken, worldId, name, classId, icon, hp, maxHp, level, x, y } = msg;
