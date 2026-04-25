@@ -306,6 +306,7 @@ function _resolveAbility(session, world, msg) {
     const iv = setInterval(() => {
       if (Date.now() > zoneStarted + durationMs) { clearInterval(iv); return; }
       const w = worlds.get(session.worldId);
+      if (!w) { console.log("[Consecrate] world not found, clearing"); clearInterval(iv); return; }
       if (!w) { clearInterval(iv); return; }
       for (const npc of w.npcs.values()) {
         if (npc.dead) continue;
@@ -866,6 +867,7 @@ wss.on("connection", (ws) => {
             tick++;
             const dexMod = Math.floor(((session.stats?.dex ?? 10) - 10) / 2);
             const dmg = Math.max(1, dmgPerTick + Math.floor(dexMod * 0.5));
+            
             for (const npc of [...world.npcs.values()]) {
               if (npc.dead) continue;
               const dx = npc.x - wx, dy = npc.y - wy;

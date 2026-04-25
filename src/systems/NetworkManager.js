@@ -117,14 +117,23 @@ export class NetworkManager {
         }
       },
 
-      onNPCDamaged: ({ npcId, hp, damage, attackerName }) => {
+      onNPCDamaged: ({ npcId, hp, damage, attackerName, isDot }) => {
         const npc = engine.npcs.find(n => n.id === npcId);
         if (npc) {
           npc.hp = hp;
-          engine.combatLog?.push({
-            text: `${attackerName} hit ${npc.id} for ${damage}!`,
-            type: "damage"
-          });
+          npc.maxHp = npc.maxHp; // already set
+          if (isDot && damage > 0) {
+            engine.combatLog?.push({
+              text: `${attackerName} burns ${npc.name ?? npc.classId} for ${damage}!`,
+              type: "damage_out"
+            });
+            engine.animSystem?.playHit(npcId);
+          } else if (damage > 0) {
+            engine.combatLog?.push({
+              text: `${attackerName} hit ${npc.name ?? npc.classId} for ${damage}!`,
+              type: "damage_out"
+            });
+          }
         }
       },
 
@@ -230,6 +239,10 @@ export class NetworkManager {
       if (outOfRange) {
         engine.combatLog?.push({ text: "Out of range.", type: "system" });
         return;
+      }
+      if (msg.special === "consecrate") {
+          engine.combatLog?.push({ text: "Consecrate active — holy ground burns!", type: "system" });
+          return;
       }
 
       if (msg.special === "charge") {
