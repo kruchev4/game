@@ -130,6 +130,7 @@ export class NetworkManager {
 
       onNPCKilled: ({ npcId, killerName, xpShare, loot }) => {
         const npc = engine.npcs.find(n => n.id === npcId) || engine._deadNPCGhosts?.[npcId];
+        engine.dungeonSystem?.onNPCKilled(npc);
 
         if (npc && !npc.dead) {
           npc.hp   = 0;
@@ -204,7 +205,9 @@ export class NetworkManager {
       if (rage    !== undefined && engine.player.classId === "fighter") engine.player.resource = rage;
 
       if (hp <= 0 && !engine._playerDead && !engine.player.invulnerable) {
-        engine._onPlayerDeath();
+        engine._playerDead = true;
+        const killer = engine.npcs.find(n => n.state === "alert")?.name ?? "a monster";
+        engine.uiManager.showDeathScreen(killer, 0, 0);
       }
       if (xp !== undefined) {
         engine.xpSystem?._checkLevelUp?.();

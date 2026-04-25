@@ -4,7 +4,7 @@ export class Camera {
     y = 0,
     viewportWidth = 0,
     viewportHeight = 0,
-    tileSize = 24          // 24px = 16px × 1.5 — matches old 150% browser zoom
+    tileSize = 48          // 24px = 16px × 1.5 — matches old 150% browser zoom
   } = {}) {
     this.x = x;
     this.y = y;
@@ -12,9 +12,9 @@ export class Camera {
     this.viewportHeight = viewportHeight;
     this.tileSize       = tileSize;
 
-    // Zoom limits — ±25% of base (24)
-    this.minTileSize = 16;   // ~67% zoom  (zoomed out)
-    this.maxTileSize = 32;   // ~133% zoom (zoomed in)
+    // Zoom limits — ±25% of base (48)
+    this.minTileSize = 32;   // ~67% zoom  (zoomed out)
+    this.maxTileSize = 60;   // ~133% zoom (zoomed in)
     this.zoomStep    = 4;    // pixels per scroll step
   }
 

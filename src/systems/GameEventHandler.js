@@ -177,6 +177,39 @@ export class GameEventHandler {
         break;
     }
   }
+handleDungeonEvent(event) {
+  const { combatLog, animSystem } = this.engine;
+  switch (event.type) {
+    case "chest_open": {
+      const { chest, loot } = event;
+      const goldStr = loot.gold > 0 ? ` +${loot.gold}g` : "";
+      const itemDef = loot.itemId ? this.engine._itemDefs?.[loot.itemId] : null;
+      const itemStr = itemDef ? ` [${itemDef.icon} ${itemDef.name}]` : "";
+      combatLog?.push({ text: `📦 Chest opened!${goldStr}${itemStr}`, type: "reward" });
+      this.engine.uiManager.inventoryWindow?.refresh();
+      break;
+    }
+    case "room_enter": {
+      const { room } = event;
+      combatLog?.push({
+        text: room.isBossRoom ? `⚠ You enter ${room.label}. Danger ahead!` : `You enter ${room.label}.`,
+        type: room.isBossRoom ? "damage" : "system"
+      });
+      break;
+    }
+    case "boss_killed": {
+      const { boss } = event;
+      combatLog?.push({ text: `☠ ${boss.name ?? boss.classId} has been slain!`, type: "kill" });
+      animSystem?.spawnAOE({ x: boss.x, y: boss.y, radius: 3, color: "rgba(255,220,50,0.5)" });
+      break;
+    }
+    case "dungeon_cleared": {
+      combatLog?.push({ text: `✦ Dungeon cleared! All enemies defeated.`, type: "kill" });
+      animSystem?.spawnAOE({ x: this.engine.player.x, y: this.engine.player.y, radius: 8, color: "rgba(255,215,0,0.3)" });
+      break;
+    }
+  }
+}
 
   // ─────────────────────────────────────────────
   // LOOT EVENTS
@@ -219,7 +252,7 @@ export class GameEventHandler {
         this.engine.animSystem?.playLevelUp("player");
         log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
         if (event.level % 3 === 0) {
-          setTimeout(() => this.engine.uiManager._showAbilityPick(event.level), 800);
+          setTimeout(() => this.engine.uiManager.showAbilityPick(event.level), 800);
         }
         break;
       }
@@ -263,6 +296,7 @@ export class GameEventHandler {
         break;
       case "kill":
         this.handleCombatEvent(event);
+        this.engine.dungeonSystem?.onNPCKilled(event.target);
         break;
       case "player_death":
         this.engine._onPlayerDeath();

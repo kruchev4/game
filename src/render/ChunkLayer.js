@@ -1,5 +1,5 @@
 export class ChunkLayer {
-  constructor({ tileSize = 16, chunkSize = 32, tileFactory }) {
+  constructor({ tileSize = 48, chunkSize = 32, tileFactory }) {
     this.tileSize = tileSize;
     this.chunkSize = chunkSize;       // 32x32 tiles per chunk
     this.tileFactory = tileFactory;

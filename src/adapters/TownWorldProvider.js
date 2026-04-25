@@ -19,18 +19,23 @@ export class TownWorldProvider {
   _buildWorld(data) {
     const width  = data.width;
     const height = data.height;
-    const tileArray = new Uint8Array(width * height);
+    const tileArray = new Uint16Array(width * height);
 
     if (Array.isArray(data.tiles)) {
-      data.tiles.forEach((row, y) => {
-        const values = typeof row === "string"
-          ? row.split(",").map(Number)
-          : Array.isArray(row) ? row : [row];
-        values.forEach((tileId, x) => {
-          if (x < width && y < height) tileArray[y * width + x] = tileId;
-        });
+  if (Array.isArray(data.tiles[0])) {
+    // 2D array of rows
+    data.tiles.forEach((row, y) => {
+      row.forEach((tileId, x) => {
+        if (x < width && y < height) tileArray[y * width + x] = tileId;
       });
-    }
+    });
+  } else {
+    // Flat array — standard format
+    data.tiles.forEach((tileId, i) => {
+      tileArray[i] = tileId;
+    });
+  }
+}
 
     return {
       id:            data.id,

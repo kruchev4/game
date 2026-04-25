@@ -66,7 +66,7 @@ export class Renderer {
   constructor(canvas) {
     this.canvas   = canvas;
     this.ctx      = canvas.getContext("2d");
-    this.tileSize = 24;
+    this.tileSize = 48;
     this.tileFactory = new TileFactory({ tileSize: this.tileSize });
     this.chunkLayer = new ChunkLayer({
       tileSize: this.tileSize,

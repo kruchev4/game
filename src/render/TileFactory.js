@@ -2,7 +2,7 @@ import { getTileDef } from "../data/tiles.js";
 import { PAINTERS, SPRITE_TILE_IDS, isTileSpriteReady } from "./tilePainters.js";
 
 export class TileFactory {
-  constructor({ tileSize = 16 } = {}) {
+  constructor({ tileSize = 48 } = {}) {
     this.tileSize = tileSize;
     this.cache = new Map(); // key: `${id}|${x}|${y}|${mask}`
     this.painters = PAINTERS;

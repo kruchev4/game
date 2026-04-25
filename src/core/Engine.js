@@ -23,13 +23,14 @@ import { createClient }        from "https://cdn.jsdelivr.net/npm/@supabase/supa
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config/supabaseConfig.js";
 import { CombatLog }           from "../ui/CombatLog.js";
 import { findNearestWalkable } from "../world/findNearestWalkable.js";
+import { DungeonSystem } from "../systems/DungeonSystem.js";
 
 
 export class Engine {
   constructor({ worldProvider, renderer }) {
     this.worldProvider = worldProvider;
     this.renderer      = renderer;
-
+    this.dungeonSystem = null;
     this.world    = null;
     this.player   = null;
     this.npcs     = [];
@@ -237,7 +238,7 @@ export class Engine {
     if (isTown) {
       this._initTownSystem();
     } else if (this.world.type === "dungeon") {
-      this._initDungeonSpawns();
+      this._initDungeonSystem(); 
     } else {
       // Skip client SpawnSystem if server configured — server owns all NPCs
       if (!this.serverUrl) {
@@ -476,6 +477,28 @@ export class Engine {
 
     console.log(`[Engine] Dungeon spawned: ${this.npcs.length} monsters`);
   }
+  _initDungeonSystem() {
+  const world = this.world;
+  this.dungeonSystem = new DungeonSystem({
+    world,
+    player:    this.player,
+    itemDefs:  this._itemDefs,
+    lootTiers: this._lootTiers,
+    onExit:    (exit) => this._exitTown(exit),
+    onChestOpen: (chest, loot) => {
+      this.gameEventHandler.handleDungeonEvent({ type: "chest_open", chest, loot });
+      if (loot.gold > 0) this.player.gold = (this.player.gold ?? 0) + loot.gold;
+      if (loot.itemId) this.lootSystem.giveItem(loot.itemId, loot.qty ?? 1);
+    },
+    onRoomEnter:  (room) => this.gameEventHandler.handleDungeonEvent({ type: "room_enter", room }),
+    onBossKilled: (boss) => this.gameEventHandler.handleDungeonEvent({ type: "boss_killed", boss }),
+    onCleared:    ()     => this.gameEventHandler.handleDungeonEvent({ type: "dungeon_cleared" })
+  });
+  this.renderer.dungeonSystem = this.dungeonSystem;
+  this._initDungeonSpawns();
+  this.townSystem = null;
+  console.log(`[Engine] DungeonSystem initialized — ${this.dungeonSystem.chests.length} chests, ${this.dungeonSystem.rooms.length} rooms`);
+}
 
   _initTownSystem() {
     this.townSystem = new TownSystem({
@@ -532,6 +555,8 @@ export class Engine {
 
     // Start with just the player — SpawnSystem adds NPCs via onSpawn
     this.entities = [player];
+    this.dungeonSystem = null;
+    this.renderer.dungeonSystem = null;
 
     this.npcPerceptionSystem = new NPCPerceptionSystem({ npcs, player });
 
@@ -764,6 +789,7 @@ export class Engine {
       this.lootSystem?.update();
       if (!serverOwnsNPCs) this.spawnSystem?.update();
       this.townSystem?.update();
+      this.dungeonSystem?.update(1, this.npcs);
       this.animSystem?.update();
       this.effectSystem?.update();
       this.multiplayerSystem?.update();
