@@ -13,7 +13,7 @@ export class Camera {
     this.tileSize       = tileSize;
 
     // Zoom limits — ±25% of base (48)
-    this.minTileSize = 32;   // ~67% zoom  (zoomed out)
+    this.minTileSize = 40;   // ~67% zoom  (zoomed out)
     this.maxTileSize = 60;   // ~133% zoom (zoomed in)
     this.zoomStep    = 4;    // pixels per scroll step
   }

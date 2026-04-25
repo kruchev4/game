@@ -99,6 +99,8 @@ export class Renderer {
     this.groundTargetingMouse = null; // { px, py } screen coords
     this.volleyZones         = [];    // active haze zones
     this._decorationImgs = {};    // cache: src -> HTMLImageElement
+    this.dungeonSystem   = null;  // set by Engine._initDungeonSystem
+    this.consecrateZones = [];    // active consecrate ground zones
     this.resize();
     window.addEventListener("resize", () => this.resize());
   }
@@ -342,6 +344,9 @@ export class Renderer {
     // ── Decorations (ground layer — player walks in front) ──
     this._drawDecorations(world, camera, tileSize, "ground");
 
+    // ── Fog of war — drawn before entities so NPCs show through ──
+    if (this.dungeonSystem) this._drawFogOfWar();
+
     // ── Entities (NPCs, player, corpses, remote players) ──
     const sortedEntities = [...entities].sort((a, b) => a.y - b.y);
     for (const entity of sortedEntities) {
@@ -352,6 +357,9 @@ export class Renderer {
 
 // ── Decorations (tall layer — player walks behind) ──
 this._drawDecorations(world, camera, tileSize, "tall");
+
+    // ── Chests ──
+    this._drawChests();
     // ── Effect indicators ──
     if (this.effectSystem) {
       this._drawEffectIndicators(entities);
@@ -373,6 +381,7 @@ this._drawDecorations(world, camera, tileSize, "tall");
 
     this._drawGroundTargeting();
     this._drawVolleyZones();
+    this._drawConsecrateZones();
     this._drawElementalCharge();
     this._drawEaglesEye();
     this._drawCastBar();
@@ -1249,6 +1258,26 @@ this._drawDecorations(world, camera, tileSize, "tall");
       ctx.drawImage(this._minimapCanvas, mx, my, mapPx, mapPx);
     }
 
+    // ── Dungeon fog of war on minimap ──
+    if (this.dungeonSystem) {
+      const ds = this.dungeonSystem;
+      const sw = mapPx / world.width;
+      const sh = mapPx / world.height;
+      for (let y = 0; y < world.height; y++) {
+        for (let x = 0; x < world.width; x++) {
+          if (!ds.isTileVisible(x, y)) {
+            ctx.fillStyle = "rgba(0,0,0,0.92)";
+            ctx.fillRect(
+              mx + Math.floor(x * sw),
+              my + Math.floor(y * sh),
+              Math.ceil(sw) + 1,
+              Math.ceil(sh) + 1
+            );
+          }
+        }
+      }
+    }
+
     // Scale factors: world tile → minimap pixel
     const scaleX = mapPx / world.width;
     const scaleY = mapPx / world.height;
@@ -1309,7 +1338,136 @@ this._drawDecorations(world, camera, tileSize, "tall");
     ctx.strokeRect(mx, my, mapPx, mapPx);
   }
 
-  /** Build an offscreen canvas with terrain colours — only rebuilt on world change */
+  // ── Fog of War ────────────────────────────────────────────────────────────
+  _drawFogOfWar() {
+    const ds = this.dungeonSystem;
+    if (!ds) return;
+    const { ctx, camera, tileSize } = this;
+    const player = this.player;
+    if (!player) return;
+
+    const { sx: pcx, sy: pcy } = camera.worldToScreen(player.x, player.y);
+    const centerX = pcx + tileSize / 2;
+    const centerY = pcy + tileSize / 2;
+    const visionPx = ds.visionRadius * tileSize;
+
+    // Draw fog to offscreen canvas so composite doesn't affect HUD
+    const offscreen = document.createElement("canvas");
+    offscreen.width  = ctx.canvas.width;
+    offscreen.height = ctx.canvas.height;
+    const off = offscreen.getContext("2d");
+
+    // Fill entirely black
+    off.fillStyle = "rgba(0,0,0,0.92)";
+    off.fillRect(0, 0, offscreen.width, offscreen.height);
+
+    // Cut vision circle out of the black
+    off.globalCompositeOperation = "destination-out";
+    const grad = off.createRadialGradient(
+      centerX, centerY, visionPx * 0.35,
+      centerX, centerY, visionPx
+    );
+    grad.addColorStop(0,    "rgba(0,0,0,1)");
+    grad.addColorStop(0.65, "rgba(0,0,0,0.85)");
+    grad.addColorStop(1,    "rgba(0,0,0,0)");
+    off.fillStyle = grad;
+    off.beginPath();
+    off.arc(centerX, centerY, visionPx, 0, Math.PI * 2);
+    off.fill();
+
+    // Blit offscreen fog onto main canvas
+    ctx.drawImage(offscreen, 0, 0);
+  }
+
+  // ── Chests ────────────────────────────────────────────────────────────────
+  _drawChests() {
+    const ds = this.dungeonSystem;
+    if (!ds?.chests?.length) return;
+    const { ctx, camera, tileSize } = this;
+
+    for (const chest of ds.chests) {
+      if (chest.looted) continue;
+      if (!ds.isInVisionRadius(chest.x, chest.y)) continue;
+
+      const { sx, sy } = camera.worldToScreen(chest.x, chest.y);
+      if (sx + tileSize < 0 || sy + tileSize < 0 ||
+          sx > ctx.canvas.width || sy > ctx.canvas.height) continue;
+
+      // Pulsing gold glow
+      const pulse = 0.4 + 0.2 * Math.sin(Date.now() * 0.004);
+      ctx.fillStyle = `rgba(200,160,30,${pulse})`;
+      ctx.fillRect(sx, sy, tileSize, tileSize);
+
+      // Chest icon
+      ctx.font = `${Math.floor(tileSize * 0.65)}px serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(chest.icon ?? "📦", sx + tileSize / 2, sy + tileSize / 2);
+
+      // Click label
+      if (tileSize >= 32) {
+        ctx.fillStyle = "rgba(220,180,50,0.9)";
+        ctx.font = "8px monospace";
+        ctx.fillText("Click", sx + tileSize / 2, sy - 3);
+      }
+
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+  }
+
+  // ── Consecrate Zones ──────────────────────────────────────────────────────
+  _drawConsecrateZones() {
+    const now = Date.now();
+    if (!this.consecrateZones?.length) return;
+    this.consecrateZones = this.consecrateZones.filter(z => now < z.startedAt + z.duration);
+    const { ctx, camera, tileSize } = this;
+
+    for (const zone of this.consecrateZones) {
+      const progress = (now - zone.startedAt) / zone.duration;
+      const alpha    = Math.max(0, (1 - progress) * 0.5);
+      const { sx, sy } = camera.worldToScreen(zone.x, zone.y);
+      const screenR    = zone.radius * tileSize;
+
+      // Golden holy glow
+      ctx.fillStyle = `rgba(220,180,40,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx + tileSize / 2, sy + tileSize / 2, screenR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Inner cross
+      const cx = sx + tileSize / 2, cy = sy + tileSize / 2;
+      ctx.strokeStyle = `rgba(255,220,80,${alpha * 1.4})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - screenR * 0.8, cy); ctx.lineTo(cx + screenR * 0.8, cy);
+      ctx.moveTo(cx, cy - screenR * 0.8); ctx.lineTo(cx, cy + screenR * 0.8);
+      ctx.stroke();
+
+      // Rune particles
+      const seed = Math.floor(now / 400) + zone.x * 7 + zone.y * 13;
+      ctx.fillStyle = `rgba(255,220,80,${alpha * 1.2})`;
+      for (let i = 0; i < 5; i++) {
+        const angle = (seed * 2654435761 + i * 999983) % 360;
+        const r     = ((seed * 1234567 + i * 7654321) % 100) / 100 * screenR * 0.7;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.lineWidth = 1;
+
+      if (zone.allyBuff) {
+        ctx.fillStyle = `rgba(180,220,255,${alpha})`;
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`+${Math.round(zone.allyBuff.damagePct * 100)}% DMG`,
+          cx, sy + tileSize / 2 - screenR - 6);
+        ctx.textAlign = "left";
+      }
+    }
+  }
+
+  // ── Minimap fog of war patch ───────────────────────────────────────────────
   _buildMinimapTerrain(world, mapPx) {
     const c   = document.createElement("canvas");
     c.width   = mapPx;
@@ -1594,7 +1752,8 @@ this._drawDecorations(world, camera, tileSize, "tall");
   _classColor() {
     const colors = {
       fighter: "#e8c84a",
-      ranger:  "#6abf5e"
+      ranger:  "#6abf5e",
+      paladin: "#c8a8ff"
     };
     return colors[this.player?.classId] ?? "#aaaaaa";
   }

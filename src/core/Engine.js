@@ -237,14 +237,10 @@ export class Engine {
 
     if (isTown) {
       this._initTownSystem();
-    } else if (this.world.type === "dungeon") {
-      this._initDungeonSystem(); 
-    } else {
-      // Skip client SpawnSystem if server configured — server owns all NPCs
-      if (!this.serverUrl) {
-        this._initSpawnSystem();
-      }
+    } else if (isDungeon) {
+      this._initDungeonSystem();
     }
+// Overworld NPC spawning is handled entirely by the server
 
     // Re-wire systems to the live npcs array after population.
     if (this.clickToMoveSystem)   this.clickToMoveSystem.npcs   = this.npcs;
@@ -479,6 +475,15 @@ export class Engine {
   }
   _initDungeonSystem() {
   const world = this.world;
+  const returnDest = this._returnStack[this._returnStack.length - 1];
+  if (returnDest) {
+    this._respawnPoint = {
+      worldId: returnDest.worldId,
+      x:       returnDest.x,
+      y:       returnDest.y
+    };
+    console.log(`[Engine] Dungeon respawn set to ${returnDest.worldId} (${returnDest.x}, ${returnDest.y})`);
+  }
   this.dungeonSystem = new DungeonSystem({
     world,
     player:    this.player,
@@ -709,10 +714,21 @@ export class Engine {
       });
     } else {
       const rx = this._respawnPoint?.x ?? this._spawnX;
-      const ry = this._respawnPoint?.y ?? this._spawnY;
-      const { x, y } = findNearestWalkable(this.world, rx, ry);
-      p.x = x;
-      p.y = y;
+    const ry = this._respawnPoint?.y ?? this._spawnY;
+    let respawnPos;
+    try {
+      respawnPos = findNearestWalkable(this.world, rx, ry, 10);
+    } catch {
+      try {
+        respawnPos = findNearestWalkable(this.world,
+          Math.floor(this.world.width / 2),
+          Math.floor(this.world.height / 2), 10);
+      } catch {
+       respawnPos = { x: Math.floor(this.world.width / 2), y: Math.floor(this.world.height / 2) };
+      }
+    }
+    p.x = respawnPos.x;
+    p.y = respawnPos.y;
     }
 
     this._playerDead = false;

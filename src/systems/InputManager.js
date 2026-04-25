@@ -182,12 +182,20 @@ export class InputManager {
         return;
       }
 
-      // Corpse click
+      /// Corpse click
       const corpse = this.engine.lootSystem?.corpses.find(c => c.x === worldTile.x && c.y === worldTile.y);
       if (corpse) {
         this.engine.uiManager.openLootWindow(corpse);
         return;
       }
+
+      // Chest click
+      const chest = this.engine.dungeonSystem?.handleClick(worldTile.x, worldTile.y);
+      if (chest) {
+        this.engine.dungeonSystem.openChest(chest.id);
+        return;
+      }
+
       this.engine.actionManager.setTarget(null);
     });
   }

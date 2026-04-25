@@ -11,8 +11,8 @@
 
 require("dotenv").config();
 const { WebSocketServer, WebSocket } = require("ws");
-const Database = require("better-sqlite3");
-const path     = require("path");
+
+
 const fs       = require("fs");
 const http     = require("http");
 
@@ -35,20 +35,6 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   process.exit(1);
 }
 
-// ── Local SQLite database ────────────────────────────────────────────────────
-const DB_PATH = path.join(__dirname, "db", "roe_server.db");
-let db = null;
-
-function initDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    console.error("[Server] Database not found at", DB_PATH);
-    console.error("[Server] Run: node db/seed.js");
-    process.exit(1);
-  }
-  db = new Database(DB_PATH, { readonly: true });
-  db.pragma("journal_mode = WAL");
-  console.log("[Server] Local database loaded from", DB_PATH);
-}
 
 // ── Supabase REST helper (client-facing only — saves, worlds, registry) ───────
 async function sb(path, opts = {}) {
@@ -204,31 +190,7 @@ async function loadAbilityDefs() {
  * Load all spawn groups + their monsters for a given worldId.
  * Returns array of { group, monsters[] } ready for NPC instantiation.
  */
-function loadSpawnGroups(worldId) {
-  // Load enabled spawn groups for this world
-  const groups = db.prepare(
-    "SELECT * FROM spawn_groups WHERE world_id = ? AND enabled = 1"
-  ).all(worldId);
-  if (!groups.length) return [];
 
-  // Load all monsters for those groups
-  const placeholders = groups.map(() => "?").join(",");
-  const members = db.prepare(
-    `SELECT * FROM spawn_group_monsters WHERE spawn_group_id IN (${placeholders})`
-  ).all(...groups.map(g => g.id));
-
-  // Index by group
-  const byGroup = new Map();
-  for (const m of members) {
-    if (!byGroup.has(m.spawn_group_id)) byGroup.set(m.spawn_group_id, []);
-    byGroup.get(m.spawn_group_id).push(m);
-  }
-
-  return groups.map(g => ({
-    group:    g,
-    monsters: byGroup.get(g.id) ?? []
-  }));
-}
 
 // ── Ability Resolution ────────────────────────────────────────────────────────
 
@@ -279,6 +241,7 @@ function _inRange(attacker, target, range) {
 }
 
 function _resolveAbility(session, world, msg) {
+  console.log(`[Server] resolveAbility: ${msg.abilityId} type=${abilityDefs.get(msg.abilityId)?.type} special=${abilityDefs.get(msg.abilityId)?.special}`);
   const { abilityId, targetId, targetType } = msg;
   const rank = msg.rank ?? (session.learnedSkills?.[abilityId] ?? 1);
 
@@ -324,6 +287,38 @@ function _resolveAbility(session, world, msg) {
   const isMultiTarget = (ability.targets ?? 1) > 1;
   // Melee abilities with centeredOnSelf (e.g. whirlwind) are treated as AOE
   const isCenteredAoe = ability.aoe?.centeredOnSelf === true;
+
+  // ── Consecrate — ground holy DoT zone (must precede generic AOE handler) ──
+  if (ability.special === "consecrate") {
+  console.log(`[Server] CONSECRATE fired by ${session.name} at (${session.x}, ${session.y})`);
+  if (ability.special === "consecrate") {
+    const ge           = ability.groundEffect ?? {};
+    const radius       = ability.aoe?.radius ?? 3;
+    const dotDmg       = ge.dot?.damage ?? 6;
+    const dotIntervalMs = (ge.dot?.interval ?? 60) / 60 * 1000;
+    const durationMs   = (ge.duration ?? 480) / 60 * 1000;
+    const allyBuff     = ge.allyBuff ?? null;
+    const zoneStarted  = Date.now();
+    const zoneX = session.x, zoneY = session.y;
+    _broadcast(session.worldId, { type: "consecrate_zone", x: zoneX, y: zoneY, radius, duration: ge.duration ?? 480, allyBuff });
+    const iv = setInterval(() => {
+      if (Date.now() > zoneStarted + durationMs) { clearInterval(iv); return; }
+      const w = worlds.get(session.worldId);
+      if (!w) { clearInterval(iv); return; }
+      for (const npc of w.npcs.values()) {
+        if (npc.dead) continue;
+        const dx = npc.x - zoneX, dy = npc.y - zoneY;
+          if (Math.sqrt(dx*dx + dy*dy) <= radius) {
+            const r = w.resolveAttack(npc.id, dotDmg, session);
+          if (!r) continue;
+          _broadcast(session.worldId, { type: "npc_damaged", npcId: npc.id, hp: r.hp, maxHp: r.maxHp, damage: dotDmg, attackerName: "Consecrate", isDot: true });
+          if (r.dead) _handleNPCKill(session, w, npc.id, r);
+          }
+        }
+      }, dotIntervalMs);
+      _send(session.ws, { type: "ability_result", abilityId, special: "consecrate" });
+      return;
+    }
 
   // ── AOE / Multishot / Consecrate / Divine Storm / Whirlwind ──────────────
   if (type === "aoe" || isMultiTarget || isCenteredAoe) {
@@ -1055,64 +1050,22 @@ class WorldInstance {
         this.tiles   = Array.isArray(data.tiles) ? data.tiles : null;
       }
 
-      const groups = loadSpawnGroups(this.worldId);
-      for (const { group, monsters } of groups) {
-        for (const m of monsters) {
-          const def = monsterDefs.get(m.monster_id);
-          if (!def) { console.warn(`[Server] Unknown monster_id: ${m.monster_id}`); continue; }
-          const id = `${m.monster_id}_${m.x}_${m.y}`;
-          this.npcs.set(id, {
-            id, monsterId: m.monster_id, name: def.name, icon: def.icon,
-            x: m.x, y: m.y, homeX: m.x, homeY: m.y,
-            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
-            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
-            roamRadius: m.roam_radius ?? def.roamRadius, xpValue: def.xpValue,
-            isBoss: m.is_boss ?? def.isBoss, state: "roaming",
-            target: null, threat: {}, dead: false,
-            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
-            respawnSecs: group.respawn_seconds ?? null, deadAt: null
-          });
-        }
-      }
-      if (this.npcs.size === 0 && rows?.length) {
-        for (const s of (rows[0].json?.spawns ?? [])) {
-          const def = monsterDefs.get(s.monsterId);
-          if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
-          const id = `${s.monsterId}_${s.x}_${s.y}`;
-          this.npcs.set(id, {
-            id, monsterId: s.monsterId, name: def.name, icon: def.icon,
-            x: s.x, y: s.y, homeX: s.x, homeY: s.y,
-            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
-            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
-            roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
-            isBoss: s.isBoss ?? false, state: "roaming",
-            target: null, threat: {}, dead: false,
-            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
-            respawnSecs: null, deadAt: null
-          });
-        }
-        if (this.npcs.size > 0) console.log(`[Server] Loaded ${this.npcs.size} NPCs from JSON spawns[] for ${this.worldId}`);
-      }
-
-      // Fallback: read spawns[] from world JSON for dungeons
-      if (this.npcs.size === 0 && rows?.length) {
-        for (const s of (rows[0].json?.spawns ?? [])) {
-          const def = monsterDefs.get(s.monsterId);
-          if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
-          const id = `${s.monsterId}_${s.x}_${s.y}`;
-          this.npcs.set(id, {
-            id, monsterId: s.monsterId, name: def.name, icon: def.icon,
-            x: s.x, y: s.y, homeX: s.x, homeY: s.y,
-            hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
-            speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
-            roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
-            isBoss: s.isBoss ?? false, state: "roaming",
-            target: null, threat: {}, dead: false,
-            actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
-            respawnSecs: null, deadAt: null
-          });
-        }
-        if (this.npcs.size > 0) console.log(`[Server] Loaded ${this.npcs.size} NPCs from JSON spawns[] for ${this.worldId}`);
+      // Load NPCs exclusively from Supabase world JSON spawns[]
+      for (const s of (rows?.[0]?.json?.spawns ?? [])) {
+        const def = monsterDefs.get(s.monsterId);
+        if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
+        const id = `${s.monsterId}_${s.x}_${s.y}`;
+        this.npcs.set(id, {
+          id, monsterId: s.monsterId, name: def.name, icon: def.icon,
+          x: s.x, y: s.y, homeX: s.x, homeY: s.y,
+          hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
+          speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
+          roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
+          isBoss: s.isBoss ?? false, state: "roaming",
+          target: null, threat: {}, dead: false,
+          actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
+          respawnSecs: null, deadAt: null
+        });
       }
 
       this.ready = true;
@@ -1121,7 +1074,7 @@ class WorldInstance {
       if (sample) console.log(`[Server] Sample NPC: ${sample.id} speed=${sample.speed} perception=${sample.perception} dmg=${sample.damageMin}-${sample.damageMax}`);
     } catch (e) {
       console.warn(`[Server] World load error (${this.worldId}):`, e.message);
-      this.ready = true; // don't block players even if load fails
+      this.ready = true;
     }
   }
 
@@ -1711,9 +1664,7 @@ function _removePlayer(token) {
   await loadMonsterDefs();
   await loadAbilityDefs();
 
-  // Init local DB for spawn groups only
-  initDB();
-
+  
   try {
     await registerServer();
   } catch (e) {

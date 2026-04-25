@@ -344,6 +344,9 @@ export class MultiplayerSystem {
         this._addOrUpdateRemote(msg.player);
         break;
       }
+      case "consecrate_zone":
+        this.onConsecrateZone?.(msg);
+        break;	
 
       case "player_moved": {
         const entity = this._remotePlayers.get(msg.token);

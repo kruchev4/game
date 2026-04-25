@@ -167,6 +167,17 @@ export class NetworkManager {
     engine.multiplayerSystem.onVolleyZone = ({ wx, wy, radius, duration }) => {
       engine.renderer.volleyZones.push({ wx, wy, radius, startedAt: Date.now(), expiresAt: Date.now() + duration, duration });
     };
+    engine.multiplayerSystem.onConsecrateZone = ({ x, y, radius, duration, allyBuff }) => {
+      engine.renderer.consecrateZones = engine.renderer.consecrateZones ?? [];
+      engine.renderer.consecrateZones.push({
+        x,
+        y,
+        radius,
+        startedAt: Date.now(),
+        duration:  (duration / 60) * 1000,
+        allyBuff:  allyBuff ?? null
+      });
+    };
 
     engine.multiplayerSystem.onCharge = ({ x, y, targetId }) => {
       engine.player.x = x;
