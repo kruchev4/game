@@ -102,11 +102,49 @@ async function loadMonsterDefs() {
     const rows = await sb("monsters?select=*&order=id");
     if (!rows?.length) throw new Error("Empty response");
     for (const row of rows) monsterDefs.set(row.id, _rowToMonster(row));
-    console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from Supabase`);
+    console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from Supabase monsters table`);
   } catch (e) {
     console.warn(`[Server] Monster load failed (${e.message}) — using fallback`);
     for (const row of MONSTER_FALLBACK) monsterDefs.set(row.id, _rowToMonster(row));
     console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from fallback`);
+  }
+
+  // Also load NPC classes from classes table (elites, dungeon bosses defined there)
+  try {
+    const rows = await sb("classes?select=id,name,icon,data&order=id");
+    let added = 0;
+    for (const row of (rows ?? [])) {
+      if (monsterDefs.has(row.id)) continue; // don't overwrite monsters table entries
+      const d = typeof row.data === "string" ? JSON.parse(row.data) : (row.data ?? {});
+      const bs = d.baseStats ?? {};
+      // Only load if it looks like an NPC (has baseStats but is not a player class)
+      const playerClasses = new Set(["fighter","ranger","paladin","rogue","wizard","barbarian"]);
+      if (playerClasses.has(row.id)) continue;
+      if (!bs.hp) continue;
+      monsterDefs.set(row.id, {
+        id:          row.id,
+        name:        d.name ?? row.name,
+        icon:        row.icon ?? d.icon ?? "👾",
+        hp:          bs.hp ?? 80,
+        damageMin:   d.damageMin ?? Math.max(1, Math.floor((bs.STR ?? 10) * 0.8)),
+        damageMax:   d.damageMax ?? Math.max(2, Math.floor((bs.STR ?? 10) * 1.2)),
+        speed:       d.speed ?? 2,
+        perception:  d.perceptionRadius ?? d.perception ?? 6,
+        roamRadius:  d.roamRadius ?? 3,
+        attackRange: d.attackRange ?? (d.basicAttack === "shoot" ? 6 : 1),
+        xpValue:     d.xpValue ?? (d.isBoss ? 300 : 40),
+        isBoss:      d.isBoss ?? false,
+        tags:        d.tags ?? []
+      });
+      added++;
+    }
+    if (added > 0) console.log(`[Server] Loaded ${added} additional NPC classes from classes table`);
+  } catch (e) {
+    console.warn(`[Server] Classes table load failed (${e.message})`);
+    // Fall back to MONSTER_FALLBACK for elites
+    for (const row of MONSTER_FALLBACK) {
+      if (!monsterDefs.has(row.id)) monsterDefs.set(row.id, _rowToMonster(row));
+    }
   }
 }
 
@@ -1063,16 +1101,17 @@ class WorldInstance {
         const def = monsterDefs.get(s.monsterId);
         if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
         const id = `${s.monsterId}_${s.x}_${s.y}`;
+        const isBoss = s.isBoss ?? def.is_boss ?? false;
         this.npcs.set(id, {
           id, monsterId: s.monsterId, name: def.name, icon: def.icon,
           x: s.x, y: s.y, homeX: s.x, homeY: s.y,
           hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
           speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
           roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
-          isBoss: s.isBoss ?? false, state: "roaming",
+          isBoss, state: "roaming",
           target: null, threat: {}, dead: false,
           actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
-          respawnSecs: null, deadAt: null
+          respawnSecs: isBoss ? 600 : 300, deadAt: null
         });
       }
 
