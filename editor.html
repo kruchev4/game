@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Realm of Echoes — World Editor v2</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+:root {
+  --bg:#0d0d0f;--bg2:#13131a;--bg3:#1a1a24;--panel:#16161f;
+  --border:rgba(180,150,80,0.18);--border-bright:rgba(180,150,80,0.5);
+  --gold:#e8c84a;--gold-dim:#a08828;--text:#d4cdb8;--text-dim:#7a7468;
+  --red:#cc3333;--green:#44aa66;--blue:#4488cc;--purple:#8855cc;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+#header{background:var(--bg2);border-bottom:1px solid var(--border-bright);padding:0 16px;height:44px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+#header h1{font-family:'Cinzel',serif;font-size:15px;font-weight:600;color:var(--gold);letter-spacing:0.08em;white-space:nowrap;}
+.hsep{flex:1;}
+.hbtn{padding:5px 12px;border:1px solid var(--border-bright);border-radius:4px;background:transparent;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+.hbtn:hover{background:var(--bg3);border-color:var(--gold);color:var(--gold);}
+.hbtn.primary{border-color:var(--gold);color:var(--gold);}
+.hbtn.primary:hover{background:rgba(232,200,74,0.12);}
+.hbtn.danger{border-color:rgba(200,60,60,0.5);color:#cc8888;}
+.hbtn.danger:hover{border-color:var(--red);color:var(--red);background:rgba(200,60,60,0.08);}
+#layout{flex:1;display:flex;overflow:hidden;}
+#left-panel{width:196px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+.panel-section{border-bottom:1px solid var(--border);padding:8px;}
+.panel-title{font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
+.setting-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:4px;}
+.setting-row label{color:var(--text-dim);font-size:11px;white-space:nowrap;}
+.mini-inp{background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;padding:3px 5px;}
+.setting-row .mini-inp{width:90px;}
+#tile-palette{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+.tile-btn{display:flex;align-items:center;gap:4px;padding:4px 5px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--bg);font-size:10px;color:var(--text-dim);transition:border-color 0.12s;}
+.tile-btn:hover{border-color:var(--border-bright);color:var(--text);}
+.tile-btn.active{border-color:var(--gold);color:var(--gold);}
+.tile-swatch{width:13px;height:13px;border-radius:2px;flex-shrink:0;border:1px solid rgba(255,255,255,0.08);}
+#tools{display:flex;gap:3px;flex-wrap:wrap;}
+.tool-btn{padding:4px 7px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text-dim);cursor:pointer;font-size:11px;font-family:'Share Tech Mono',monospace;transition:all 0.12s;}
+.tool-btn:hover{border-color:var(--border-bright);color:var(--text);}
+.tool-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(232,200,74,0.06);}
+#save-slots{display:flex;flex-direction:column;gap:3px;}
+.save-slot{display:flex;align-items:center;gap:3px;}
+.save-slot span{flex:1;font-size:10px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.save-slot button{padding:3px 6px;border:1px solid var(--border);border-radius:2px;background:var(--bg);color:var(--text-dim);cursor:pointer;font-size:10px;font-family:'Share Tech Mono',monospace;}
+.save-slot button:hover{border-color:var(--border-bright);color:var(--text);}
+.save-slot .lb:hover{border-color:var(--green);color:var(--green);}
+.save-slot .db:hover{border-color:var(--red);color:var(--red);}
+#canvas-area{flex:1;overflow:auto;background:#080810;position:relative;}
+#canvas-wrap{position:absolute;transform-origin:top left;}
+canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
+#right-panel{width:236px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.rtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.rtab{flex:1;padding:7px 4px;text-align:center;font-size:10px;font-family:'Cinzel',serif;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.05em;}
+.rtab:hover{color:var(--text);}
+.rtab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.rtab-content{display:none;flex:1;overflow-y:auto;padding:8px;}
+.rtab-content.active{display:flex;flex-direction:column;gap:6px;}
+#statusbar{background:var(--bg2);border-top:1px solid var(--border);padding:4px 12px;height:26px;display:flex;align-items:center;gap:16px;flex-shrink:0;font-size:11px;color:var(--text-dim);}
+.mini-btn{padding:4px 8px;border:1px solid var(--border-bright);border-radius:3px;background:transparent;color:var(--gold);font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;transition:all 0.12s;width:100%;}
+.mini-btn:hover{background:rgba(232,200,74,0.1);}
+.mini-btn.sm{width:auto;padding:3px 7px;font-size:10px;}
+.list-item{display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;}
+.list-item span{flex:1;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.list-item button{padding:2px 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:10px;}
+.list-item button:hover{color:var(--red);border-color:var(--red);}
+.zoom-row{display:flex;align-items:center;gap:5px;}
+.zoom-row button{width:22px;height:22px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.zoom-row button:hover{border-color:var(--border-bright);}
+/* Decoration library */
+#dec-library{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;}
+.dec-card{border:1px solid var(--border);border-radius:4px;background:var(--bg);padding:4px;cursor:pointer;transition:border-color 0.12s;position:relative;}
+.dec-card:hover{border-color:var(--border-bright);}
+.dec-card.active{border-color:var(--gold);}
+.dec-card .preview{width:100%;aspect-ratio:1;background:var(--bg2);border-radius:2px;margin-bottom:3px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:20px;}
+.dec-card .preview img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;}
+.dec-card .dec-name{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dec-card .dec-size{font-size:9px;color:var(--gold-dim);}
+.dec-card .del-dec{position:absolute;top:2px;right:2px;width:14px;height:14px;border:none;background:rgba(200,60,60,0.6);color:#fff;border-radius:2px;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;opacity:0;}
+.dec-card:hover .del-dec{opacity:1;}
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;padding:20px;overflow-y:auto;}
+.modal-inner{background:var(--bg2);border:1px solid var(--border-bright);border-radius:8px;max-width:820px;margin:0 auto;padding:20px;}
+.modal-inner h2{font-family:'Cinzel',serif;color:var(--gold);font-size:14px;margin-bottom:12px;}
+.modal-inner textarea{width:100%;height:380px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;padding:10px;resize:vertical;}
+.modal-actions{display:flex;gap:8px;margin-top:10px;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border-bright);border-radius:3px;}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>⚔ ROE World Editor</h1>
+  <div class="hsep"></div>
+  <button class="hbtn" id="btn-import">Import JSON</button>
+  <button class="hbtn primary" id="btn-export">Export JSON</button>
+  <button class="hbtn danger" id="btn-new">New Map</button>
+</div>
+<div id="layout">
+  <!-- LEFT -->
+  <div id="left-panel">
+    <div class="panel-section">
+      <div class="panel-title">World</div>
+      <div class="setting-row"><label>ID</label><input class="mini-inp" id="world-id" value="town_aurelion" style="width:110px"></div>
+      <div class="setting-row"><label>Name</label><input class="mini-inp" id="world-name" value="Aurelion" style="width:110px"></div>
+      <div class="setting-row"><label>Type</label>
+        <select class="mini-inp" id="world-type" style="width:110px">
+          <option value="town">Town</option><option value="dungeon">Dungeon</option><option value="overworld">Overworld</option>
+        </select>
+      </div>
+      <div class="setting-row"><label>W</label><input class="mini-inp" id="world-w" value="60" type="number" min="10" max="300" style="width:50px">
+        <label>H</label><input class="mini-inp" id="world-h" value="45" type="number" min="10" max="300" style="width:50px"></div>
+      <button class="mini-btn" id="btn-resize" style="margin-top:4px">Apply Size</button>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">Tileset</div>
+      <div class="setting-row"><label>Set</label>
+        <select class="mini-inp" id="tileset-select" style="width:110px">
+          <option value="town">Town</option><option value="dungeon">Dungeon</option><option value="overworld">Overworld</option><option value="custom">Custom</option>
+        </select>
+      </div>
+      <div id="tile-palette"></div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">Tools</div>
+      <div id="tools">
+        <button class="tool-btn active" data-tool="paint">✏ Paint</button>
+        <button class="tool-btn" data-tool="fill">⬛ Fill</button>
+        <button class="tool-btn" data-tool="rect">▭ Rect</button>
+        <button class="tool-btn" data-tool="pick">💧 Pick</button>
+        <button class="tool-btn" data-tool="exit">🚪 Exit</button>
+        <button class="tool-btn" data-tool="npc">👤 NPC</button>
+        <button class="tool-btn" data-tool="decplace">🌿 Place Dec</button>
+        <button class="tool-btn" data-tool="town">🏰 Town</button>
+        <button class="tool-btn" data-tool="portal">🌀 Portal</button>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">Zoom</div>
+      <div class="zoom-row">
+        <button id="zoom-out">−</button>
+        <span id="zoom-label" style="flex:1;text-align:center;font-size:11px;color:var(--text-dim)">14px</span>
+        <button id="zoom-in">+</button>
+      </div>
+    </div>
+    <div class="panel-section" style="flex:1">
+      <div class="panel-title">Saved Maps</div>
+      <div id="save-slots"></div>
+      <button class="mini-btn" id="btn-save" style="margin-top:6px">💾 Save .roe</button>
+      <button class="mini-btn" id="btn-load-roe" style="margin-top:4px">📂 Load .roe</button>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-area"><div id="canvas-wrap"><canvas id="c"></canvas></div></div>
+
+  <!-- RIGHT -->
+  <div id="right-panel">
+    <div class="rtabs">
+      <div class="rtab active" data-tab="info">Info</div>
+      <div class="rtab" data-tab="exits">Exits</div>
+      <div class="rtab" data-tab="npcs">NPCs</div>
+      <div class="rtab" data-tab="decs">Decs</div>
+      <div class="rtab" data-tab="ents">Ents</div>
+    </div>
+
+    <!-- Info tab -->
+    <div class="rtab-content active" id="tab-info">
+      <div style="font-size:11px;color:var(--text-dim);line-height:2">
+        Pos: <span id="info-pos" style="color:var(--text)">—</span><br>
+        Tile: <span id="info-tile" style="color:var(--text)">—</span><br>
+        Count: <span id="info-count" style="color:var(--text)">—</span>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:6px">
+        <div class="panel-title">Notes</div>
+        <textarea id="notes" style="width:100%;height:100px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;padding:6px;resize:vertical" placeholder="Design notes..."></textarea>
+      </div>
+    </div>
+
+    <!-- Exits tab -->
+    <div class="rtab-content" id="tab-exits">
+      <div class="panel-title">Placed Exits</div>
+      <div id="exits-list" style="margin-bottom:8px"></div>
+      <div class="panel-title" style="margin-top:4px">Edit Selected</div>
+      <input class="mini-inp" id="exit-target-world" placeholder="targetWorld" style="width:100%;margin-bottom:3px">
+      <div style="display:flex;gap:4px;margin-bottom:4px">
+        <input class="mini-inp" id="exit-target-x" placeholder="targetX" style="flex:1">
+        <input class="mini-inp" id="exit-target-y" placeholder="targetY" style="flex:1">
+      </div>
+      <button class="mini-btn" id="btn-exit-update">Update Exit</button>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:6px">Use Exit tool on canvas to place. Right-click removes.</div>
+    </div>
+
+    <!-- NPCs tab -->
+    <div class="rtab-content" id="tab-npcs">
+      <div class="panel-title">Placed NPCs</div>
+      <div id="npc-list" style="margin-bottom:8px"></div>
+      <div class="panel-title" style="margin-top:4px">Add NPC</div>
+      <input class="mini-inp" id="npc-id" placeholder="id" style="width:100%;margin-bottom:3px">
+      <input class="mini-inp" id="npc-name" placeholder="name" style="width:100%;margin-bottom:3px">
+      <input class="mini-inp" id="npc-icon" placeholder="icon emoji" style="width:100%;margin-bottom:3px">
+      <select class="mini-inp" id="npc-role" style="width:100%;margin-bottom:4px">
+        <option value="shop">Shop</option><option value="inn">Inn</option>
+        <option value="temple">Temple</option><option value="tavern">Tavern</option>
+        <option value="quest">Quest</option><option value="generic">Generic</option>
+      </select>
+      <div style="font-size:10px;color:var(--text-dim)">Select NPC tool, click map to place. Right-click removes.</div>
+    </div>
+
+    <!-- Decorations tab -->
+    <div class="rtab-content" id="tab-decs">
+      <div class="panel-title">Decoration Library</div>
+      <div id="dec-library"></div>
+
+      <div style="border-top:1px solid var(--border);padding-top:6px">
+        <div class="panel-title">Add to Library</div>
+        <input class="mini-inp" id="dec-src" placeholder="filename.png" style="width:100%;margin-bottom:3px">
+        <div style="display:flex;gap:4px;margin-bottom:3px">
+          <input class="mini-inp" id="dec-w" placeholder="W tiles" style="flex:1" value="1">
+          <input class="mini-inp" id="dec-h" placeholder="H tiles" style="flex:1" value="1">
+          <input class="mini-inp" id="dec-scale" placeholder="scale" style="flex:1" value="1">
+        </div>
+        <select class="mini-inp" id="dec-zorder" style="width:100%;margin-bottom:4px">
+          <option value="ground">Ground (player in front)</option>
+          <option value="tall">Tall (player behind)</option>
+        </select>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <label style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:4px;cursor:pointer">
+            <input type="file" id="dec-file-input" accept="image/*" style="display:none">
+            <button class="mini-btn sm" onclick="document.getElementById('dec-file-input').click()">Browse PNG</button>
+          </label>
+          <span id="dec-file-name" style="font-size:10px;color:var(--text-dim);flex:1;align-self:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        </div>
+        <button class="mini-btn" id="btn-add-dec">Add to Library</button>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:6px">
+        <div class="panel-title">Place Settings</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Select a card above, then use Place Dec tool on canvas.</div>
+        <div id="dec-selected-info" style="font-size:11px;color:var(--gold-dim)">None selected</div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:6px">
+        <div class="panel-title">Placed Decorations</div>
+        <div id="placed-decs-list"></div>
+      </div>
+    </div>
+    <!-- Entrances tab -->
+    <div class="rtab-content" id="tab-ents">
+      <div class="panel-title">Towns</div>
+      <div id="towns-list" style="margin-bottom:8px"></div>
+      <div class="panel-title" style="margin-top:4px">Add Town</div>
+      <input class="mini-inp" id="town-id" placeholder="Supabase world id" style="width:100%;margin-bottom:3px">
+      <input class="mini-inp" id="town-name" placeholder="Display name" style="width:100%;margin-bottom:4px">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Select Town tool, click overworld map to place. Right-click removes.</div>
+
+      <div style="border-top:1px solid var(--border);padding-top:6px">
+        <div class="panel-title">Dungeon Portals</div>
+        <div id="portals-list" style="margin-bottom:8px"></div>
+        <div class="panel-title" style="margin-top:4px">Add Portal</div>
+        <input class="mini-inp" id="portal-id" placeholder="Supabase world id" style="width:100%;margin-bottom:3px">
+        <input class="mini-inp" id="portal-name" placeholder="Display name" style="width:100%;margin-bottom:3px">
+        <select class="mini-inp" id="portal-campaign" style="width:100%;margin-bottom:4px">
+          <option value="">-- Campaign (optional) --</option>
+          <option value="goblin_warrens">Goblin Warrens</option>
+          <option value="bandit_cave">Bandit Cave</option>
+          <option value="sunken_throne">Sunken Throne</option>
+          <option value="duskwood_siege">Duskwood Siege</option>
+          <option value="glacial_tomb">Glacial Tomb</option>
+          <option value="ashspire">Ashspire</option>
+          <option value="irondeep">Irondeep</option>
+          <option value="drowned_citadel">Drowned Citadel</option>
+          <option value="custom">Custom...</option>
+        </select>
+        <div style="font-size:10px;color:var(--text-dim)">Select Portal tool, click map to place. Right-click removes.</div>
+      </div>
+    </div>
+  </div>
+</div>
+  <span id="sb-world">60×45</span>
+  <span id="sb-tool">Tool: paint</span>
+  <span id="sb-msg" style="color:var(--gold)"></span>
+</div>
+
+<!-- Export modal -->
+<div class="modal-bg" id="export-out">
+  <div class="modal-inner">
+    <h2>Export World JSON</h2>
+    <textarea id="export-text" readonly spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="hbtn primary" id="btn-copy-export">Copy JSON</button>
+      <button class="hbtn primary" id="btn-copy-sql">Copy SQL</button>
+      <button class="hbtn" id="btn-dl-export">Download .json</button>
+      <button class="hbtn danger" id="btn-close-export">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-bg" id="import-out">
+  <div class="modal-inner">
+    <h2>Import World JSON</h2>
+    <textarea id="import-text" spellcheck="false" placeholder="Paste world JSON here..."></textarea>
+    <div class="modal-actions">
+      <button class="hbtn primary" id="btn-do-import">Import</button>
+      <button class="hbtn danger" id="btn-close-import">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Tilesets ──────────────────────────────────────────────────────────────────
+const TILESETS = {
+  town:[
+    {id:21,label:"Wall",color:"#2a2018"},{id:20,label:"Floor",color:"#6a6058"},
+    {id:34,label:"Stone",color:"#b0a890"},{id:28,label:"Road St",color:"#7c7f86"},
+    {id:27,label:"Road Dirt",color:"#8b6a44"},{id:32,label:"Exit",color:"#2a5a2a"},
+    {id:22,label:"Inn",color:"#4a2810"},{id:23,label:"Shop",color:"#0a2a3a"},
+    {id:24,label:"Temple",color:"#2a1040"},{id:25,label:"Tavern",color:"#2a1808"},
+  ],
+  dungeon:[
+    {id:8,label:"Wall",color:"#151520"},{id:9,label:"Floor",color:"#262018"},
+    {id:10,label:"Stairs Up",color:"#384858"},{id:11,label:"Stairs Dn",color:"#283040"},
+    {id:12,label:"Door",color:"#5a3010"},{id:13,label:"Chest",color:"#6b3a10"},
+    {id:14,label:"Portal",color:"#1a0830"},
+  ],
+  overworld:[
+    {id:0,label:"Grass",color:"#4caf50"},{id:1,label:"Forest",color:"#163a12"},
+    {id:2,label:"Mountain",color:"#7b7b7b"},{id:3,label:"Deep Water",color:"#0f2a4a"},
+    {id:4,label:"Shallow",color:"#1a4a6a"},{id:5,label:"Town",color:"#a07818"},
+    {id:6,label:"Danger",color:"#4a1010"},{id:7,label:"Sand",color:"#c8a870"},
+    {id:15,label:"Jungle",color:"#0f3b1f"},{id:16,label:"Volcano",color:"#7a1a0a"},
+    {id:27,label:"Road Dirt",color:"#8b6a44"},{id:28,label:"Road St",color:"#7c7f86"},
+    {id:29,label:"Road Obs",color:"#1b1b22"},
+  ],
+  custom:[
+    {id:20,label:"Floor",color:"#6a6058"},{id:21,label:"Wall",color:"#2a2018"},
+    {id:100,label:"Crest TL",color:"#8855aa"},{id:101,label:"Crest TM",color:"#9966bb"},
+    {id:102,label:"Crest TR",color:"#8855aa"},{id:103,label:"Crest ML",color:"#7744aa"},
+    {id:104,label:"Crest MM",color:"#cc99ff"},{id:105,label:"Crest MR",color:"#7744aa"},
+    {id:106,label:"Crest BL",color:"#8855aa"},{id:107,label:"Crest BM",color:"#9966bb"},
+    {id:108,label:"Crest BR",color:"#8855aa"},
+  ]
+};
+
+// ── Default decoration library ─────────────────────────────────────────────────
+const DEFAULT_DEC_LIBRARY = [
+  // Town / Capitol
+  {src:"fountain_capital.png",  w:3,h:3,scale:2.5,zOrder:"tall",  emoji:"⛲"},
+  {src:"bench_capital.png",     w:2,h:1,scale:1.0,zOrder:"ground",emoji:"🪑"},
+  {src:"lamp_post.png",         w:1,h:1,scale:1.5,zOrder:"tall",  emoji:"🕯"},
+  {src:"market_stall.png",      w:2,h:2,scale:1.2,zOrder:"tall",  emoji:"🏪"},
+  {src:"statue_hero.png",       w:2,h:3,scale:2.0,zOrder:"tall",  emoji:"🗿"},
+  {src:"well_stone.png",        w:1,h:1,scale:1.5,zOrder:"tall",  emoji:"🪣"},
+  {src:"banner_gold.png",       w:1,h:2,scale:1.5,zOrder:"tall",  emoji:"🚩"},
+  {src:"archway_capital.png",   w:3,h:2,scale:1.8,zOrder:"tall",  emoji:"🏛"},
+  // Overworld — nature
+  {src:"large_oak.png",         w:3,h:4,scale:2.0,zOrder:"tall",  emoji:"🌳"},
+  {src:"ancient_pine.png",      w:2,h:4,scale:2.2,zOrder:"tall",  emoji:"🌲"},
+  {src:"dead_tree.png",         w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"🪵"},
+  {src:"willow_tree.png",       w:3,h:4,scale:2.0,zOrder:"tall",  emoji:"🌿"},
+  {src:"mushroom_giant.png",    w:2,h:2,scale:1.8,zOrder:"tall",  emoji:"🍄"},
+  {src:"boulder_large.png",     w:2,h:2,scale:1.5,zOrder:"tall",  emoji:"🪨"},
+  {src:"boulder_cluster.png",   w:3,h:2,scale:1.4,zOrder:"tall",  emoji:"🪨"},
+  {src:"crystal_formation.png", w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"💎"},
+  {src:"waterfall.png",         w:2,h:4,scale:2.0,zOrder:"tall",  emoji:"💧"},
+  {src:"ancient_stones.png",    w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"🗿"},
+  // Overworld — ruins & structures
+  {src:"ruined_tower.png",      w:3,h:4,scale:2.5,zOrder:"tall",  emoji:"🏚"},
+  {src:"broken_wall.png",       w:4,h:2,scale:1.4,zOrder:"tall",  emoji:"🧱"},
+  {src:"old_fence.png",         w:3,h:1,scale:1.2,zOrder:"ground",emoji:"🪵"},
+  {src:"miner_camp.png",        w:4,h:3,scale:1.6,zOrder:"tall",  emoji:"⛏"},
+  {src:"abandoned_cart.png",    w:2,h:2,scale:1.4,zOrder:"tall",  emoji:"🛒"},
+  {src:"campfire_cold.png",     w:1,h:1,scale:1.4,zOrder:"ground",emoji:"🔥"},
+  {src:"campfire_active.png",   w:1,h:1,scale:1.4,zOrder:"ground",emoji:"🔥"},
+  {src:"graveyard_small.png",   w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"⚰"},
+  {src:"shrine_waypoint.png",   w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"⛩"},
+  {src:"dungeon_entrance.png",  w:3,h:3,scale:2.0,zOrder:"tall",  emoji:"🕳"},
+  {src:"old_signpost.png",      w:1,h:2,scale:1.5,zOrder:"tall",  emoji:"📍"},
+  // Overworld — water
+  {src:"dock_wood.png",         w:3,h:2,scale:1.4,zOrder:"ground",emoji:"🚤"},
+  {src:"shipwreck.png",         w:4,h:3,scale:1.8,zOrder:"tall",  emoji:"⚓"},
+  {src:"fishing_hut.png",       w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"🎣"},
+  // Overworld — settlements
+  {src:"farm_plot.png",         w:4,h:3,scale:1.2,zOrder:"ground",emoji:"🌾"},
+  {src:"windmill.png",          w:3,h:5,scale:2.2,zOrder:"tall",  emoji:"🏗"},
+  {src:"watchtower.png",        w:2,h:4,scale:2.4,zOrder:"tall",  emoji:"🗼"},
+  {src:"bridge_stone.png",      w:4,h:2,scale:1.3,zOrder:"ground",emoji:"🌉"},
+  {src:"lighthouse.png",        w:2,h:5,scale:2.5,zOrder:"tall",  emoji:"🔦"},
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let S = {
+  W:60,H:45,worldId:"town_aurelion",worldName:"Aurelion",worldType:"town",
+  tilesetKey:"town",grid:null,exits:[],npcs:[],decorations:[],towns:[],portals:[],notes:""
+};
+let UI = {
+  tileSize:14,selTile:21,tool:"paint",painting:false,paintMode:1,
+  rectStart:null,rectEnd:null,selExit:-1,selDec:null,
+  decLibrary:[...DEFAULT_DEC_LIBRARY],
+  decPreviews:{} // src -> blob URL or null
+};
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
+function initGrid(fill=20){S.grid=new Uint16Array(S.W*S.H).fill(fill);}
+function defaultTown(){
+  initGrid(20);
+  for(let x=0;x<S.W;x++){S.grid[x]=21;S.grid[(S.H-1)*S.W+x]=21;}
+  for(let y=0;y<S.H;y++){S.grid[y*S.W]=21;S.grid[y*S.W+1]=21;S.grid[y*S.W+S.W-1]=21;S.grid[y*S.W+S.W-2]=21;}
+}
+function defaultDungeon(){initGrid(8);for(let y=2;y<S.H-2;y++)for(let x=2;x<S.W-2;x++)S.grid[y*S.W+x]=9;}
+function defaultOverworld(){initGrid(0);}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+function tileColor(id){
+  const all=Object.values(TILESETS).flat();
+  return all.find(t=>t.id===id)?.color??"#1a1a2e";
+}
+function resizeCanvas(){
+  canvas.width=S.W*UI.tileSize;canvas.height=S.H*UI.tileSize;
+  document.getElementById("sb-world").textContent=`${S.W}×${S.H}`;
+}
+function drawGrid(){
+  const ts=UI.tileSize;
+  for(let y=0;y<S.H;y++)for(let x=0;x<S.W;x++){
+    ctx.fillStyle=tileColor(S.grid[y*S.W+x]);
+    ctx.fillRect(x*ts,y*ts,ts,ts);
+  }
+  if(ts>=5){
+    ctx.strokeStyle="rgba(0,0,0,0.2)";ctx.lineWidth=0.5;
+    for(let x=0;x<=S.W;x++){ctx.beginPath();ctx.moveTo(x*ts,0);ctx.lineTo(x*ts,S.H*ts);ctx.stroke();}
+    for(let y=0;y<=S.H;y++){ctx.beginPath();ctx.moveTo(0,y*ts);ctx.lineTo(S.W*ts,y*ts);ctx.stroke();}
+  }
+  // Decorations
+  S.decorations.forEach((d,i)=>{
+    const img=UI.decPreviews[d.src];
+    const drawW=(d.w??1)*ts*(d.scale??1);
+    const drawH=(d.h??1)*ts*(d.scale??1);
+    const ox=(drawW-(d.w??1)*ts)/2;
+    const oy=(drawH-(d.h??1)*ts)/2;
+    if(img&&img.complete&&img.naturalWidth>0){
+      ctx.globalAlpha=0.85;
+      ctx.drawImage(img,d.x*ts-ox,d.y*ts-oy,drawW,drawH);
+      ctx.globalAlpha=1;
+    } else {
+      ctx.strokeStyle="rgba(100,220,150,0.6)";ctx.lineWidth=1.5;
+      ctx.strokeRect(d.x*ts+1,d.y*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
+      ctx.fillStyle="rgba(100,220,150,0.15)";
+      ctx.fillRect(d.x*ts+1,d.y*ts+1,(d.w??1)*ts-2,(d.h??1)*ts-2);
+      if(ts>=10){
+        ctx.fillStyle="rgba(100,220,150,0.9)";ctx.font=`${Math.max(8,ts*0.5)}px monospace`;
+        ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText("D",d.x*ts+(d.w??1)*ts/2,d.y*ts+(d.h??1)*ts/2);
+      }
+    }
+  });
+  // Towns
+  S.towns.forEach(t=>{
+    ctx.fillStyle="rgba(20,80,20,0.85)";ctx.strokeStyle="#44cc44";ctx.lineWidth=1.5;
+    ctx.fillRect(t.x*ts+1,t.y*ts+1,ts-2,ts-2);ctx.strokeRect(t.x*ts+1,t.y*ts+1,ts-2,ts-2);
+    if(ts>=10){ctx.font=`${Math.max(8,ts*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🏰",t.x*ts+ts/2,t.y*ts+ts/2);}
+    if(ts>=8){ctx.fillStyle="#88ee88";ctx.font=`${Math.max(7,ts*0.45)}px monospace`;ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(t.name||t.id,t.x*ts+ts/2,t.y*ts-ts*0.5);}
+  });
+  // Portals
+  S.portals.forEach(p=>{
+    const pulse=0.6+0.3*Math.sin(Date.now()*0.004);
+    ctx.fillStyle=`rgba(80,30,140,${pulse})`;ctx.strokeStyle="#aa55ff";ctx.lineWidth=1.5;
+    ctx.fillRect(p.x*ts+1,p.y*ts+1,ts-2,ts-2);ctx.strokeRect(p.x*ts+1,p.y*ts+1,ts-2,ts-2);
+    if(ts>=10){ctx.font=`${Math.max(8,ts*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🌀",p.x*ts+ts/2,p.y*ts+ts/2);}
+    if(ts>=8){ctx.fillStyle="#cc99ff";ctx.font=`${Math.max(7,ts*0.45)}px monospace`;ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(p.name||p.id,p.x*ts+ts/2,p.y*ts-ts*0.5);}
+  });
+  // Exits
+  S.exits.forEach((exit,i)=>{
+    ctx.fillStyle=i===UI.selExit?"rgba(100,180,255,0.9)":"rgba(80,140,255,0.7)";
+    ctx.fillRect(exit.x*ts+1,exit.y*ts+1,ts-2,ts-2);
+    if(ts>=10){ctx.fillStyle="#fff";ctx.font=`${Math.max(7,ts*0.55)}px monospace`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("E",exit.x*ts+ts/2,exit.y*ts+ts/2);}
+  });
+  // NPCs
+  S.npcs.forEach(n=>{
+    ctx.fillStyle="rgba(60,160,80,0.75)";ctx.fillRect(n.x*ts+1,n.y*ts+1,ts-2,ts-2);
+    if(ts>=10){ctx.font=`${Math.max(8,ts*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(n.icon||"👤",n.x*ts+ts/2,n.y*ts+ts/2);}
+  });
+  // Rect preview
+  if(UI.tool==="rect"&&UI.rectStart&&UI.rectEnd){
+    const x1=Math.min(UI.rectStart.x,UI.rectEnd.x),y1=Math.min(UI.rectStart.y,UI.rectEnd.y);
+    const x2=Math.max(UI.rectStart.x,UI.rectEnd.x),y2=Math.max(UI.rectStart.y,UI.rectEnd.y);
+    ctx.strokeStyle="rgba(232,200,74,0.8)";ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+    ctx.strokeRect(x1*ts,y1*ts,(x2-x1+1)*ts,(y2-y1+1)*ts);ctx.setLineDash([]);
+  }
+  ctx.textAlign="left";ctx.textBaseline="alphabetic";
+}
+
+// ── Flood fill ────────────────────────────────────────────────────────────────
+function floodFill(sx,sy,nid){
+  const old=S.grid[sy*S.W+sx];if(old===nid)return;
+  const stack=[{x:sx,y:sy}],vis=new Set();
+  while(stack.length){
+    const{x,y}=stack.pop();
+    if(x<0||y<0||x>=S.W||y>=S.H)continue;
+    const k=y*S.W+x;if(vis.has(k)||S.grid[k]!==old)continue;
+    vis.add(k);S.grid[k]=nid;
+    stack.push({x:x+1,y},{x:x-1,y},{x,y:y+1},{x,y:y-1});
+  }
+}
+
+// ── Mouse ─────────────────────────────────────────────────────────────────────
+function getWP(e){
+  const r=canvas.getBoundingClientRect();
+  return{x:Math.floor((e.clientX-r.left)*(canvas.width/r.width)/UI.tileSize),
+         y:Math.floor((e.clientY-r.top)*(canvas.height/r.height)/UI.tileSize)};
+}
+function inB(x,y){return x>=0&&y>=0&&x<S.W&&y<S.H;}
+function fillTile(){return S.tilesetKey==="dungeon"?9:S.tilesetKey==="overworld"?0:20;}
+
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
+canvas.addEventListener("mousedown",e=>{
+  const{x,y}=getWP(e);if(!inB(x,y))return;
+  UI.painting=true;UI.paintMode=e.button===2?0:1;
+  handleClick(x,y,e);
+});
+canvas.addEventListener("mousemove",e=>{
+  const{x,y}=getWP(e);
+  document.getElementById("info-pos").textContent=`${x}, ${y}`;
+  if(inB(x,y)){
+    const tid=S.grid[y*S.W+x];
+    const all=Object.values(TILESETS).flat();
+    document.getElementById("info-tile").textContent=`${tid} (${all.find(t=>t.id===tid)?.label||"?"})`;
+    document.getElementById("info-count").textContent=Array.from(S.grid).filter(t=>t===tid).length;
+  }
+  if(UI.painting){
+    if(UI.tool==="rect"&&UI.rectStart){UI.rectEnd={x,y};drawGrid();}
+    else if(UI.tool==="paint")handlePaint(x,y);
+  }
+});
+canvas.addEventListener("mouseup",e=>{
+  if(UI.tool==="rect"&&UI.rectStart&&UI.rectEnd){
+    const x1=Math.min(UI.rectStart.x,UI.rectEnd.x),y1=Math.min(UI.rectStart.y,UI.rectEnd.y);
+    const x2=Math.max(UI.rectStart.x,UI.rectEnd.x),y2=Math.max(UI.rectStart.y,UI.rectEnd.y);
+    for(let ry=y1;ry<=y2;ry++)for(let rx=x1;rx<=x2;rx++)
+      if(inB(rx,ry))S.grid[ry*S.W+rx]=UI.paintMode===1?UI.selTile:fillTile();
+    UI.rectStart=null;UI.rectEnd=null;drawGrid();
+  }
+  UI.painting=false;
+});
+canvas.addEventListener("mouseleave",()=>UI.painting=false);
+
+function handleClick(x,y,e){
+  const t=UI.tool;
+  if(t==="paint")handlePaint(x,y);
+  else if(t==="fill"){floodFill(x,y,UI.paintMode===1?UI.selTile:fillTile());drawGrid();}
+  else if(t==="pick"){UI.selTile=S.grid[y*S.W+x];highlightPalBtn(UI.selTile);}
+  else if(t==="rect"){UI.rectStart={x,y};UI.rectEnd={x,y};}
+  else if(t==="exit"){
+    if(S.worldType==="overworld"){
+      setMsg("⚠ Use Town or Portal tool on overworld maps — not Exit");
+      return;
+    }
+    if(e.button===2)S.exits=S.exits.filter(ex=>!(ex.x===x&&ex.y===y));
+    else S.exits.push({x,y,targetWorld:"overworld_C",targetX:100,targetY:100});
+    renderExits();drawGrid();
+  }
+  else if(t==="npc"){
+    if(e.button===2)S.npcs=S.npcs.filter(n=>!(n.x===x&&n.y===y));
+    else{
+      const id=document.getElementById("npc-id").value||"npc_"+S.npcs.length;
+      S.npcs.push({x,y,id,name:document.getElementById("npc-name").value||id,
+        icon:document.getElementById("npc-icon").value||"👤",
+        role:document.getElementById("npc-role").value,
+        type:document.getElementById("npc-role").value});
+    }
+    renderNpcs();drawGrid();
+  }
+  else if(t==="town"){
+    if(e.button===2){S.towns=S.towns.filter(t=>!(t.x===x&&t.y===y));}
+    else{
+      const id=document.getElementById("town-id").value.trim();
+      const name=document.getElementById("town-name").value.trim();
+      if(!id){setMsg("Enter a Supabase world ID first");return;}
+      if(S.towns.find(t=>t.x===x&&t.y===y))return;
+      S.towns.push({x,y,id,name:name||id});
+      document.getElementById("town-id").value="";
+      document.getElementById("town-name").value="";
+    }
+    renderTowns();drawGrid();
+  }
+  else if(t==="portal"){
+    if(e.button===2){S.portals=S.portals.filter(p=>!(p.x===x&&p.y===y));}
+    else{
+      const id=document.getElementById("portal-id").value.trim();
+      const name=document.getElementById("portal-name").value.trim();
+      let campaignId=document.getElementById("portal-campaign").value;
+      if(campaignId==="custom")campaignId=prompt("Enter custom campaign ID:")||"";
+      if(!id){setMsg("Enter a Supabase world ID first");return;}
+      if(S.portals.find(p=>p.x===x&&p.y===y))return;
+      S.portals.push({x,y,id,name:name||id,campaignId:campaignId||id});
+      document.getElementById("portal-id").value="";
+      document.getElementById("portal-name").value="";
+    }
+    renderPortals();drawGrid();
+  }
+    if(e.button===2){S.decorations=S.decorations.filter(d=>!(d.x===x&&d.y===y));renderPlacedDecs();drawGrid();}
+    else if(UI.selDec){
+      S.decorations.push({...UI.selDec,x,y});
+      renderPlacedDecs();drawGrid();
+    }
+  }
+
+function handlePaint(x,y){
+  if(!inB(x,y))return;
+  S.grid[y*S.W+x]=UI.paintMode===1?UI.selTile:fillTile();
+  drawGrid();
+}
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+function buildPalette(){
+  const pal=document.getElementById("tile-palette");pal.innerHTML="";
+  (TILESETS[S.tilesetKey]||TILESETS.town).forEach(t=>{
+    const btn=document.createElement("div");
+    btn.className="tile-btn"+(t.id===UI.selTile?" active":"");
+    btn.dataset.id=t.id;
+    btn.innerHTML=`<div class="tile-swatch" style="background:${t.color}"></div>${t.id} ${t.label}`;
+    btn.onclick=()=>{UI.selTile=t.id;highlightPalBtn(t.id);};
+    pal.appendChild(btn);
+  });
+}
+function highlightPalBtn(id){
+  document.querySelectorAll(".tile-btn").forEach(b=>b.classList.toggle("active",parseInt(b.dataset.id)===id));
+  UI.selTile=id;
+}
+
+// ── Tools ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll(".tool-btn").forEach(btn=>{
+  btn.onclick=()=>{
+    UI.tool=btn.dataset.tool;
+    document.querySelectorAll(".tool-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("sb-tool").textContent="Tool: "+UI.tool;
+    UI.rectStart=null;
+    if(UI.tool==="decplace"){ switchTab("decs"); }
+  };
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll(".rtab").forEach(tab=>{
+  tab.onclick=()=>switchTab(tab.dataset.tab);
+});
+function switchTab(name){
+  document.querySelectorAll(".rtab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
+  document.querySelectorAll(".rtab-content").forEach(c=>c.classList.toggle("active",c.id==="tab-"+name));
+}
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+document.getElementById("zoom-in").onclick=()=>{UI.tileSize=Math.min(32,UI.tileSize+2);resizeCanvas();drawGrid();document.getElementById("zoom-label").textContent=UI.tileSize+"px";};
+document.getElementById("zoom-out").onclick=()=>{UI.tileSize=Math.max(4,UI.tileSize-2);resizeCanvas();drawGrid();document.getElementById("zoom-label").textContent=UI.tileSize+"px";};
+
+// ── Tileset ───────────────────────────────────────────────────────────────────
+document.getElementById("tileset-select").onchange=e=>{S.tilesetKey=e.target.value;buildPalette();};
+document.getElementById("world-type").onchange=e=>{S.worldType=e.target.value;};
+["world-id","world-name"].forEach(id=>document.getElementById(id).oninput=e=>{
+  if(id==="world-id")S.worldId=e.target.value;
+  else S.worldName=e.target.value;
+});
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+document.getElementById("btn-resize").onclick=()=>{
+  const nw=parseInt(document.getElementById("world-w").value)||60;
+  const nh=parseInt(document.getElementById("world-h").value)||45;
+  if(nw===S.W&&nh===S.H)return;
+  const og=S.grid,ow=S.W,oh=S.H;S.W=nw;S.H=nh;
+  initGrid(fillTile());
+  for(let y=0;y<Math.min(nh,oh);y++)for(let x=0;x<Math.min(nw,ow);x++)S.grid[y*nw+x]=og[y*ow+x];
+  resizeCanvas();drawGrid();setMsg(`Resized to ${nw}×${nh}`);
+};
+
+// ── Exits ─────────────────────────────────────────────────────────────────────
+function renderExits(){
+  const el=document.getElementById("exits-list");el.innerHTML="";
+  S.exits.forEach((e,i)=>{
+    const row=document.createElement("div");row.className="list-item";row.style.cursor="pointer";
+    row.innerHTML=`<span style="color:${i===UI.selExit?"#88aaff":"var(--text-dim)"}">[${e.x},${e.y}]→${e.targetWorld||"?"}</span><button onclick="rmExit(${i})">×</button>`;
+    row.onclick=e2=>{if(e2.target.tagName==="BUTTON")return;UI.selExit=i;renderExits();drawGrid();};
+    el.appendChild(row);
+  });
+  if(!S.exits.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None</span>';
+}
+window.rmExit=i=>{S.exits.splice(i,1);renderExits();drawGrid();};
+document.getElementById("btn-exit-update").onclick=()=>{
+  if(UI.selExit<0||UI.selExit>=S.exits.length)return;
+  const e=S.exits[UI.selExit];
+  e.targetWorld=document.getElementById("exit-target-world").value||e.targetWorld;
+  e.targetX=parseInt(document.getElementById("exit-target-x").value)||e.targetX;
+  e.targetY=parseInt(document.getElementById("exit-target-y").value)||e.targetY;
+  renderExits();setMsg("Exit updated");
+};
+
+// ── NPCs ──────────────────────────────────────────────────────────────────────
+function renderNpcs(){
+  const el=document.getElementById("npc-list");el.innerHTML="";
+  S.npcs.forEach((n,i)=>{
+    const row=document.createElement("div");row.className="list-item";
+    row.innerHTML=`<span>${n.icon||"👤"} ${n.name} [${n.x},${n.y}]</span><button onclick="rmNpc(${i})">×</button>`;
+    el.appendChild(row);
+  });
+  if(!S.npcs.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None</span>';
+}
+window.rmNpc=i=>{S.npcs.splice(i,1);renderNpcs();drawGrid();};
+
+// ── Towns & Portals ───────────────────────────────────────────────────────────
+function renderTowns(){
+  const el=document.getElementById("towns-list");el.innerHTML="";
+  S.towns.forEach((t,i)=>{
+    const row=document.createElement("div");row.className="list-item";
+    row.innerHTML=`<span>🏰 ${t.name} [${t.x},${t.y}]</span><span style="font-size:10px;color:var(--text-dim)">${t.id}</span><button onclick="rmTown(${i})">×</button>`;
+    el.appendChild(row);
+  });
+  if(!S.towns.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None placed</span>';
+}
+function renderPortals(){
+  const el=document.getElementById("portals-list");el.innerHTML="";
+  S.portals.forEach((p,i)=>{
+    const row=document.createElement("div");row.className="list-item";
+    row.innerHTML=`<span>🌀 ${p.name} [${p.x},${p.y}]</span><span style="font-size:10px;color:var(--text-dim)">${p.id}</span><button onclick="rmPortal(${i})">×</button>`;
+    el.appendChild(row);
+  });
+  if(!S.portals.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None placed</span>';
+}
+window.rmTown=i=>{S.towns.splice(i,1);renderTowns();drawGrid();};
+window.rmPortal=i=>{S.portals.splice(i,1);renderPortals();drawGrid();};
+
+// ── Decoration Library ────────────────────────────────────────────────────────
+function loadDecPreview(src,url){
+  if(url){UI.decPreviews[src]=url;drawGrid();return;}
+  const img=new Image();
+  img.onload=()=>{UI.decPreviews[src]=img;drawGrid();};
+  img.src=`./assets/decorations/${src}`;
+  UI.decPreviews[src]=img;
+}
+
+function buildDecLibrary(){
+  const el=document.getElementById("dec-library");el.innerHTML="";
+  UI.decLibrary.forEach((d,i)=>{
+    const card=document.createElement("div");
+    card.className="dec-card"+(UI.selDec?.src===d.src?" active":"");
+    const preview=document.createElement("div");preview.className="preview";
+    const stored=UI.decPreviews[d.src];
+    if(stored&&stored.complete&&stored.naturalWidth>0){
+      const img2=document.createElement("img");img2.src=stored.src||stored;preview.appendChild(img2);
+    } else if(stored&&stored instanceof HTMLImageElement){
+      const img2=document.createElement("img");
+      img2.src=stored.src;
+      stored.onload=()=>{img2.src=stored.src;};
+      preview.appendChild(img2);
+    } else {
+      preview.textContent=d.emoji||"🌿";
+      loadDecPreview(d.src);
+    }
+    card.appendChild(preview);
+    const name=document.createElement("div");name.className="dec-name";name.textContent=d.src.replace(".png","");
+    const size=document.createElement("div");size.className="dec-size";size.textContent=`${d.w}×${d.h} ×${d.scale}`;
+    card.appendChild(name);card.appendChild(size);
+    const del=document.createElement("button");del.className="del-dec";del.textContent="×";
+    del.onclick=e=>{e.stopPropagation();UI.decLibrary.splice(i,1);saveLibrary();buildDecLibrary();};
+    card.appendChild(del);
+    card.onclick=()=>{
+      UI.selDec=d;
+      document.querySelectorAll(".dec-card").forEach(c=>c.classList.remove("active"));
+      card.classList.add("active");
+      document.getElementById("dec-selected-info").textContent=`${d.src} (${d.w}×${d.h} scale:${d.scale} ${d.zOrder})`;
+      UI.tool="decplace";
+      document.querySelectorAll(".tool-btn").forEach(b=>b.classList.toggle("active",b.dataset.tool==="decplace"));
+      document.getElementById("sb-tool").textContent="Tool: decplace";
+    };
+    el.appendChild(card);
+  });
+}
+
+function saveLibrary(){
+  try{localStorage.setItem("roe_dec_library",JSON.stringify(UI.decLibrary));}catch(e){}
+}
+function loadLibrary(){
+  try{
+    const s=localStorage.getItem("roe_dec_library");
+    if(s){
+      const parsed=JSON.parse(s);
+      // Merge with defaults — keep user additions, update defaults
+      const userSrcs=new Set(parsed.map(d=>d.src));
+      const newDefaults=DEFAULT_DEC_LIBRARY.filter(d=>!userSrcs.has(d.src));
+      UI.decLibrary=[...parsed,...newDefaults];
+    }
+  }catch(e){}
+}
+
+// File input for preview
+document.getElementById("dec-file-input").onchange=e=>{
+  const file=e.target.files[0];if(!file)return;
+  document.getElementById("dec-file-name").textContent=file.name;
+  document.getElementById("dec-src").value=file.name;
+  const url=URL.createObjectURL(file);
+  const img=new Image();img.src=url;
+  UI.decPreviews[file.name]=img;
+  img.onload=()=>buildDecLibrary();
+};
+
+document.getElementById("btn-add-dec").onclick=()=>{
+  const src=document.getElementById("dec-src").value.trim();if(!src)return;
+  const w=parseFloat(document.getElementById("dec-w").value)||1;
+  const h=parseFloat(document.getElementById("dec-h").value)||1;
+  const scale=parseFloat(document.getElementById("dec-scale").value)||1;
+  const zOrder=document.getElementById("dec-zorder").value;
+  if(UI.decLibrary.find(d=>d.src===src)){setMsg("Already in library");return;}
+  UI.decLibrary.unshift({src,w,h,scale,zOrder,emoji:"🌿"});
+  saveLibrary();buildDecLibrary();setMsg("Added: "+src);
+};
+
+function renderPlacedDecs(){
+  const el=document.getElementById("placed-decs-list");el.innerHTML="";
+  S.decorations.forEach((d,i)=>{
+    const row=document.createElement("div");row.className="list-item";
+    row.innerHTML=`<span>${d.src.replace(".png","")} [${d.x},${d.y}]</span><button onclick="rmDec(${i})">×</button>`;
+    el.appendChild(row);
+  });
+  if(!S.decorations.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None placed</span>';
+}
+window.rmDec=i=>{S.decorations.splice(i,1);renderPlacedDecs();drawGrid();};
+
+// ── Save/Load — FILE BASED (works across all origins/hosts) ──────────────────
+// Primary save = .roe file downloaded to disk. localStorage = recent list only.
+
+function getRecent(){try{return JSON.parse(localStorage.getItem("roe_recent")||"[]");}catch(e){return[];}}
+function addRecent(name){
+  let r=getRecent().filter(n=>n!==name);
+  r.unshift(name);r=r.slice(0,8);
+  localStorage.setItem("roe_recent",JSON.stringify(r));
+}
+
+// ── Save — download .roe file ─────────────────────────────────────────────────
+document.getElementById("btn-save").onclick=()=>{
+  const blob=new Blob([JSON.stringify(serState(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=(S.worldId||"map")+".roe";a.click();
+  setMsg("Saved "+(S.worldId||"map")+".roe");
+};
+
+// ── Load — open .roe or world JSON file ──────────────────────────────────────
+const _fileInput=document.createElement("input");
+_fileInput.type="file";_fileInput.accept=".roe,.json";_fileInput.style.display="none";
+document.body.appendChild(_fileInput);
+document.getElementById("btn-load-roe").onclick=()=>_fileInput.click();
+_fileInput.onchange=e=>{
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const parsed=JSON.parse(ev.target.result);
+      if(parsed.grid!==undefined){
+        // Editor .roe state file
+        deserState(parsed);setMsg("Loaded: "+file.name);
+      } else {
+        // Raw world JSON — treat as import
+        deserState({W:parsed.width||60,H:parsed.height||45,
+          worldId:parsed.id||"world",worldName:parsed.name||"World",
+          worldType:parsed.type||"town",
+          tilesetKey:parsed.type==="dungeon"?"dungeon":parsed.type==="overworld"?"overworld":"town",
+          grid:parsed.tiles||[],exits:parsed.exits||[],npcs:parsed.npcs||[],
+          decorations:parsed.decorations||[],towns:parsed.towns||[],portals:parsed.portals||[],
+          notes:parsed._notes||"",_rawJson:parsed});
+        setMsg("Imported: "+file.name);
+      }
+    }catch(err){alert("Could not read file: "+err.message);}
+  };
+  reader.readAsText(file);
+  _fileInput.value="";
+};
+
+function renderSaveSlots(){
+  const el=document.getElementById("save-slots");
+  el.innerHTML='<span style="color:var(--text-dim);font-size:10px;line-height:1.6">Save .roe files to disk.<br>Load .roe to restore.<br>Use Import JSON for<br>existing world JSON.</span>';
+}
+
+// ── Serialize ─────────────────────────────────────────────────────────────────
+function serState(){
+  return{W:S.W,H:S.H,worldId:S.worldId,worldName:S.worldName,worldType:S.worldType,
+    tilesetKey:S.tilesetKey,grid:Array.from(S.grid),exits:S.exits,npcs:S.npcs,
+    decorations:S.decorations,towns:S.towns,portals:S.portals,notes:S.notes,
+    _rawJson:S._rawJson||null};
+}
+function deserState(s){
+  S.W=s.W||60;S.H=s.H||45;S.worldId=s.worldId||"world";S.worldName=s.worldName||"World";
+  S.worldType=s.worldType||"town";S.tilesetKey=s.tilesetKey||"town";
+  S.grid=new Uint16Array(s.grid||[]);S.exits=s.exits||[];S.npcs=s.npcs||[];
+  S.decorations=s.decorations||[];S.towns=s.towns||[];S.portals=s.portals||[];
+  S.notes=s.notes||"";S._rawJson=s._rawJson||null;
+  document.getElementById("world-id").value=S.worldId;
+  document.getElementById("world-name").value=S.worldName;
+  document.getElementById("world-type").value=S.worldType;
+  document.getElementById("world-w").value=S.W;
+  document.getElementById("world-h").value=S.H;
+  document.getElementById("tileset-select").value=S.tilesetKey;
+  document.getElementById("notes").value=S.notes;
+  buildPalette();resizeCanvas();drawGrid();renderExits();renderNpcs();renderPlacedDecs();renderTowns();renderPortals();
+  S.decorations.forEach(d=>loadDecPreview(d.src));
+}
+
+function buildExportWorld(){
+  // Start with preserved raw JSON so unknown fields survive round-trips
+  const base = S._rawJson ? JSON.parse(JSON.stringify(S._rawJson)) : {};
+  // Overwrite with editor-managed fields
+  base.id       = S.worldId;
+  base.name     = S.worldName;
+  base.type     = S.worldType;
+  base.width    = S.W;
+  base.height   = S.H;
+  base.exits    = S.exits;
+  base.npcs     = S.npcs;
+  base.towns    = S.towns;
+  base.portals  = S.portals;
+  base.tiles    = Array.from(S.grid);
+  if(S.decorations.length) base.decorations = S.decorations;
+  if(document.getElementById("notes").value) base._notes = document.getElementById("notes").value;
+  return base;
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+document.getElementById("btn-export").onclick=()=>{
+  const world = buildExportWorld();
+  const json  = JSON.stringify(world, null, 2);
+  // Escape single quotes for safe SQL embedding
+  const safeJson = JSON.stringify(world).replace(/'/g, "''");
+  const sql = `-- Safe Supabase merge — preserves fields not managed by editor\nUPDATE worlds\nSET json = json || '${safeJson}'::jsonb\nWHERE id = '${S.worldId.replace(/'/g,"''")}';` +
+    `\n\n-- Verify:\nSELECT jsonb_array_length(json->'tiles'), jsonb_array_length(json->'towns'), jsonb_array_length(json->'portals') FROM worlds WHERE id = '${S.worldId.replace(/'/g,"''")}';`;
+  document.getElementById("export-text").value = json + "\n\n/* ── SUPABASE SQL (safer for partial updates) ──\n" + sql + "\n*/";
+  document.getElementById("export-out").style.display="block";
+};
+document.getElementById("btn-copy-export").onclick=()=>{
+  // Copy only the JSON part, not the SQL comment
+  const full = document.getElementById("export-text").value;
+  const jsonOnly = full.split("\n\n/*")[0];
+  navigator.clipboard.writeText(jsonOnly)
+    .then(()=>setMsg("JSON copied!")).catch(()=>{
+      document.getElementById("export-text").select();document.execCommand("copy");setMsg("Copied!");});
+};
+document.getElementById("btn-copy-sql").onclick=()=>{
+  const full = document.getElementById("export-text").value;
+  const sqlMatch = full.match(/\/\* ── SUPABASE SQL[\s\S]*?\*\//);
+  if(!sqlMatch){setMsg("No SQL found");return;}
+  const sql = sqlMatch[0].replace(/^\/\* ── SUPABASE SQL[^\n]*\n/,"").replace(/\n\*\/$/,"").trim();
+  navigator.clipboard.writeText(sql).then(()=>setMsg("SQL copied!"));
+};
+document.getElementById("btn-dl-export").onclick=()=>{
+  const world = buildExportWorld();
+  const blob=new Blob([JSON.stringify(world,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=(S.worldId||"world")+".json";a.click();
+};
+document.getElementById("btn-close-export").onclick=()=>document.getElementById("export-out").style.display="none";
+
+// ── Import ────────────────────────────────────────────────────────────────────
+document.getElementById("btn-import").onclick=()=>document.getElementById("import-out").style.display="block";
+document.getElementById("btn-close-import").onclick=()=>document.getElementById("import-out").style.display="none";
+document.getElementById("btn-do-import").onclick=()=>{
+  try{
+    const j=JSON.parse(document.getElementById("import-text").value);
+    deserState({W:j.width||60,H:j.height||45,worldId:j.id||"world",worldName:j.name||"World",
+      worldType:j.type||"town",tilesetKey:j.type==="dungeon"?"dungeon":j.type==="overworld"?"overworld":"town",
+      grid:j.tiles||[],exits:j.exits||[],npcs:j.npcs||[],
+      decorations:j.decorations||[],towns:j.towns||[],portals:j.portals||[],
+      notes:j._notes||"",_rawJson:j});
+    document.getElementById("import-out").style.display="none";
+    setMsg("Imported: "+j.name);
+  }catch(e){alert("Invalid JSON: "+e.message);}
+};
+
+// ── New map ───────────────────────────────────────────────────────────────────
+document.getElementById("btn-new").onclick=()=>{
+  if(!confirm("Clear current map?"))return;
+  S.exits=[];S.npcs=[];S.decorations=[];S.towns=[];S.portals=[];
+  const t=document.getElementById("world-type").value;
+  if(t==="dungeon")defaultDungeon();else if(t==="overworld")defaultOverworld();else defaultTown();
+  resizeCanvas();drawGrid();renderExits();renderNpcs();renderPlacedDecs();setMsg("New "+t+" map");
+};
+
+document.getElementById("notes").oninput=e=>S.notes=e.target.value;
+
+// ── Status ────────────────────────────────────────────────────────────────────
+let msgT;
+function setMsg(m){const el=document.getElementById("sb-msg");el.textContent=m;clearTimeout(msgT);msgT=setTimeout(()=>el.textContent="",2800);}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadLibrary();
+defaultTown();
+buildPalette();
+buildDecLibrary();
+resizeCanvas();
+drawGrid();
+renderExits();
+renderNpcs();
+renderPlacedDecs();
+renderSaveSlots();
+</script>
+</body>
+</html>
