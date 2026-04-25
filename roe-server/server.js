@@ -288,17 +288,16 @@ function _resolveAbility(session, world, msg) {
   // Melee abilities with centeredOnSelf (e.g. whirlwind) are treated as AOE
   const isCenteredAoe = ability.aoe?.centeredOnSelf === true;
 
-  // ── Consecrate — ground holy DoT zone (must precede generic AOE handler) ──
+  // ── Consecrate — must precede generic AOE handler ────────────────────────
   if (ability.special === "consecrate") {
-  console.log(`[Server] CONSECRATE fired by ${session.name} at (${session.x}, ${session.y})`);
-  if (ability.special === "consecrate") {
-    const ge           = ability.groundEffect ?? {};
-    const radius       = ability.aoe?.radius ?? 3;
-    const dotDmg       = ge.dot?.damage ?? 6;
+    console.log(`[Server] CONSECRATE fired by ${session.name} at (${session.x}, ${session.y})`);
+    const ge            = ability.groundEffect ?? {};
+    const radius        = ability.aoe?.radius ?? 3;
+    const dotDmg        = ge.dot?.damage ?? 6;
     const dotIntervalMs = (ge.dot?.interval ?? 60) / 60 * 1000;
-    const durationMs   = (ge.duration ?? 480) / 60 * 1000;
-    const allyBuff     = ge.allyBuff ?? null;
-    const zoneStarted  = Date.now();
+    const durationMs    = (ge.duration ?? 480) / 60 * 1000;
+    const allyBuff      = ge.allyBuff ?? null;
+    const zoneStarted   = Date.now();
     const zoneX = session.x, zoneY = session.y;
     _broadcast(session.worldId, { type: "consecrate_zone", x: zoneX, y: zoneY, radius, duration: ge.duration ?? 480, allyBuff });
     const iv = setInterval(() => {
@@ -308,19 +307,19 @@ function _resolveAbility(session, world, msg) {
       for (const npc of w.npcs.values()) {
         if (npc.dead) continue;
         const dx = npc.x - zoneX, dy = npc.y - zoneY;
-          if (Math.sqrt(dx*dx + dy*dy) <= radius) {
-            const r = w.resolveAttack(npc.id, dotDmg, session);
+        if (Math.sqrt(dx*dx + dy*dy) <= radius) {
+          const r = w.resolveAttack(npc.id, dotDmg, session);
           if (!r) continue;
           _broadcast(session.worldId, { type: "npc_damaged", npcId: npc.id, hp: r.hp, maxHp: r.maxHp, damage: dotDmg, attackerName: "Consecrate", isDot: true });
           if (r.dead) _handleNPCKill(session, w, npc.id, r);
-          }
         }
-      }, dotIntervalMs);
-      _send(session.ws, { type: "ability_result", abilityId, special: "consecrate" });
-      return;
-    }
+      }
+    }, dotIntervalMs);
+    _send(session.ws, { type: "ability_result", abilityId, special: "consecrate" });
+    return;
+  }
 
-  // ── AOE / Multishot / Consecrate / Divine Storm / Whirlwind ──────────────
+  // ── AOE / Multishot / Divine Storm / Whirlwind ────────────────────────────
   if (type === "aoe" || isMultiTarget || isCenteredAoe) {
     const radius     = ability.aoe?.radius ?? ability.range ?? 3;
     const maxTargets = ability.targets ?? ability.aoe?.maxTargets ?? 12;
@@ -1397,48 +1396,33 @@ class WorldInstance {
   }
 
   _rollLoot(npc) {
-    // Simple guaranteed gold drop + loot table roll
     const baseGold = npc.isBoss
       ? 50 + Math.floor(Math.random() * 100)
       : 3  + Math.floor(Math.random() * 10);
 
-    // Look up loot table for this monster
     const monsterId = npc.monsterId ?? npc.id.split("_")[0];
-    const link = db.prepare(
-      "SELECT loot_table_id FROM monster_loot WHERE monster_id = ?"
-    ).get(monsterId);
 
-    if (!link) {
-      return { gold: baseGold };
-    }
+    const LOOT_TABLES = {
+      goblinMelee:    [{ itemId: "health_potion", weight: 8 }, { itemId: "iron_ring", weight: 3 }],
+      goblinArcher:   [{ itemId: "health_potion", weight: 8 }, { itemId: "mana_potion", weight: 5 }],
+      goblinShaman:   [{ itemId: "mana_potion", weight: 15 }, { itemId: "rune_frost_arrow", weight: 5 }],
+      goblinWarchief: [{ itemId: "helm_of_strength", weight: 35 }, { itemId: "rune_slash", weight: 25 }, { itemId: "amulet_of_vitality", weight: 15 }],
+      zombie:         [{ itemId: "health_potion", weight: 10 }],
+      skeleton:       [{ itemId: "health_potion", weight: 8 }, { itemId: "iron_ring", weight: 5 }],
+      default:        [{ itemId: "health_potion", weight: 5 }]
+    };
 
-    // Get weighted entries
-    const entries = db.prepare(
-      "SELECT * FROM loot_entries WHERE loot_table_id = ?"
-    ).all(link.loot_table_id);
+    const entries = LOOT_TABLES[monsterId] ?? LOOT_TABLES.default;
+    const dropChance = npc.isBoss ? 0.85 : 0.12;
+    if (Math.random() > dropChance) return { gold: baseGold };
 
-    if (!entries.length) return { gold: 0 };
-
-    // Weighted random roll
     const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
     let roll = Math.random() * totalWeight;
-    let chosen = entries[entries.length - 1];
     for (const entry of entries) {
       roll -= entry.weight;
-      if (roll <= 0) { chosen = entry; break; }
+      if (roll <= 0) return { gold: baseGold, itemId: entry.itemId, qty: 1 };
     }
-
-    if (chosen.item_id === "nothing") return { gold: baseGold };
-
-    const rolledGold = chosen.gold_min > 0
-      ? chosen.gold_min + Math.floor(Math.random() * (chosen.gold_max - chosen.gold_min + 1))
-      : 0;
-
-    return {
-      gold: baseGold + rolledGold,
-      itemId: chosen.item_id !== "gold" ? chosen.item_id : null,
-      qty:    chosen.qty_min + Math.floor(Math.random() * (chosen.qty_max - chosen.qty_min + 1))
-    };
+    return { gold: baseGold };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
