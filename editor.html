@@ -607,7 +607,7 @@ function handleClick(x,y,e){
       renderPlacedDecs();drawGrid();
     }
   }
-}
+
 function handlePaint(x,y){
   if(!inB(x,y))return;
   S.grid[y*S.W+x]=UI.paintMode===1?UI.selTile:fillTile();
