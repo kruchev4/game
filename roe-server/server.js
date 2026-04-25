@@ -11,7 +11,7 @@
 
 require("dotenv").config();
 const { WebSocketServer, WebSocket } = require("ws");
-const path = require("path");
+
 
 const fs       = require("fs");
 const http     = require("http");
@@ -72,8 +72,11 @@ const MONSTER_FALLBACK = [
   { id:"wraith",       name:"Wraith",         icon:"👻", hp:28,  damage_min:6,  damage_max:12, speed:4, perception:8,  roam_radius:4, attack_range:4, xp_value:40,  is_boss:false },
   { id:"necromancer",  name:"Necromancer",    icon:"🧙", hp:22,  damage_min:8,  damage_max:16, speed:2, perception:9,  roam_radius:3, attack_range:6, xp_value:60,  is_boss:false },
   { id:"lich",         name:"Lich",           icon:"💀", hp:200, damage_min:18, damage_max:28, speed:2, perception:10, roam_radius:2, attack_range:5, xp_value:300, is_boss:true  },
-  { id:"goblinShaman",   name:"Goblin Shaman",   icon:"🧙", hp:40,  damage_min:6,  damage_max:12, speed:2, perception:7,  roam_radius:2, attack_range:6, xp_value:40,  is_boss:false },
-  { id:"goblinWarchief", name:"Goblin Warchief", icon:"👹", hp:180, damage_min:12, damage_max:20, speed:3, perception:8,  roam_radius:1, attack_range:1, xp_value:150, is_boss:true  },
+  { id:"goblinShaman",         name:"Goblin Shaman",        icon:"🧙", hp:40,  damage_min:6,  damage_max:12, speed:2, perception:7,  roam_radius:2, attack_range:6, xp_value:40,  is_boss:false },
+  { id:"goblinWarchief",       name:"Goblin Warchief",      icon:"👹", hp:180, damage_min:12, damage_max:20, speed:3, perception:8,  roam_radius:1, attack_range:1, xp_value:150, is_boss:true  },
+  { id:"ancientSkeletonLord",  name:"Ancient Skeleton Lord",icon:"💀", hp:320, damage_min:16, damage_max:26, speed:2, perception:9,  roam_radius:4, attack_range:1, xp_value:400, is_boss:true  },
+  { id:"forestTroll",          name:"Forest Troll",         icon:"👺", hp:280, damage_min:18, damage_max:28, speed:2, perception:6,  roam_radius:3, attack_range:1, xp_value:350, is_boss:true  },
+  { id:"lichArchon",           name:"Lich Archon",          icon:"🧟", hp:260, damage_min:14, damage_max:24, speed:2, perception:12, roam_radius:2, attack_range:6, xp_value:450, is_boss:true  },
 ];
 
 function _rowToMonster(row) {
@@ -603,9 +606,7 @@ function _resolveAbility(session, world, msg) {
   if (npc._condemned && npc._condemned.casterId === session.playerToken && Date.now() < npc._condemned.expiresAt) {
     damage = Math.round(damage * (1 + npc._condemned.damageAmplify));
   }
-    if (session.eaglesEye && Date.now() < session.eaglesEye.expiresAt) {
-    damage = Math.floor(damage * (session.eaglesEye.damageMult ?? 1));
-  }
+    damage = Math.floor(damage * session.eaglesEye.damageMult);
 
   let chargeEffect = null;
   if (session.elementalCharge && Date.now() < session.elementalCharge.expiresAt && ability.type === "ranged") {
@@ -1405,13 +1406,18 @@ class WorldInstance {
     const monsterId = npc.monsterId ?? npc.id.split("_")[0];
 
     const LOOT_TABLES = {
-      goblinMelee:    [{ itemId: "health_potion", weight: 8 }, { itemId: "iron_ring", weight: 3 }],
-      goblinArcher:   [{ itemId: "health_potion", weight: 8 }, { itemId: "mana_potion", weight: 5 }],
-      goblinShaman:   [{ itemId: "mana_potion", weight: 15 }, { itemId: "rune_frost_arrow", weight: 5 }],
-      goblinWarchief: [{ itemId: "helm_of_strength", weight: 35 }, { itemId: "rune_slash", weight: 25 }, { itemId: "amulet_of_vitality", weight: 15 }],
-      zombie:         [{ itemId: "health_potion", weight: 10 }],
-      skeleton:       [{ itemId: "health_potion", weight: 8 }, { itemId: "iron_ring", weight: 5 }],
-      default:        [{ itemId: "health_potion", weight: 5 }]
+      goblinMelee:          [{ itemId: "health_potion",     weight: 8  }, { itemId: "iron_ring",          weight: 3  }],
+      goblinArcher:         [{ itemId: "health_potion",     weight: 8  }, { itemId: "mana_potion",         weight: 5  }],
+      goblinShaman:         [{ itemId: "mana_potion",       weight: 15 }, { itemId: "rune_frost_arrow",    weight: 5  }],
+      goblinWarchief:       [{ itemId: "helm_of_strength",  weight: 35 }, { itemId: "rune_slash",          weight: 25 }, { itemId: "amulet_of_vitality", weight: 15 }],
+      zombie:               [{ itemId: "health_potion",     weight: 10 }],
+      skeleton:             [{ itemId: "health_potion",     weight: 10 }, { itemId: "iron_ring",           weight: 5  }],
+      wraith:               [{ itemId: "mana_potion",       weight: 15 }],
+      necromancer:          [{ itemId: "mana_potion",       weight: 20 }, { itemId: "rune_frost_arrow",    weight: 10 }],
+      ancientSkeletonLord:  [{ itemId: "chainmail_coif",    weight: 30 }, { itemId: "boots_of_haste",      weight: 25 }, { itemId: "rune_whirlwind",     weight: 20 }, { itemId: "amulet_of_vitality", weight: 25 }],
+      forestTroll:          [{ itemId: "plate_gauntlets",   weight: 35 }, { itemId: "helm_of_strength",    weight: 35 }, { itemId: "rune_shield_bash",   weight: 30 }],
+      lichArchon:           [{ itemId: "ring_of_the_arcane",weight: 35 }, { itemId: "rune_consecrate",     weight: 30 }, { itemId: "zealots_pendant",    weight: 35 }],
+      default:              [{ itemId: "health_potion",     weight: 5  }]
     };
 
     const entries = LOOT_TABLES[monsterId] ?? LOOT_TABLES.default;
