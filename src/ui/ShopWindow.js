@@ -21,6 +21,13 @@ export class ShopWindow {
     this._tab       = "buy";
   }
 
+  // Resolve item def from itemDefs OR from the embedded def on the bag slot
+  _getDef(itemId) {
+    return this.itemDefs[itemId]
+      ?? this.player.bag.find(s => s?.itemId === itemId)?.def
+      ?? null;
+  }
+
   show() {
     document.getElementById("shop-window")?.remove();
 
@@ -130,17 +137,17 @@ export class ShopWindow {
     if (!inventory.length) return `<div style="padding:24px;text-align:center;color:#a8865a;font-style:italic;">No stock available.</div>`;
 
     return inventory.map(entry => {
-      const def        = this.itemDefs[entry.itemId];
+      const def       = this._getDef(entry.itemId);
       if (!def) return "";
-      const canAfford  = this.player.gold >= entry.buyPrice;
-      const bagFull    = !this.player.bag.some(s => s === null);
+      const canAfford = this.player.gold >= entry.buyPrice;
+      const bagFull   = !this.player.bag.some(s => s === null);
 
       return `
         <div class="shop-row">
           <span class="shop-icon">${def.icon ?? "📦"}</span>
           <div class="shop-name">
             <div>${def.name}</div>
-            <div style="font-size:.68rem;color:#a8865a;font-style:italic;">${def.description}</div>
+            <div style="font-size:.68rem;color:#a8865a;font-style:italic;">${def.description ?? def.desc ?? ""}</div>
           </div>
           <span class="shop-price">🪙 ${entry.buyPrice}</span>
           <button class="shop-btn shop-btn-buy btn-buy-item"
@@ -158,20 +165,20 @@ export class ShopWindow {
     if (!sellable.length) return `<div style="padding:24px;text-align:center;color:#a8865a;font-style:italic;">Nothing to sell.</div>`;
 
     return sellable.map(slot => {
-      const def = this.itemDefs[slot.itemId];
+      // Use itemDefs first, then the embedded def on the slot
+      const def = this._getDef(slot.itemId) ?? slot.def;
       if (!def) return "";
 
-      // Find sell multiplier from shop inventory if stocked, else default 0.5
-      const shopEntry   = (this.townData.shopInventory ?? []).find(e => e.itemId === slot.itemId);
-      const multiplier  = shopEntry?.sellMultiplier ?? 0.5;
-      const sellPrice   = Math.max(1, Math.floor((def.value ?? 0) * multiplier));
+      const shopEntry  = (this.townData.shopInventory ?? []).find(e => e.itemId === slot.itemId);
+      const multiplier = shopEntry?.sellMultiplier ?? 0.5;
+      const sellPrice  = Math.max(1, Math.floor((def.value ?? 0) * multiplier));
 
       return `
         <div class="shop-row">
           <span class="shop-icon">${def.icon ?? "📦"}</span>
           <div class="shop-name">
             <div>${def.name} ${slot.qty > 1 ? `<span style="color:#e8b84a;">x${slot.qty}</span>` : ""}</div>
-            <div style="font-size:.68rem;color:#a8865a;font-style:italic;">${def.description}</div>
+            <div style="font-size:.68rem;color:#a8865a;font-style:italic;">${def.description ?? def.desc ?? ""}</div>
           </div>
           <span class="shop-price" style="color:#88cc88;">🪙 ${sellPrice}</span>
           <button class="shop-btn shop-btn-sell btn-sell-item"

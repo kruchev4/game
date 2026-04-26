@@ -175,25 +175,27 @@ console.log("[loot] _addToBagDrop called", drop.itemId, drop.name);
    * Returns the previously equipped item (if any) to the bag.
    */
   equipItem(itemId) {
-    const def = this.itemDefs[itemId];
-    if (!def) return;
+  const bagSlot = this.player.bag.find(s => s?.itemId === itemId);
+  const def = this.itemDefs[itemId] ?? bagSlot?.def;
+  if (!def) return;
 
-    const slot = def.slot;
-    if (!slot) return;  // no slot = not equippable (e.g. consumables)
+  // Determine slot from def — new items use itemType, old items use slot
+  const slot = def.slot ?? {
+    weapon:    "mainhand",
+    armour:    "chest",
+    accessory: "ring1",
+  }[def.itemType] ?? null;
+  if (!slot) return;
 
-    // Unequip current item in that slot → back to bag
-    const current = this.player.equipment[slot];
-    if (current) {
-      this._addToBag(current, 1);
-    }
+  // Unequip current item in that slot → back to bag
+  const current = this.player.equipment[slot];
+  if (current) this._addToBag(current, 1);
 
-    // Remove new item from bag
-    this._removeFromBag(itemId, 1);
-
-    // Equip
-    this.player.equipment[slot] = itemId;
-    this.onEvent({ type: "item_equipped", item: def });
-  }
+  // Remove new item from bag and equip
+  this._removeFromBag(itemId, 1);
+  this.player.equipment[slot] = itemId;
+  this.onEvent({ type: "item_equipped", item: def });
+}
 
   /**
    * Unequip an item from a slot back into the bag.
