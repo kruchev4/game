@@ -433,6 +433,7 @@ async function sbUpsert(table, body) {
 // Supabase returns 200 or 204 on success — both may have empty body
 const text = await res.text();
 return text ? JSON.parse(text) : null;
+}
 
 // ── Tilesets ──────────────────────────────────────────────────────────────────
 const TILESETS = {
