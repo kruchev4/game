@@ -85,16 +85,15 @@ export class LootWindow {
       : "";
 
     const itemsHtml = corpse.items.map(drop => {
-      const def = this.itemDefs[drop.itemId];
-      if (!def) return "";
-      const rarityClass = def.rarity ? `loot-rarity-${def.rarity}` : "";
-      return `
-        <div class="loot-item" data-item="${drop.itemId}">
-          <span class="loot-icon">${def.icon ?? "📦"}</span>
-          <span class="loot-name ${rarityClass}">${def.name}</span>
-          <span class="loot-qty">${drop.qty > 1 ? "x" + drop.qty : ""}</span>
-        </div>`;
-    }).join("");
+  const def = this.itemDefs[drop.itemId] ?? drop;
+  const rarityClass = def.rarity ? `loot-rarity-${def.rarity}` : "";
+  return `
+    <div class="loot-item" data-item="${drop.itemId}">
+      <span class="loot-icon">${def.icon ?? "📦"}</span>
+      <span class="loot-name ${rarityClass}">${def.name ?? drop.itemId}</span>
+      <span class="loot-qty">${drop.qty > 1 ? "x" + drop.qty : ""}</span>
+    </div>`;
+}).join("");
 
     this._el.innerHTML = `
       <div style="background:linear-gradient(90deg,#1e1206,#120c04);padding:12px 16px;border-bottom:1px solid #4a2e10;display:flex;align-items:center;justify-content:space-between;">
