@@ -846,22 +846,19 @@ function renderExits(){
     const row=document.createElement("div");row.className="list-item";row.style.cursor="pointer";
     row.innerHTML=`<span style="color:${i===UI.selExit?"#88aaff":"var(--text-dim)"}">[${e.x},${e.y}]→${e.targetWorld||"?"}</span><button onclick="rmExit(${i})">×</button>`;
     row.onclick=e2=>{
-              if(e2.target.tagName==="BUTTON")return;
-              UI.selExit=i;
-  
-             document.getElementById("exit-target-world").value=S.exits[i].targetWorld||"";
-             document.getElementById("exit-target-x").value=S.exits[i].targetX||"";
-             document.getElementById("exit-target-y").value=S.exits[i].targetY||"";
-             renderExits();drawGrid();
-            
-
-
+      if(e2.target.tagName==="BUTTON")return;
+      UI.selExit=i;
+      document.getElementById("exit-target-world").value=S.exits[i].targetWorld||"";
+      document.getElementById("exit-target-x").value=S.exits[i].targetX||"";
+      document.getElementById("exit-target-y").value=S.exits[i].targetY||"";
+      renderExits();drawGrid();
+    };
     el.appendChild(row);
   });
   if(!S.exits.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None</span>';
-  }
-  window.rmExit=i=>{S.exits.splice(i,1);renderExits();drawGrid();};
-  document.getElementById("btn-exit-update").onclick=()=>{
+}
+window.rmExit=i=>{S.exits.splice(i,1);renderExits();drawGrid();};
+document.getElementById("btn-exit-update").onclick=()=>{
   if(UI.selExit<0||UI.selExit>=S.exits.length)return;
   const e=S.exits[UI.selExit];
   e.targetWorld=document.getElementById("exit-target-world").value||e.targetWorld;
@@ -869,7 +866,6 @@ function renderExits(){
   e.targetY=parseInt(document.getElementById("exit-target-y").value)||e.targetY;
   renderExits();setMsg("Exit updated");
 };
-
 // ── NPCs ──────────────────────────────────────────────────────────────────────
 function renderNpcs(){
   const el=document.getElementById("npc-list");el.innerHTML="";
