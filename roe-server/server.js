@@ -1090,7 +1090,7 @@ class WorldInstance {
         }
       }
     }
-
+    console.log(`[loot] result for ${monsterId}: gold=${baseGold} items=${JSON.stringify(drops)}`);
     return { gold: baseGold, items: drops };
   }
 
