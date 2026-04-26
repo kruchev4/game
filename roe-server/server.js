@@ -1073,6 +1073,7 @@ class WorldInstance {
     // 2. Tier pool drop
     const baseDropChance = npc.isBoss ? 0.85 : npc.isElite ? 0.60 : 0.12;
     if (Math.random() < baseDropChance) {
+     console.log(`[loot] passed drop chance, pool size=${pool.length} totalWeight=${pool.reduce((s,e) => s + Number(e.drop_chance), 0)}`);
       const pool = lootByTier.get(tier) ?? [];
       if (pool.length > 0) {
         const totalWeight = pool.reduce((sum, e) => sum + Number(e.drop_chance), 0);
