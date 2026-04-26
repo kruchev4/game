@@ -845,7 +845,15 @@ function renderExits(){
   S.exits.forEach((e,i)=>{
     const row=document.createElement("div");row.className="list-item";row.style.cursor="pointer";
     row.innerHTML=`<span style="color:${i===UI.selExit?"#88aaff":"var(--text-dim)"}">[${e.x},${e.y}]→${e.targetWorld||"?"}</span><button onclick="rmExit(${i})">×</button>`;
-    row.onclick=e2=>{if(e2.target.tagName==="BUTTON")return;UI.selExit=i;renderExits();drawGrid();};
+    row.onclick=e2=>{
+  if(e2.target.tagName==="BUTTON")return;
+  UI.selExit=i;
+  // Populate edit fields with current exit values
+  document.getElementById("exit-target-world").value=S.exits[i].targetWorld||"";
+  document.getElementById("exit-target-x").value=S.exits[i].targetX||"";
+  document.getElementById("exit-target-y").value=S.exits[i].targetY||"";
+  renderExits();drawGrid();
+};
     el.appendChild(row);
   });
   if(!S.exits.length)el.innerHTML='<span style="color:var(--text-dim);font-size:11px">None</span>';
