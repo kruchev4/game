@@ -23,6 +23,8 @@ body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monosp
 .hbtn.primary:hover{background:rgba(232,200,74,0.12);}
 .hbtn.danger{border-color:rgba(200,60,60,0.5);color:#cc8888;}
 .hbtn.danger:hover{border-color:var(--red);color:var(--red);background:rgba(200,60,60,0.08);}
+.hbtn.supabase{border-color:rgba(62,207,142,0.5);color:#3ecf8e;}
+.hbtn.supabase:hover{border-color:#3ecf8e;background:rgba(62,207,142,0.08);}
 #layout{flex:1;display:flex;overflow:hidden;}
 #left-panel{width:196px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
 .panel-section{border-bottom:1px solid var(--border);padding:8px;}
@@ -30,6 +32,7 @@ body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monosp
 .setting-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:4px;}
 .setting-row label{color:var(--text-dim);font-size:11px;white-space:nowrap;}
 .mini-inp{background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;padding:3px 5px;}
+.mini-inp:disabled{opacity:0.4;cursor:not-allowed;}
 .setting-row .mini-inp{width:90px;}
 #tile-palette{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
 .tile-btn{display:flex;align-items:center;gap:4px;padding:4px 5px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--bg);font-size:10px;color:var(--text-dim);transition:border-color 0.12s;}
@@ -40,27 +43,30 @@ body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monosp
 .tool-btn{padding:4px 7px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text-dim);cursor:pointer;font-size:11px;font-family:'Share Tech Mono',monospace;transition:all 0.12s;}
 .tool-btn:hover{border-color:var(--border-bright);color:var(--text);}
 .tool-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(232,200,74,0.06);}
+.tool-btn.spawn-tool{border-color:rgba(200,60,60,0.4);color:#cc8888;}
+.tool-btn.spawn-tool.active{border-color:#cc4444;color:#ff8888;background:rgba(200,60,60,0.08);}
 #save-slots{display:flex;flex-direction:column;gap:3px;}
 .save-slot{display:flex;align-items:center;gap:3px;}
 .save-slot span{flex:1;font-size:10px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .save-slot button{padding:3px 6px;border:1px solid var(--border);border-radius:2px;background:var(--bg);color:var(--text-dim);cursor:pointer;font-size:10px;font-family:'Share Tech Mono',monospace;}
 .save-slot button:hover{border-color:var(--border-bright);color:var(--text);}
-.save-slot .lb:hover{border-color:var(--green);color:var(--green);}
-.save-slot .db:hover{border-color:var(--red);color:var(--red);}
 #canvas-area{flex:1;overflow:auto;background:#080810;position:relative;}
 #canvas-wrap{position:absolute;transform-origin:top left;}
 canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
 #right-panel{width:236px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
-.rtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
-.rtab{flex:1;padding:7px 4px;text-align:center;font-size:10px;font-family:'Cinzel',serif;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.05em;}
+.rtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;}
+.rtab{flex:1;padding:7px 4px;text-align:center;font-size:10px;font-family:'Cinzel',serif;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.05em;min-width:36px;}
 .rtab:hover{color:var(--text);}
 .rtab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.rtab.spawn-tab.active{color:#ff8888;border-bottom-color:#cc4444;}
 .rtab-content{display:none;flex:1;overflow-y:auto;padding:8px;}
 .rtab-content.active{display:flex;flex-direction:column;gap:6px;}
 #statusbar{background:var(--bg2);border-top:1px solid var(--border);padding:4px 12px;height:26px;display:flex;align-items:center;gap:16px;flex-shrink:0;font-size:11px;color:var(--text-dim);}
 .mini-btn{padding:4px 8px;border:1px solid var(--border-bright);border-radius:3px;background:transparent;color:var(--gold);font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;transition:all 0.12s;width:100%;}
 .mini-btn:hover{background:rgba(232,200,74,0.1);}
 .mini-btn.sm{width:auto;padding:3px 7px;font-size:10px;}
+.mini-btn.green{color:var(--green);border-color:rgba(68,170,102,0.5);}
+.mini-btn.green:hover{background:rgba(68,170,102,0.1);border-color:var(--green);}
 .list-item{display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;}
 .list-item span{flex:1;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .list-item button{padding:2px 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:10px;}
@@ -68,7 +74,6 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
 .zoom-row{display:flex;align-items:center;gap:5px;}
 .zoom-row button{width:22px;height:22px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
 .zoom-row button:hover{border-color:var(--border-bright);}
-/* Decoration library */
 #dec-library{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;}
 .dec-card{border:1px solid var(--border);border-radius:4px;background:var(--bg);padding:4px;cursor:pointer;transition:border-color 0.12s;position:relative;}
 .dec-card:hover{border-color:var(--border-bright);}
@@ -79,12 +84,39 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
 .dec-card .dec-size{font-size:9px;color:var(--gold-dim);}
 .dec-card .del-dec{position:absolute;top:2px;right:2px;width:14px;height:14px;border:none;background:rgba(200,60,60,0.6);color:#fff;border-radius:2px;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;opacity:0;}
 .dec-card:hover .del-dec{opacity:1;}
+/* Spawn tier groups */
+.tier-group{margin-bottom:8px;}
+.tier-header{font-family:'Cinzel',serif;font-size:10px;letter-spacing:0.08em;padding:3px 6px;margin-bottom:3px;border-radius:2px;}
+.tier-1 .tier-header{color:#88cc88;background:rgba(68,170,102,0.1);border-left:2px solid #44aa66;}
+.tier-2 .tier-header{color:#88aaff;background:rgba(68,136,204,0.1);border-left:2px solid #4488cc;}
+.tier-3 .tier-header{color:#cc99ff;background:rgba(136,85,204,0.1);border-left:2px solid #8855cc;}
+.tier-4 .tier-header{color:#ffaa44;background:rgba(204,136,68,0.1);border-left:2px solid #cc8844;}
+.tier-5 .tier-header{color:#ff6666;background:rgba(204,68,68,0.1);border-left:2px solid #cc4444;}
+.monster-opt{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--bg);margin-bottom:2px;transition:border-color 0.12s;}
+.monster-opt:hover{border-color:var(--border-bright);}
+.monster-opt.active{border-color:var(--gold);}
+.monster-opt.elite{border-color:rgba(255,136,68,0.4);}
+.monster-opt.elite.active{border-color:#ffaa44;}
+.monster-opt .m-icon{font-size:1rem;width:20px;text-align:center;}
+.monster-opt .m-name{flex:1;font-size:10px;color:var(--text);}
+.monster-opt .m-tier{font-size:9px;color:var(--text-dim);}
 /* Modal */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;padding:20px;overflow-y:auto;}
 .modal-inner{background:var(--bg2);border:1px solid var(--border-bright);border-radius:8px;max-width:820px;margin:0 auto;padding:20px;}
 .modal-inner h2{font-family:'Cinzel',serif;color:var(--gold);font-size:14px;margin-bottom:12px;}
 .modal-inner textarea{width:100%;height:380px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;padding:10px;resize:vertical;}
 .modal-actions{display:flex;gap:8px;margin-top:10px;}
+/* Supabase world picker modal */
+#sb-world-picker{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;align-items:center;justify-content:center;}
+#sb-world-picker.open{display:flex;}
+.sb-picker-inner{background:var(--bg2);border:1px solid #3ecf8e;border-radius:8px;width:420px;max-height:70vh;display:flex;flex-direction:column;overflow:hidden;}
+.sb-picker-header{padding:14px 16px;border-bottom:1px solid var(--border);font-family:'Cinzel',serif;color:#3ecf8e;font-size:13px;}
+.sb-picker-list{flex:1;overflow-y:auto;padding:8px;}
+.sb-world-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer;transition:all 0.12s;}
+.sb-world-row:hover{border-color:#3ecf8e;background:rgba(62,207,142,0.06);}
+.sb-world-row .sb-wid{font-family:'Cinzel',serif;font-size:11px;color:#3ecf8e;flex:1;}
+.sb-world-row .sb-wtype{font-size:10px;color:var(--text-dim);padding:1px 5px;border:1px solid var(--border);border-radius:2px;}
+.sb-picker-footer{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--border-bright);border-radius:3px;}
@@ -94,6 +126,8 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
 <div id="header">
   <h1>⚔ ROE World Editor</h1>
   <div class="hsep"></div>
+  <button class="hbtn supabase" id="btn-sb-load">⬇ Load from Supabase</button>
+  <button class="hbtn supabase" id="btn-sb-save">⬆ Save to Supabase</button>
   <button class="hbtn" id="btn-import">Import JSON</button>
   <button class="hbtn primary" id="btn-export">Export JSON</button>
   <button class="hbtn danger" id="btn-new">New Map</button>
@@ -110,8 +144,10 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
           <option value="town">Town</option><option value="dungeon">Dungeon</option><option value="overworld">Overworld</option>
         </select>
       </div>
-      <div class="setting-row"><label>W</label><input class="mini-inp" id="world-w" value="60" type="number" min="10" max="300" style="width:50px">
-        <label>H</label><input class="mini-inp" id="world-h" value="45" type="number" min="10" max="300" style="width:50px"></div>
+      <div class="setting-row">
+        <label>W</label><input class="mini-inp" id="world-w" value="60" type="number" min="10" max="300" style="width:50px">
+        <label>H</label><input class="mini-inp" id="world-h" value="45" type="number" min="10" max="300" style="width:50px">
+      </div>
       <button class="mini-btn" id="btn-resize" style="margin-top:4px">Apply Size</button>
     </div>
     <div class="panel-section">
@@ -132,9 +168,10 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
         <button class="tool-btn" data-tool="pick">💧 Pick</button>
         <button class="tool-btn" data-tool="exit">🚪 Exit</button>
         <button class="tool-btn" data-tool="npc">👤 NPC</button>
-        <button class="tool-btn" data-tool="decplace">🌿 Place Dec</button>
+        <button class="tool-btn" data-tool="decplace">🌿 Dec</button>
         <button class="tool-btn" data-tool="town">🏰 Town</button>
         <button class="tool-btn" data-tool="portal">🌀 Portal</button>
+        <button class="tool-btn spawn-tool" data-tool="spawn">🐉 Spawn</button>
       </div>
     </div>
     <div class="panel-section">
@@ -164,6 +201,7 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
       <div class="rtab" data-tab="npcs">NPCs</div>
       <div class="rtab" data-tab="decs">Decs</div>
       <div class="rtab" data-tab="ents">Ents</div>
+      <div class="rtab spawn-tab" data-tab="spawns">🐉</div>
     </div>
 
     <!-- Info tab -->
@@ -213,7 +251,6 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
     <div class="rtab-content" id="tab-decs">
       <div class="panel-title">Decoration Library</div>
       <div id="dec-library"></div>
-
       <div style="border-top:1px solid var(--border);padding-top:6px">
         <div class="panel-title">Add to Library</div>
         <input class="mini-inp" id="dec-src" placeholder="filename.png" style="width:100%;margin-bottom:3px">
@@ -235,18 +272,17 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
         </div>
         <button class="mini-btn" id="btn-add-dec">Add to Library</button>
       </div>
-
       <div style="border-top:1px solid var(--border);padding-top:6px">
         <div class="panel-title">Place Settings</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Select a card above, then use Place Dec tool on canvas.</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Select a card above, then use Dec tool on canvas.</div>
         <div id="dec-selected-info" style="font-size:11px;color:var(--gold-dim)">None selected</div>
       </div>
-
       <div style="border-top:1px solid var(--border);padding-top:6px">
         <div class="panel-title">Placed Decorations</div>
         <div id="placed-decs-list"></div>
       </div>
     </div>
+
     <!-- Entrances tab -->
     <div class="rtab-content" id="tab-ents">
       <div class="panel-title">Towns</div>
@@ -255,7 +291,6 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
       <input class="mini-inp" id="town-id" placeholder="Supabase world id" style="width:100%;margin-bottom:3px">
       <input class="mini-inp" id="town-name" placeholder="Display name" style="width:100%;margin-bottom:4px">
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Select Town tool, click overworld map to place. Right-click removes.</div>
-
       <div style="border-top:1px solid var(--border);padding-top:6px">
         <div class="panel-title">Dungeon Portals</div>
         <div id="portals-list" style="margin-bottom:8px"></div>
@@ -277,8 +312,48 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
         <div style="font-size:10px;color:var(--text-dim)">Select Portal tool, click map to place. Right-click removes.</div>
       </div>
     </div>
+
+    <!-- Spawns tab -->
+    <div class="rtab-content" id="tab-spawns">
+      <div class="panel-title" style="color:#ff8888">Monster Spawns</div>
+
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">
+        Select a monster below, then use the 🐉 Spawn tool to click the map. Right-click a spawn to remove it.
+      </div>
+
+      <!-- Roam radius -->
+      <div class="setting-row" style="margin-bottom:8px">
+        <label style="color:var(--text-dim);font-size:11px">Roam Radius</label>
+        <input class="mini-inp" id="spawn-roam" type="number" value="4" min="1" max="20" style="width:60px">
+      </div>
+
+      <!-- Selected monster display -->
+      <div id="spawn-selected" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid rgba(200,60,60,0.4);border-radius:4px;margin-bottom:8px;min-height:36px;">
+        <span style="font-size:1.2rem" id="spawn-sel-icon">—</span>
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--text)" id="spawn-sel-name">None selected</div>
+          <div style="font-size:10px;color:var(--text-dim)" id="spawn-sel-tier"></div>
+        </div>
+      </div>
+
+      <!-- Monster list loading state -->
+      <div id="spawn-loading" style="font-size:10px;color:var(--text-dim);text-align:center;padding:12px">
+        Loading monsters...
+      </div>
+
+      <!-- Monster list -->
+      <div id="spawn-monster-list"></div>
+
+      <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">
+        <div class="panel-title">Placed Spawns</div>
+        <div id="spawns-placed-list" style="font-size:10px"></div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px" id="spawns-count">0 spawns placed</div>
+      </div>
+    </div>
   </div>
 </div>
+
+<div id="statusbar">
   <span id="sb-world">60×45</span>
   <span id="sb-tool">Tool: paint</span>
   <span id="sb-msg" style="color:var(--gold)"></span>
@@ -310,7 +385,54 @@ canvas{display:block;cursor:crosshair;image-rendering:pixelated;}
   </div>
 </div>
 
+<!-- Supabase world picker -->
+<div id="sb-world-picker">
+  <div class="sb-picker-inner">
+    <div class="sb-picker-header">⬇ Load World from Supabase</div>
+    <div class="sb-picker-list" id="sb-picker-list">
+      <div style="color:var(--text-dim);font-size:11px;padding:12px;text-align:center">Loading worlds...</div>
+    </div>
+    <div class="sb-picker-footer">
+      <button class="hbtn danger" id="btn-sb-picker-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
+
+const SUPABASE_URL      = "https://xywtayrqgonlphrdkfdw.supabase.co";       
+const SUPABASE_ANON_KEY = "sb_publishable_rzDA6NFkloRbYo00hruUiA_qQOYFoLd";  
+
+async function sbFetch(table, params="") {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${params}`, {
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    }
+  });
+  if (!res.ok) throw new Error(`Supabase ${table}: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function sbUpsert(table, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "resolution=merge-duplicates",
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase upsert ${table}: ${res.status} — ${err}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
 // ── Tilesets ──────────────────────────────────────────────────────────────────
 const TILESETS = {
   town:[
@@ -345,62 +467,40 @@ const TILESETS = {
   ]
 };
 
+const OVERWORLD_W = 240;
+const OVERWORLD_H = 180;
+
+// Tier display config
+const TIER_META = {
+  1:{label:"Tier 1 — Common",   cls:"tier-1"},
+  2:{label:"Tier 2 — Dangerous",cls:"tier-2"},
+  3:{label:"Tier 3 — Specialist",cls:"tier-3"},
+  4:{label:"Tier 4 — Elite",    cls:"tier-4"},
+  5:{label:"Tier 5 — Boss",     cls:"tier-5"},
+};
+
 // ── Default decoration library ─────────────────────────────────────────────────
 const DEFAULT_DEC_LIBRARY = [
-  // Town / Capitol
-  {src:"fountain_capital.png",  w:3,h:3,scale:2.5,zOrder:"tall",  emoji:"⛲"},
-  {src:"bench_capital.png",     w:2,h:1,scale:1.0,zOrder:"ground",emoji:"🪑"},
-  {src:"lamp_post.png",         w:1,h:1,scale:1.5,zOrder:"tall",  emoji:"🕯"},
-  {src:"market_stall.png",      w:2,h:2,scale:1.2,zOrder:"tall",  emoji:"🏪"},
-  {src:"statue_hero.png",       w:2,h:3,scale:2.0,zOrder:"tall",  emoji:"🗿"},
-  {src:"well_stone.png",        w:1,h:1,scale:1.5,zOrder:"tall",  emoji:"🪣"},
-  {src:"banner_gold.png",       w:1,h:2,scale:1.5,zOrder:"tall",  emoji:"🚩"},
-  {src:"archway_capital.png",   w:3,h:2,scale:1.8,zOrder:"tall",  emoji:"🏛"},
-  // Overworld — nature
-  {src:"large_oak.png",         w:3,h:4,scale:2.0,zOrder:"tall",  emoji:"🌳"},
-  {src:"ancient_pine.png",      w:2,h:4,scale:2.2,zOrder:"tall",  emoji:"🌲"},
-  {src:"dead_tree.png",         w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"🪵"},
-  {src:"willow_tree.png",       w:3,h:4,scale:2.0,zOrder:"tall",  emoji:"🌿"},
-  {src:"mushroom_giant.png",    w:2,h:2,scale:1.8,zOrder:"tall",  emoji:"🍄"},
-  {src:"boulder_large.png",     w:2,h:2,scale:1.5,zOrder:"tall",  emoji:"🪨"},
-  {src:"boulder_cluster.png",   w:3,h:2,scale:1.4,zOrder:"tall",  emoji:"🪨"},
-  {src:"crystal_formation.png", w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"💎"},
-  {src:"waterfall.png",         w:2,h:4,scale:2.0,zOrder:"tall",  emoji:"💧"},
-  {src:"ancient_stones.png",    w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"🗿"},
-  // Overworld — ruins & structures
-  {src:"ruined_tower.png",      w:3,h:4,scale:2.5,zOrder:"tall",  emoji:"🏚"},
-  {src:"broken_wall.png",       w:4,h:2,scale:1.4,zOrder:"tall",  emoji:"🧱"},
-  {src:"old_fence.png",         w:3,h:1,scale:1.2,zOrder:"ground",emoji:"🪵"},
-  {src:"miner_camp.png",        w:4,h:3,scale:1.6,zOrder:"tall",  emoji:"⛏"},
-  {src:"abandoned_cart.png",    w:2,h:2,scale:1.4,zOrder:"tall",  emoji:"🛒"},
-  {src:"campfire_cold.png",     w:1,h:1,scale:1.4,zOrder:"ground",emoji:"🔥"},
-  {src:"campfire_active.png",   w:1,h:1,scale:1.4,zOrder:"ground",emoji:"🔥"},
-  {src:"graveyard_small.png",   w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"⚰"},
-  {src:"shrine_waypoint.png",   w:2,h:3,scale:1.8,zOrder:"tall",  emoji:"⛩"},
-  {src:"dungeon_entrance.png",  w:3,h:3,scale:2.0,zOrder:"tall",  emoji:"🕳"},
-  {src:"old_signpost.png",      w:1,h:2,scale:1.5,zOrder:"tall",  emoji:"📍"},
-  // Overworld — water
-  {src:"dock_wood.png",         w:3,h:2,scale:1.4,zOrder:"ground",emoji:"🚤"},
-  {src:"shipwreck.png",         w:4,h:3,scale:1.8,zOrder:"tall",  emoji:"⚓"},
-  {src:"fishing_hut.png",       w:3,h:3,scale:1.6,zOrder:"tall",  emoji:"🎣"},
-  // Overworld — settlements
-  {src:"farm_plot.png",         w:4,h:3,scale:1.2,zOrder:"ground",emoji:"🌾"},
-  {src:"windmill.png",          w:3,h:5,scale:2.2,zOrder:"tall",  emoji:"🏗"},
-  {src:"watchtower.png",        w:2,h:4,scale:2.4,zOrder:"tall",  emoji:"🗼"},
-  {src:"bridge_stone.png",      w:4,h:2,scale:1.3,zOrder:"ground",emoji:"🌉"},
+  
   {src:"lighthouse.png",        w:2,h:5,scale:2.5,zOrder:"tall",  emoji:"🔦"},
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let S = {
   W:60,H:45,worldId:"town_aurelion",worldName:"Aurelion",worldType:"town",
-  tilesetKey:"town",grid:null,exits:[],npcs:[],decorations:[],towns:[],portals:[],notes:""
+  tilesetKey:"town",grid:null,exits:[],npcs:[],decorations:[],towns:[],portals:[],
+  spawns:[],  // { monsterId, x, y, roamRadius }
+  notes:""
 };
 let UI = {
   tileSize:14,selTile:21,tool:"paint",painting:false,paintMode:1,
   rectStart:null,rectEnd:null,selExit:-1,selDec:null,
   decLibrary:[...DEFAULT_DEC_LIBRARY],
-  decPreviews:{} // src -> blob URL or null
+  decPreviews:{},
+  // Spawn state
+  selMonster:null,     // { id, name, icon, tier, isElite }
+  monsters:[],         // loaded from Supabase
+  monstersLoaded:false,
 };
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -436,7 +536,7 @@ function drawGrid(){
     for(let y=0;y<=S.H;y++){ctx.beginPath();ctx.moveTo(0,y*ts);ctx.lineTo(S.W*ts,y*ts);ctx.stroke();}
   }
   // Decorations
-  S.decorations.forEach((d,i)=>{
+  S.decorations.forEach((d)=>{
     const img=UI.decPreviews[d.src];
     const drawW=(d.w??1)*ts*(d.scale??1);
     const drawH=(d.h??1)*ts*(d.scale??1);
@@ -473,7 +573,8 @@ function drawGrid(){
     if(ts>=10){ctx.font=`${Math.max(8,ts*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🌀",p.x*ts+ts/2,p.y*ts+ts/2);}
     if(ts>=8){ctx.fillStyle="#cc99ff";ctx.font=`${Math.max(7,ts*0.45)}px monospace`;ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(p.name||p.id,p.x*ts+ts/2,p.y*ts-ts*0.5);}
   });
-    S.exits.forEach((exit,i)=>{
+  // Exits
+  S.exits.forEach((exit,i)=>{
     ctx.fillStyle=i===UI.selExit?"rgba(100,180,255,0.9)":"rgba(80,140,255,0.7)";
     ctx.fillRect(exit.x*ts+1,exit.y*ts+1,ts-2,ts-2);
     if(ts>=10){ctx.fillStyle="#fff";ctx.font=`${Math.max(7,ts*0.55)}px monospace`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("E",exit.x*ts+ts/2,exit.y*ts+ts/2);}
@@ -482,6 +583,23 @@ function drawGrid(){
   S.npcs.forEach(n=>{
     ctx.fillStyle="rgba(60,160,80,0.75)";ctx.fillRect(n.x*ts+1,n.y*ts+1,ts-2,ts-2);
     if(ts>=10){ctx.font=`${Math.max(8,ts*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(n.icon||"👤",n.x*ts+ts/2,n.y*ts+ts/2);}
+  });
+  // Spawns
+  S.spawns.forEach(sp=>{
+    const monster = UI.monsters.find(m=>m.id===sp.monsterId);
+    const icon = monster?.icon ?? "👾";
+    const isElite = monster?.is_elite ?? false;
+    // Red tinted bg, brighter for elites
+    ctx.fillStyle = isElite ? "rgba(180,60,20,0.75)" : "rgba(140,30,30,0.6)";
+    ctx.fillRect(sp.x*ts+1,sp.y*ts+1,ts-2,ts-2);
+    ctx.strokeStyle = isElite ? "#ffaa44" : "#cc4444";
+    ctx.lineWidth=1;
+    ctx.strokeRect(sp.x*ts+1,sp.y*ts+1,ts-2,ts-2);
+    if(ts>=10){
+      ctx.font=`${Math.max(8,ts*0.55)}px serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(icon,sp.x*ts+ts/2,sp.y*ts+ts/2);
+    }
   });
   // Rect preview
   if(UI.tool==="rect"&&UI.rectStart&&UI.rectEnd){
@@ -601,12 +719,27 @@ function handleClick(x,y,e){
     }
     renderPortals();drawGrid();
   }
+  else if(t==="spawn"){
+    if(e.button===2){
+      S.spawns=S.spawns.filter(sp=>!(sp.x===x&&sp.y===y));
+      renderSpawnsList();drawGrid();
+    } else {
+      if(!UI.selMonster){setMsg("Select a monster from the Spawns tab first");switchTab("spawns");return;}
+      const roamRadius=parseInt(document.getElementById("spawn-roam").value)||4;
+      // Allow stacking (multiple spawns per tile is valid)
+      S.spawns.push({monsterId:UI.selMonster.id,x,y,roamRadius});
+      renderSpawnsList();drawGrid();
+    }
+    return;
+  }
+  else if(t==="decplace"){
     if(e.button===2){S.decorations=S.decorations.filter(d=>!(d.x===x&&d.y===y));renderPlacedDecs();drawGrid();}
     else if(UI.selDec){
       S.decorations.push({...UI.selDec,x,y});
       renderPlacedDecs();drawGrid();
     }
   }
+}
 
 function handlePaint(x,y){
   if(!inB(x,y))return;
@@ -639,7 +772,8 @@ document.querySelectorAll(".tool-btn").forEach(btn=>{
     btn.classList.add("active");
     document.getElementById("sb-tool").textContent="Tool: "+UI.tool;
     UI.rectStart=null;
-    if(UI.tool==="decplace"){ switchTab("decs"); }
+    if(UI.tool==="decplace") switchTab("decs");
+    if(UI.tool==="spawn")    switchTab("spawns");
   };
 });
 
@@ -658,14 +792,43 @@ document.getElementById("zoom-out").onclick=()=>{UI.tileSize=Math.max(4,UI.tileS
 
 // ── Tileset ───────────────────────────────────────────────────────────────────
 document.getElementById("tileset-select").onchange=e=>{S.tilesetKey=e.target.value;buildPalette();};
-document.getElementById("world-type").onchange=e=>{S.worldType=e.target.value;};
+document.getElementById("world-type").onchange=e=>{
+  S.worldType=e.target.value;
+  enforceOverworldSize();
+};
 ["world-id","world-name"].forEach(id=>document.getElementById(id).oninput=e=>{
   if(id==="world-id")S.worldId=e.target.value;
   else S.worldName=e.target.value;
 });
 
+// ── Overworld size lock ───────────────────────────────────────────────────────
+function enforceOverworldSize(){
+  const wInp=document.getElementById("world-w");
+  const hInp=document.getElementById("world-h");
+  const resBtn=document.getElementById("btn-resize");
+  if(S.worldType==="overworld"){
+    wInp.value=OVERWORLD_W;hInp.value=OVERWORLD_H;
+    wInp.disabled=true;hInp.disabled=true;
+    resBtn.title="Overworlds are always 240×180";
+    if(S.W!==OVERWORLD_W||S.H!==OVERWORLD_H){
+      // Auto-resize if needed
+      const og=S.grid,ow=S.W,oh=S.H;
+      S.W=OVERWORLD_W;S.H=OVERWORLD_H;
+      initGrid(0);
+      for(let y=0;y<Math.min(OVERWORLD_H,oh);y++)
+        for(let x=0;x<Math.min(OVERWORLD_W,ow);x++)
+          S.grid[y*OVERWORLD_W+x]=og[y*ow+x];
+      resizeCanvas();drawGrid();
+    }
+  } else {
+    wInp.disabled=false;hInp.disabled=false;
+    resBtn.title="";
+  }
+}
+
 // ── Resize ────────────────────────────────────────────────────────────────────
 document.getElementById("btn-resize").onclick=()=>{
+  if(S.worldType==="overworld"){setMsg("Overworlds are always 240×180");return;}
   const nw=parseInt(document.getElementById("world-w").value)||60;
   const nh=parseInt(document.getElementById("world-h").value)||45;
   if(nw===S.W&&nh===S.H)return;
@@ -730,6 +893,103 @@ function renderPortals(){
 window.rmTown=i=>{S.towns.splice(i,1);renderTowns();drawGrid();};
 window.rmPortal=i=>{S.portals.splice(i,1);renderPortals();drawGrid();};
 
+// ── Spawns ────────────────────────────────────────────────────────────────────
+async function loadMonsters(){
+  if(UI.monstersLoaded) return;
+  const loadEl=document.getElementById("spawn-loading");
+  const listEl=document.getElementById("spawn-monster-list");
+  try {
+    if(SUPABASE_URL==="YOUR_SUPABASE_URL"){
+      loadEl.textContent="⚠ Set SUPABASE_URL and SUPABASE_ANON_KEY in the editor script to load monsters.";
+      return;
+    }
+    loadEl.textContent="Loading from Supabase...";
+    const rows = await sbFetch("monsters","?select=id,data&order=data->>'tier'");
+    UI.monsters = rows.map(r=>({
+      id:        r.id,
+      name:      r.data.name,
+      icon:      r.data.icon,
+      tier:      Number(r.data.tier),
+      is_elite:  r.data.is_elite ?? false,
+      is_boss:   r.data.is_boss  ?? false,
+    }));
+    UI.monstersLoaded = true;
+    loadEl.style.display = "none";
+    buildMonsterList();
+  } catch(e) {
+    loadEl.textContent = "⚠ Failed to load monsters: "+e.message;
+  }
+}
+
+function buildMonsterList(){
+  const el=document.getElementById("spawn-monster-list");
+  el.innerHTML="";
+  // Group by tier
+  const tiers=[1,2,3,4,5];
+  tiers.forEach(tier=>{
+    const inTier=UI.monsters.filter(m=>m.tier===tier);
+    if(!inTier.length) return;
+    const meta=TIER_META[tier]||{label:"Tier "+tier,cls:"tier-1"};
+    const group=document.createElement("div");
+    group.className="tier-group "+meta.cls;
+    const header=document.createElement("div");
+    header.className="tier-header";
+    header.textContent=meta.label;
+    group.appendChild(header);
+    inTier.forEach(m=>{
+      const opt=document.createElement("div");
+      opt.className="monster-opt"+(m.is_elite||m.is_boss?" elite":"")+(UI.selMonster?.id===m.id?" active":"");
+      opt.innerHTML=`<span class="m-icon">${m.icon}</span><span class="m-name">${m.name}${m.is_boss?" ★":m.is_elite?" ◆":""}</span>`;
+      opt.onclick=()=>selectMonster(m);
+      group.appendChild(opt);
+    });
+    el.appendChild(group);
+  });
+}
+
+function selectMonster(m){
+  UI.selMonster=m;
+  document.getElementById("spawn-sel-icon").textContent=m.icon;
+  document.getElementById("spawn-sel-name").textContent=m.name+(m.is_boss?" (Boss)":m.is_elite?" (Elite)":"");
+  document.getElementById("spawn-sel-tier").textContent="Tier "+m.tier;
+  buildMonsterList(); // re-render to update active state
+  // Switch to spawn tool
+  UI.tool="spawn";
+  document.querySelectorAll(".tool-btn").forEach(b=>b.classList.toggle("active",b.dataset.tool==="spawn"));
+  document.getElementById("sb-tool").textContent="Tool: spawn";
+}
+
+function renderSpawnsList(){
+  const el=document.getElementById("spawns-placed-list");
+  el.innerHTML="";
+  // Group by monster
+  const grouped={};
+  S.spawns.forEach((sp,i)=>{
+    if(!grouped[sp.monsterId]) grouped[sp.monsterId]=[];
+    grouped[sp.monsterId].push({...sp,_i:i});
+  });
+  Object.entries(grouped).forEach(([mid,list])=>{
+    const m=UI.monsters.find(m=>m.id===mid);
+    const icon=m?.icon??"👾";
+    const name=m?.name??mid;
+    const row=document.createElement("div");
+    row.className="list-item";
+    row.innerHTML=`<span>${icon} ${name} ×${list.length}</span>
+      <button onclick="rmAllSpawns('${mid}')">×all</button>`;
+    el.appendChild(row);
+  });
+  if(!S.spawns.length) el.innerHTML='<span style="color:var(--text-dim)">None placed</span>';
+  document.getElementById("spawns-count").textContent=`${S.spawns.length} spawn${S.spawns.length!==1?"s":""} placed`;
+}
+window.rmAllSpawns=mid=>{S.spawns=S.spawns.filter(sp=>sp.monsterId!==mid);renderSpawnsList();drawGrid();};
+
+// Load monsters when spawns tab is opened
+document.querySelectorAll(".rtab").forEach(tab=>{
+  tab.addEventListener("click",()=>{
+    if(tab.dataset.tab==="spawns") loadMonsters();
+  });
+});
+
 // ── Decoration Library ────────────────────────────────────────────────────────
 function loadDecPreview(src,url){
   if(url){UI.decPreviews[src]=url;drawGrid();return;}
@@ -785,7 +1045,6 @@ function loadLibrary(){
     const s=localStorage.getItem("roe_dec_library");
     if(s){
       const parsed=JSON.parse(s);
-      // Merge with defaults — keep user additions, update defaults
       const userSrcs=new Set(parsed.map(d=>d.src));
       const newDefaults=DEFAULT_DEC_LIBRARY.filter(d=>!userSrcs.has(d.src));
       UI.decLibrary=[...parsed,...newDefaults];
@@ -793,7 +1052,6 @@ function loadLibrary(){
   }catch(e){}
 }
 
-// File input for preview
 document.getElementById("dec-file-input").onchange=e=>{
   const file=e.target.files[0];if(!file)return;
   document.getElementById("dec-file-name").textContent=file.name;
@@ -826,17 +1084,51 @@ function renderPlacedDecs(){
 }
 window.rmDec=i=>{S.decorations.splice(i,1);renderPlacedDecs();drawGrid();};
 
-// ── Save/Load — FILE BASED (works across all origins/hosts) ──────────────────
-// Primary save = .roe file downloaded to disk. localStorage = recent list only.
-
-function getRecent(){try{return JSON.parse(localStorage.getItem("roe_recent")||"[]");}catch(e){return[];}}
-function addRecent(name){
-  let r=getRecent().filter(n=>n!==name);
-  r.unshift(name);r=r.slice(0,8);
-  localStorage.setItem("roe_recent",JSON.stringify(r));
+// ── Serialize ─────────────────────────────────────────────────────────────────
+function serState(){
+  return{W:S.W,H:S.H,worldId:S.worldId,worldName:S.worldName,worldType:S.worldType,
+    tilesetKey:S.tilesetKey,grid:Array.from(S.grid),exits:S.exits,npcs:S.npcs,
+    decorations:S.decorations,towns:S.towns,portals:S.portals,spawns:S.spawns,
+    notes:S.notes,_rawJson:S._rawJson||null};
+}
+function deserState(s){
+  S.W=s.W||60;S.H=s.H||45;S.worldId=s.worldId||"world";S.worldName=s.worldName||"World";
+  S.worldType=s.worldType||"town";S.tilesetKey=s.tilesetKey||"town";
+  S.grid=new Uint16Array(s.grid||[]);S.exits=s.exits||[];S.npcs=s.npcs||[];
+  S.decorations=s.decorations||[];S.towns=s.towns||[];S.portals=s.portals||[];
+  S.spawns=s.spawns||[];
+  S.notes=s.notes||"";S._rawJson=s._rawJson||null;
+  document.getElementById("world-id").value=S.worldId;
+  document.getElementById("world-name").value=S.worldName;
+  document.getElementById("world-type").value=S.worldType;
+  document.getElementById("world-w").value=S.W;
+  document.getElementById("world-h").value=S.H;
+  document.getElementById("tileset-select").value=S.tilesetKey;
+  document.getElementById("notes").value=S.notes;
+  buildPalette();resizeCanvas();enforceOverworldSize();drawGrid();
+  renderExits();renderNpcs();renderPlacedDecs();renderTowns();renderPortals();renderSpawnsList();
+  S.decorations.forEach(d=>loadDecPreview(d.src));
 }
 
-// ── Save — download .roe file ─────────────────────────────────────────────────
+function buildExportWorld(){
+  const base = S._rawJson ? JSON.parse(JSON.stringify(S._rawJson)) : {};
+  base.id       = S.worldId;
+  base.name     = S.worldName;
+  base.type     = S.worldType;
+  base.width    = S.W;
+  base.height   = S.H;
+  base.exits    = S.exits;
+  base.npcs     = S.npcs;
+  base.towns    = S.towns;
+  base.portals  = S.portals;
+  base.spawns   = S.spawns;
+  base.tiles    = Array.from(S.grid);
+  if(S.decorations.length) base.decorations = S.decorations;
+  if(document.getElementById("notes").value) base._notes = document.getElementById("notes").value;
+  return base;
+}
+
+// ── Save/Load — FILE BASED ────────────────────────────────────────────────────
 document.getElementById("btn-save").onclick=()=>{
   const blob=new Blob([JSON.stringify(serState(),null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
@@ -844,7 +1136,6 @@ document.getElementById("btn-save").onclick=()=>{
   setMsg("Saved "+(S.worldId||"map")+".roe");
 };
 
-// ── Load — open .roe or world JSON file ──────────────────────────────────────
 const _fileInput=document.createElement("input");
 _fileInput.type="file";_fileInput.accept=".roe,.json";_fileInput.style.display="none";
 document.body.appendChild(_fileInput);
@@ -856,16 +1147,15 @@ _fileInput.onchange=e=>{
     try{
       const parsed=JSON.parse(ev.target.result);
       if(parsed.grid!==undefined){
-        // Editor .roe state file
         deserState(parsed);setMsg("Loaded: "+file.name);
       } else {
-        // Raw world JSON — treat as import
         deserState({W:parsed.width||60,H:parsed.height||45,
           worldId:parsed.id||"world",worldName:parsed.name||"World",
           worldType:parsed.type||"town",
           tilesetKey:parsed.type==="dungeon"?"dungeon":parsed.type==="overworld"?"overworld":"town",
           grid:parsed.tiles||[],exits:parsed.exits||[],npcs:parsed.npcs||[],
           decorations:parsed.decorations||[],towns:parsed.towns||[],portals:parsed.portals||[],
+          spawns:parsed.spawns||[],
           notes:parsed._notes||"",_rawJson:parsed});
         setMsg("Imported: "+file.name);
       }
@@ -877,65 +1167,91 @@ _fileInput.onchange=e=>{
 
 function renderSaveSlots(){
   const el=document.getElementById("save-slots");
-  el.innerHTML='<span style="color:var(--text-dim);font-size:10px;line-height:1.6">Save .roe files to disk.<br>Load .roe to restore.<br>Use Import JSON for<br>existing world JSON.</span>';
+  el.innerHTML='<span style="color:var(--text-dim);font-size:10px;line-height:1.6">Save .roe files to disk.<br>Use Load from Supabase<br>to pull existing worlds.</span>';
 }
 
-// ── Serialize ─────────────────────────────────────────────────────────────────
-function serState(){
-  return{W:S.W,H:S.H,worldId:S.worldId,worldName:S.worldName,worldType:S.worldType,
-    tilesetKey:S.tilesetKey,grid:Array.from(S.grid),exits:S.exits,npcs:S.npcs,
-    decorations:S.decorations,towns:S.towns,portals:S.portals,notes:S.notes,
-    _rawJson:S._rawJson||null};
-}
-function deserState(s){
-  S.W=s.W||60;S.H=s.H||45;S.worldId=s.worldId||"world";S.worldName=s.worldName||"World";
-  S.worldType=s.worldType||"town";S.tilesetKey=s.tilesetKey||"town";
-  S.grid=new Uint16Array(s.grid||[]);S.exits=s.exits||[];S.npcs=s.npcs||[];
-  S.decorations=s.decorations||[];S.towns=s.towns||[];S.portals=s.portals||[];
-  S.notes=s.notes||"";S._rawJson=s._rawJson||null;
-  document.getElementById("world-id").value=S.worldId;
-  document.getElementById("world-name").value=S.worldName;
-  document.getElementById("world-type").value=S.worldType;
-  document.getElementById("world-w").value=S.W;
-  document.getElementById("world-h").value=S.H;
-  document.getElementById("tileset-select").value=S.tilesetKey;
-  document.getElementById("notes").value=S.notes;
-  buildPalette();resizeCanvas();drawGrid();renderExits();renderNpcs();renderPlacedDecs();renderTowns();renderPortals();
-  S.decorations.forEach(d=>loadDecPreview(d.src));
-}
+// ── Supabase Load ─────────────────────────────────────────────────────────────
+document.getElementById("btn-sb-load").onclick=async()=>{
+  if(SUPABASE_URL==="YOUR_SUPABASE_URL"){
+    alert("Set SUPABASE_URL and SUPABASE_ANON_KEY in the editor script first.");
+    return;
+  }
+  const picker=document.getElementById("sb-world-picker");
+  const list=document.getElementById("sb-picker-list");
+  picker.classList.add("open");
+  list.innerHTML='<div style="color:var(--text-dim);font-size:11px;padding:12px;text-align:center">Loading...</div>';
+  try {
+    const worlds=await sbFetch("worlds","?select=id,json->name,json->type&order=id");
+    list.innerHTML="";
+    if(!worlds.length){
+      list.innerHTML='<div style="color:var(--text-dim);padding:12px;font-size:11px">No worlds found.</div>';
+      return;
+    }
+    worlds.forEach(w=>{
+      const row=document.createElement("div");
+      row.className="sb-world-row";
+      const wtype=w.type||"town";
+      row.innerHTML=`<span class="sb-wid">${w.id}</span><span style="color:var(--text-dim);font-size:11px">${w.name||""}</span><span class="sb-wtype">${wtype}</span>`;
+      row.onclick=async()=>{
+        picker.classList.remove("open");
+        setMsg("Loading "+w.id+"...");
+        try {
+          const full=await sbFetch("worlds",`?id=eq.${encodeURIComponent(w.id)}&select=id,json&limit=1`);
+          if(!full.length) throw new Error("Not found");
+          const j=full[0].json;
+          deserState({
+            W:j.width||60,H:j.height||45,
+            worldId:full[0].id,worldName:j.name||full[0].id,
+            worldType:j.type||"town",
+            tilesetKey:j.type==="dungeon"?"dungeon":j.type==="overworld"?"overworld":"town",
+            grid:j.tiles||[],exits:j.exits||[],npcs:j.npcs||[],
+            decorations:j.decorations||[],towns:j.towns||[],portals:j.portals||[],
+            spawns:j.spawns||[],
+            notes:j._notes||"",_rawJson:j
+          });
+          setMsg("Loaded from Supabase: "+full[0].id);
+        } catch(e){ setMsg("⚠ Load failed: "+e.message); }
+      };
+      list.appendChild(row);
+    });
+  } catch(e){
+    list.innerHTML=`<div style="color:#cc8888;padding:12px;font-size:11px">⚠ ${e.message}</div>`;
+  }
+};
+document.getElementById("btn-sb-picker-cancel").onclick=()=>{
+  document.getElementById("sb-world-picker").classList.remove("open");
+};
 
-function buildExportWorld(){
-  // Start with preserved raw JSON so unknown fields survive round-trips
-  const base = S._rawJson ? JSON.parse(JSON.stringify(S._rawJson)) : {};
-  // Overwrite with editor-managed fields
-  base.id       = S.worldId;
-  base.name     = S.worldName;
-  base.type     = S.worldType;
-  base.width    = S.W;
-  base.height   = S.H;
-  base.exits    = S.exits;
-  base.npcs     = S.npcs;
-  base.towns    = S.towns;
-  base.portals  = S.portals;
-  base.tiles    = Array.from(S.grid);
-  if(S.decorations.length) base.decorations = S.decorations;
-  if(document.getElementById("notes").value) base._notes = document.getElementById("notes").value;
-  return base;
-}
+// ── Supabase Save ─────────────────────────────────────────────────────────────
+document.getElementById("btn-sb-save").onclick=async()=>{
+  if(SUPABASE_URL==="YOUR_SUPABASE_URL"){
+    alert("Set SUPABASE_URL and SUPABASE_ANON_KEY in the editor script first.");
+    return;
+  }
+  if(!S.worldId){setMsg("⚠ Set a World ID before saving");return;}
+  if(!confirm(`Save world "${S.worldId}" to Supabase?\n\nThis will overwrite the existing world JSON.`)) return;
+  setMsg("Saving to Supabase...");
+  try {
+    const world=buildExportWorld();
+    await sbUpsert("worlds",{id:S.worldId,json:world});
+    setMsg("✓ Saved to Supabase: "+S.worldId);
+  } catch(e){
+    setMsg("⚠ Save failed: "+e.message);
+    console.error(e);
+  }
+};
 
 // ── Export ────────────────────────────────────────────────────────────────────
 document.getElementById("btn-export").onclick=()=>{
   const world = buildExportWorld();
   const json  = JSON.stringify(world, null, 2);
-  // Escape single quotes for safe SQL embedding
   const safeJson = JSON.stringify(world).replace(/'/g, "''");
   const sql = `-- Safe Supabase merge — preserves fields not managed by editor\nUPDATE worlds\nSET json = json || '${safeJson}'::jsonb\nWHERE id = '${S.worldId.replace(/'/g,"''")}';` +
-    `\n\n-- Verify:\nSELECT jsonb_array_length(json->'tiles'), jsonb_array_length(json->'towns'), jsonb_array_length(json->'portals') FROM worlds WHERE id = '${S.worldId.replace(/'/g,"''")}';`;
+    `\n\n-- Verify:\nSELECT jsonb_array_length(json->'tiles'), jsonb_array_length(json->'spawns') FROM worlds WHERE id = '${S.worldId.replace(/'/g,"''")}';`;
   document.getElementById("export-text").value = json + "\n\n/* ── SUPABASE SQL (safer for partial updates) ──\n" + sql + "\n*/";
   document.getElementById("export-out").style.display="block";
 };
 document.getElementById("btn-copy-export").onclick=()=>{
-  // Copy only the JSON part, not the SQL comment
   const full = document.getElementById("export-text").value;
   const jsonOnly = full.split("\n\n/*")[0];
   navigator.clipboard.writeText(jsonOnly)
@@ -967,6 +1283,7 @@ document.getElementById("btn-do-import").onclick=()=>{
       worldType:j.type||"town",tilesetKey:j.type==="dungeon"?"dungeon":j.type==="overworld"?"overworld":"town",
       grid:j.tiles||[],exits:j.exits||[],npcs:j.npcs||[],
       decorations:j.decorations||[],towns:j.towns||[],portals:j.portals||[],
+      spawns:j.spawns||[],
       notes:j._notes||"",_rawJson:j});
     document.getElementById("import-out").style.display="none";
     setMsg("Imported: "+j.name);
@@ -976,17 +1293,22 @@ document.getElementById("btn-do-import").onclick=()=>{
 // ── New map ───────────────────────────────────────────────────────────────────
 document.getElementById("btn-new").onclick=()=>{
   if(!confirm("Clear current map?"))return;
-  S.exits=[];S.npcs=[];S.decorations=[];S.towns=[];S.portals=[];
+  S.exits=[];S.npcs=[];S.decorations=[];S.towns=[];S.portals=[];S.spawns=[];
   const t=document.getElementById("world-type").value;
-  if(t==="dungeon")defaultDungeon();else if(t==="overworld")defaultOverworld();else defaultTown();
-  resizeCanvas();drawGrid();renderExits();renderNpcs();renderPlacedDecs();setMsg("New "+t+" map");
+  S.worldType=t;
+  if(t==="overworld"){S.W=OVERWORLD_W;S.H=OVERWORLD_H;defaultOverworld();}
+  else if(t==="dungeon")defaultDungeon();
+  else defaultTown();
+  enforceOverworldSize();
+  resizeCanvas();drawGrid();renderExits();renderNpcs();renderPlacedDecs();renderSpawnsList();
+  setMsg("New "+t+" map");
 };
 
 document.getElementById("notes").oninput=e=>S.notes=e.target.value;
 
 // ── Status ────────────────────────────────────────────────────────────────────
 let msgT;
-function setMsg(m){const el=document.getElementById("sb-msg");el.textContent=m;clearTimeout(msgT);msgT=setTimeout(()=>el.textContent="",2800);}
+function setMsg(m){const el=document.getElementById("sb-msg");el.textContent=m;clearTimeout(msgT);msgT=setTimeout(()=>el.textContent="",3500);}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadLibrary();
@@ -998,7 +1320,10 @@ drawGrid();
 renderExits();
 renderNpcs();
 renderPlacedDecs();
+renderSpawnsList();
 renderSaveSlots();
+renderTowns();
+renderPortals();
 </script>
 </body>
 </html>
