@@ -113,30 +113,109 @@ function drawRanger(ctx, sx, sy, s, c) {
 }
 
 function drawPaladin(ctx, sx, sy, s, c) {
-  legs(ctx, sx, sy, s, "#5d6d7e", "#4a5568");
-  body(ctx, sx, sy, s, "#7f8c8d");
-  ctx.fillStyle = c.body;
-  ctx.fillRect(sx+12*s, sy+13*s, 8*s,  10*s);
+  // Greaves — full plate, polished steel
+  ctx.fillStyle = "#8fa8c0";
+  ctx.fillRect(sx+10*s, sy+23*s, 5*s, 7*s);
+  ctx.fillRect(sx+17*s, sy+23*s, 5*s, 7*s);
+  // Knee guards — gold trim
   ctx.fillStyle = c.trim;
-  ctx.fillRect(sx+14*s, sy+15*s, 4*s,  6*s);
-  ctx.fillRect(sx+12*s, sy+17*s, 8*s,  2*s);
-  arms(ctx, sx, sy, s, "#7f8c8d");
-  head(ctx, sx, sy, s, c.skin);
-  ctx.fillStyle = "#95a5a6";
-  ctx.fillRect(sx+10*s, sy+2*s,  12*s, 11*s);
-  ctx.fillStyle = "#2c3e50";
-  ctx.fillRect(sx+12*s, sy+6*s,  8*s,  3*s);
-  ctx.fillStyle = c.body;
-  ctx.fillRect(sx+1*s,  sy+12*s, 8*s,  11*s);
+  ctx.fillRect(sx+10*s, sy+23*s, 5*s, 2*s);
+  ctx.fillRect(sx+17*s, sy+23*s, 5*s, 2*s);
+  // Sabatons (feet) — gold
   ctx.fillStyle = c.trim;
-  ctx.fillRect(sx+3*s,  sy+14*s, 4*s,  7*s);
-  ctx.fillRect(sx+1*s,  sy+17*s, 8*s,  2*s);
-  ctx.fillStyle = "#bdc3c7";
-  ctx.fillRect(sx+27*s, sy+9*s,  2*s,  14*s);
-  ctx.fillStyle = c.trim;
-  ctx.fillRect(sx+25*s, sy+13*s, 6*s,  2*s);
-}
+  ctx.fillRect(sx+9*s,  sy+28*s, 6*s, 2*s);
+  ctx.fillRect(sx+16*s, sy+28*s, 6*s, 2*s);
 
+  // Breastplate — solid steel
+  ctx.fillStyle = "#aec6d8";
+  ctx.fillRect(sx+10*s, sy+13*s, 12*s, 10*s);
+  // Breastplate highlight (left bevel)
+  ctx.fillStyle = "#c8dde8";
+  ctx.fillRect(sx+10*s, sy+13*s, 2*s, 10*s);
+  // Gold border top and bottom
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+10*s, sy+13*s, 12*s, 1*s);
+  ctx.fillRect(sx+10*s, sy+22*s, 12*s, 1*s);
+  // Golden cross on breastplate
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+15*s, sy+14*s, 2*s, 8*s);  // vertical
+  ctx.fillRect(sx+12*s, sy+16*s, 8*s, 2*s);  // horizontal
+
+  // Pauldrons (shoulder plates) — gold
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+7*s,  sy+12*s, 5*s, 4*s);
+  ctx.fillRect(sx+20*s, sy+12*s, 5*s, 4*s);
+
+  // Arms — plate, steel
+  ctx.fillStyle = "#8fa8c0";
+  ctx.fillRect(sx+5*s,  sy+13*s, 5*s, 8*s);
+  ctx.fillRect(sx+22*s, sy+13*s, 5*s, 8*s);
+  // Gauntlet gold band
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+5*s,  sy+18*s, 5*s, 1*s);
+  ctx.fillRect(sx+22*s, sy+18*s, 5*s, 1*s);
+
+  // Head — great helm (full visor)
+  ctx.fillStyle = "#8fa8c0";
+  ctx.fillRect(sx+10*s, sy+2*s,  12*s, 11*s);
+  // Helm highlight (left bevel)
+  ctx.fillStyle = "#c8dde8";
+  ctx.fillRect(sx+10*s, sy+2*s,  2*s, 11*s);
+  // Visor slit — dark with holy glow
+  ctx.fillStyle = "#1a2a3a";
+  ctx.fillRect(sx+11*s, sy+6*s,  10*s, 3*s);
+  ctx.fillStyle = "rgba(255,220,100,0.55)";
+  ctx.fillRect(sx+11*s, sy+6*s,  10*s, 3*s);
+  // Gold helm trim
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+10*s, sy+2*s,  12*s, 1*s);
+  ctx.fillRect(sx+10*s, sy+13*s, 12*s, 1*s);
+  // White plume crest
+  ctx.fillStyle = "#ecf0f1";
+  ctx.fillRect(sx+14*s, sy+0*s,  4*s, 3*s);
+  ctx.fillRect(sx+15*s, sy-1*s,  2*s, 2*s);
+
+  // Tower shield (left side)
+  ctx.fillStyle = c.body;
+  ctx.fillRect(sx+0*s, sy+10*s, 7*s, 14*s);
+  // Shield rim — gold
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+0*s, sy+10*s, 7*s, 1*s);   // top
+  ctx.fillRect(sx+0*s, sy+23*s, 7*s, 1*s);   // bottom
+  ctx.fillRect(sx+0*s, sy+10*s, 1*s, 14*s);  // left
+  ctx.fillRect(sx+6*s, sy+10*s, 1*s, 14*s);  // right
+  // Shield cross
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+3*s, sy+11*s, 1*s, 12*s);
+  ctx.fillRect(sx+1*s, sy+16*s, 5*s, 1*s);
+  // Shield boss (centre rivet)
+  ctx.fillStyle = "#f5d76e";
+  ctx.fillRect(sx+2*s, sy+15*s, 3*s, 3*s);
+
+  // Holy mace (right hand)
+  // Shaft
+  ctx.fillStyle = "#8b6914";
+  ctx.fillRect(sx+27*s, sy+13*s, 2*s, 14*s);
+  // Gold grip wrap
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+27*s, sy+15*s, 2*s, 1*s);
+  ctx.fillRect(sx+27*s, sy+19*s, 2*s, 1*s);
+  ctx.fillRect(sx+27*s, sy+23*s, 2*s, 1*s);
+  // Mace head — flanged, gold
+  ctx.fillStyle = c.trim;
+  ctx.fillRect(sx+25*s, sy+9*s,  6*s, 5*s);
+  ctx.fillRect(sx+24*s, sy+10*s, 2*s, 3*s);  // left flange
+  ctx.fillRect(sx+30*s, sy+10*s, 2*s, 3*s);  // right flange
+  ctx.fillRect(sx+25*s, sy+8*s,  6*s, 2*s);  // top cap
+  // Mace head highlight
+  ctx.fillStyle = "#f5d76e";
+  ctx.fillRect(sx+25*s, sy+9*s,  2*s, 2*s);
+  // Holy glow on mace head
+  ctx.fillStyle = "rgba(255,220,80,0.35)";
+  ctx.beginPath();
+  ctx.arc(sx+28*s, sy+11.5*s, 6*s, 0, Math.PI*2);
+  ctx.fill();
+}
 function drawWizard(ctx, sx, sy, s, c) {
   legs(ctx, sx, sy, s, c.body, c.body);
   ctx.fillStyle = c.body;
