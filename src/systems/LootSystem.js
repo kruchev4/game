@@ -52,7 +52,7 @@ export class LootSystem {
     let gold, items;
     if (serverLoot) {
       gold  = serverLoot.gold  ?? 0;
-      items = serverLoot.itemId ? [serverLoot.itemId] : [];
+      items = serverLoot.items ?? [];
     } else {
       const table = this.lootTables[npc.classId] ?? this.lootTables["default"] ?? {};
       gold  = this._rollGold(table);

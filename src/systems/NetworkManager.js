@@ -159,8 +159,9 @@ export class NetworkManager {
         const npcLabel  = npc ? (npc.name ?? engine.gameEventHandler._npcLabel(npc)) : npcId.replace(/_/g, " ");
         const goldStr   = loot?.gold > 0 ? ` +${loot.gold}g` : "";
         const xpStr     = xpShare > 0 ? ` +${xpShare} XP` : "";
-        const itemDef   = loot?.itemId ? engine._itemDefs?.[loot.itemId] : null;
-        const itemStr   = itemDef ? ` [${itemDef.name}]` : "";
+        const itemStr = (loot?.items?.length > 0)
+        ? loot.items.map(it => ` [${it.name ?? it.itemId}]`).join("")
+        : "";
 
         engine.combatLog?.push({
           text: isKiller ? `You killed ${npcLabel}!${xpStr}${goldStr}${itemStr}` : `${killerName} killed ${npcLabel}!${xpStr}${goldStr} (shared)`,
