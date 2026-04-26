@@ -91,8 +91,9 @@ async function loadLootTables() {
         if (!lootByMonster.has(row.monster_id)) lootByMonster.set(row.monster_id, []);
         lootByMonster.get(row.monster_id).push(row);
       } else {
-        if (!lootByTier.has(row.tier)) lootByTier.set(row.tier, []);
-        lootByTier.get(row.tier).push(row);
+        const tier = Number(row.tier);
+        if (!lootByTier.has(tier)) lootByTier.set(tier, []);
+        lootByTier.get(tier).push(row);
       }
     }
     console.log(`[Server] Loaded loot for ${lootByMonster.size} monsters, ${lootByTier.size} tiers`);
@@ -1054,7 +1055,7 @@ class WorldInstance {
         : 3  + Math.floor(Math.random() * 10);
 
     const monsterId = npc.monsterId ?? npc.id.split('_')[0];
-    const tier      = npc.tier ?? 1;
+    const tier = Number(npc.tier ?? 1);
     console.log(`[loot] Rolling for ${monsterId} tier=${tier} elite=${npc.isElite} boss=${npc.isBoss} specific=${lootByMonster.get(monsterId)?.length ?? 0} pool=${lootByTier.get(tier)?.length ?? 0}`);
     const drops     = [];
 
