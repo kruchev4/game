@@ -1063,6 +1063,7 @@ class WorldInstance {
     const specific = lootByMonster.get(monsterId) ?? [];
     for (const entry of specific) {
       if (Math.random() < entry.drop_chance) {
+        console.log(`[loot] ${monsterId} tier=${tier}(${typeof tier}) pool=${lootByTier.get(tier)?.length} chance=${baseDropChance}`);
         drops.push({ itemId: entry.id, name: entry.name, icon: entry.icon,
                      itemType: entry.item_type, rarity: entry.rarity,
                      qty: 1, ...(entry.data ?? {}) });
