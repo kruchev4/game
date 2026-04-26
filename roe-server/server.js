@@ -61,52 +61,43 @@ const worlds  = new Map(); // worldId  -> WorldInstance
 const players = new Map(); // token    -> PlayerSession
 
 // ── Monster cache — loaded once on startup ────────────────────────────────
-/** @type {Map<string, MonsterDef>} */
+/** @type {Map<string, object>} monster id -> full data JSON blob */
 const monsterDefs = new Map();
 
-const MONSTER_FALLBACK = [
-  { id:"goblinMelee",  name:"Goblin Warrior", icon:"👺", hp:30,  damage_min:4,  damage_max:9,  speed:3, perception:7,  roam_radius:4, attack_range:1, xp_value:25,  is_boss:false },
-  { id:"goblinArcher", name:"Goblin Archer",  icon:"🏹", hp:22,  damage_min:5,  damage_max:10, speed:2, perception:8,  roam_radius:4, attack_range:6, xp_value:28,  is_boss:false },
-  { id:"zombie",       name:"Zombie",         icon:"🧟", hp:35,  damage_min:5,  damage_max:10, speed:2, perception:5,  roam_radius:3, attack_range:1, xp_value:30,  is_boss:false },
-  { id:"skeleton",     name:"Skeleton",       icon:"💀", hp:25,  damage_min:4,  damage_max:9,  speed:3, perception:7,  roam_radius:4, attack_range:1, xp_value:28,  is_boss:false },
-  { id:"wraith",       name:"Wraith",         icon:"👻", hp:28,  damage_min:6,  damage_max:12, speed:4, perception:8,  roam_radius:4, attack_range:4, xp_value:40,  is_boss:false },
-  { id:"necromancer",  name:"Necromancer",    icon:"🧙", hp:22,  damage_min:8,  damage_max:16, speed:2, perception:9,  roam_radius:3, attack_range:6, xp_value:60,  is_boss:false },
-  { id:"lich",         name:"Lich",           icon:"💀", hp:200, damage_min:18, damage_max:28, speed:2, perception:10, roam_radius:2, attack_range:5, xp_value:300, is_boss:true  },
-  { id:"goblinShaman",         name:"Goblin Shaman",        icon:"🧙", hp:40,  damage_min:6,  damage_max:12, speed:2, perception:7,  roam_radius:2, attack_range:6, xp_value:40,  is_boss:false },
-  { id:"goblinWarchief",       name:"Goblin Warchief",      icon:"👹", hp:180, damage_min:12, damage_max:20, speed:3, perception:8,  roam_radius:1, attack_range:1, xp_value:150, is_boss:true  },
-  { id:"ancientSkeletonLord",  name:"Ancient Skeleton Lord",icon:"💀", hp:320, damage_min:16, damage_max:26, speed:2, perception:9,  roam_radius:4, attack_range:1, xp_value:400, is_boss:true  },
-  { id:"forestTroll",          name:"Forest Troll",         icon:"👺", hp:280, damage_min:18, damage_max:28, speed:2, perception:6,  roam_radius:3, attack_range:1, xp_value:350, is_boss:true  },
-  { id:"lichArchon",           name:"Lich Archon",          icon:"🧟", hp:260, damage_min:14, damage_max:24, speed:2, perception:12, roam_radius:2, attack_range:6, xp_value:450, is_boss:true  },
-];
+/** @type {Map<string, object[]>} monsterId -> loot entries (specific overrides) */
+const lootByMonster = new Map();
 
-function _rowToMonster(row) {
-  return {
-    id:          row.id,
-    name:        row.name,
-    icon:        row.icon        ?? "👾",
-    hp:          row.hp,
-    damageMin:   row.damage_min,
-    damageMax:   row.damage_max,
-    speed:       row.speed       ?? 2,
-    perception:  row.perception  ?? 5,
-    roamRadius:  row.roam_radius ?? 3,
-    attackRange: row.attack_range ?? 1,
-    xpValue:     row.xp_value    ?? 0,
-    isBoss:      row.is_boss     === true || row.is_boss === 1,
-    tags:        row.tags        ?? []
-  };
-}
+/** @type {Map<number, object[]>} tier -> loot entries (pool drops) */
+const lootByTier = new Map();
 
 async function loadMonsterDefs() {
   try {
-    const rows = await sb("monsters?select=*&order=id");
+    const rows = await sb("monsters?select=id,data&order=id");
     if (!rows?.length) throw new Error("Empty response");
-    for (const row of rows) monsterDefs.set(row.id, _rowToMonster(row));
+    for (const row of rows) monsterDefs.set(row.id, row.data);
     console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from Supabase`);
   } catch (e) {
-    console.warn(`[Server] Monster load failed (${e.message}) — using fallback`);
-    for (const row of MONSTER_FALLBACK) monsterDefs.set(row.id, _rowToMonster(row));
-    console.log(`[Server] Loaded ${monsterDefs.size} monster definitions from fallback`);
+    console.error(`[Server] Monster load failed: ${e.message}`);
+    // No fallback — monsters must be defined in Supabase
+  }
+}
+
+async function loadLootTables() {
+  try {
+    const rows = await sb("loot_tables?select=*&order=tier");
+    if (!rows?.length) throw new Error("Empty response");
+    for (const row of rows) {
+      if (row.monster_id) {
+        if (!lootByMonster.has(row.monster_id)) lootByMonster.set(row.monster_id, []);
+        lootByMonster.get(row.monster_id).push(row);
+      } else {
+        if (!lootByTier.has(row.tier)) lootByTier.set(row.tier, []);
+        lootByTier.get(row.tier).push(row);
+      }
+    }
+    console.log(`[Server] Loaded loot for ${lootByMonster.size} monsters, ${lootByTier.size} tiers`);
+  } catch (e) {
+    console.error(`[Server] Loot table load failed: ${e.message}`);
   }
 }
 
@@ -689,15 +680,41 @@ class WorldInstance {
         if (!def) { console.warn(`[Server] Unknown monsterId: ${s.monsterId}`); continue; }
         const id = `${s.monsterId}_${s.x}_${s.y}`;
         this.npcs.set(id, {
-          id, monsterId: s.monsterId, name: def.name, icon: def.icon,
-          x: s.x, y: s.y, homeX: s.x, homeY: s.y,
-          hp: def.hp, maxHp: def.hp, damageMin: def.damageMin, damageMax: def.damageMax,
-          speed: def.speed, perception: def.perception, attackRange: def.attackRange ?? 1,
-          roamRadius: s.roamRadius ?? def.roamRadius ?? 3, xpValue: def.xpValue,
-          isBoss: s.isBoss ?? false, state: "roaming",
-          target: null, threat: {}, dead: false,
-          actionTimer: 1000 + Math.random() * 2000, moveTimer: Math.random() * 1000,
-          respawnSecs: null, deadAt: null
+          id,
+          monsterId:    s.monsterId,
+          name:         def.name,
+          icon:         def.icon,
+          tier:         def.tier              ?? 1,
+          isElite:      def.is_elite          ?? false,
+          isBoss:       def.is_boss           ?? false,
+          x:            s.x,
+          y:            s.y,
+          homeX:        s.x,
+          homeY:        s.y,
+          hp:           def.combat.hp,
+          maxHp:        def.combat.hp,
+          ac:           def.combat.ac         ?? 8,
+          damageMin:    def.combat.damage_min,
+          damageMax:    def.combat.damage_max,
+          attackType:   def.combat.attack_type  ?? "melee",
+          attackRange:  def.combat.attack_range ?? 1,
+          speed:        def.combat.speed,
+          regenPerTick: def.combat.regen_per_tick ?? 0,
+          perception:   def.behaviour.perception,
+          roamRadius:   s.roamRadius ?? def.behaviour.roam_radius ?? 3,
+          aggroType:    def.behaviour.aggro_type  ?? "aggressive",
+          abilities:    def.behaviour.abilities   ?? [],
+          stats:        def.stats ?? {},
+          xpValue:      def.rewards.xp_value,
+          state:        "roaming",
+          target:       null,
+          threat:       {},
+          dead:         false,
+          actionTimer:  1000 + Math.random() * 2000,
+          moveTimer:    Math.random() * 1000,
+          respawnSecs:  def.is_boss ? 600 : def.is_elite ? 420 : 300,
+          deadAt:       null,
+          dots:         []
         });
       }
 
@@ -1032,36 +1049,44 @@ class WorldInstance {
   _rollLoot(npc) {
     const baseGold = npc.isBoss
       ? 50 + Math.floor(Math.random() * 100)
-      : 3  + Math.floor(Math.random() * 10);
+      : npc.isElite
+        ? 20 + Math.floor(Math.random() * 40)
+        : 3  + Math.floor(Math.random() * 10);
 
-    const monsterId = npc.monsterId ?? npc.id.split("_")[0];
+    const monsterId = npc.monsterId ?? npc.id.split('_')[0];
+    const tier      = npc.tier ?? 1;
+    const drops     = [];
 
-    const LOOT_TABLES = {
-      goblinMelee:          [{ itemId: "health_potion",     weight: 8  }, { itemId: "iron_ring",          weight: 3  }],
-      goblinArcher:         [{ itemId: "health_potion",     weight: 8  }, { itemId: "mana_potion",         weight: 5  }],
-      goblinShaman:         [{ itemId: "mana_potion",       weight: 15 }, { itemId: "rune_frost_arrow",    weight: 5  }],
-      goblinWarchief:       [{ itemId: "helm_of_strength",  weight: 35 }, { itemId: "rune_slash",          weight: 25 }, { itemId: "amulet_of_vitality", weight: 15 }],
-      zombie:               [{ itemId: "health_potion",     weight: 10 }],
-      skeleton:             [{ itemId: "health_potion",     weight: 10 }, { itemId: "iron_ring",           weight: 5  }],
-      wraith:               [{ itemId: "mana_potion",       weight: 15 }],
-      necromancer:          [{ itemId: "mana_potion",       weight: 20 }, { itemId: "rune_frost_arrow",    weight: 10 }],
-      ancientSkeletonLord:  [{ itemId: "chainmail_coif",    weight: 30 }, { itemId: "boots_of_haste",      weight: 25 }, { itemId: "rune_whirlwind",     weight: 20 }, { itemId: "amulet_of_vitality", weight: 25 }],
-      forestTroll:          [{ itemId: "plate_gauntlets",   weight: 35 }, { itemId: "helm_of_strength",    weight: 35 }, { itemId: "rune_shield_bash",   weight: 30 }],
-      lichArchon:           [{ itemId: "ring_of_the_arcane",weight: 35 }, { itemId: "rune_consecrate",     weight: 30 }, { itemId: "zealots_pendant",    weight: 35 }],
-      default:              [{ itemId: "health_potion",     weight: 5  }]
-    };
-
-    const entries = LOOT_TABLES[monsterId] ?? LOOT_TABLES.default;
-    const dropChance = npc.isBoss ? 0.85 : 0.12;
-    if (Math.random() > dropChance) return { gold: baseGold };
-
-    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
-    let roll = Math.random() * totalWeight;
-    for (const entry of entries) {
-      roll -= entry.weight;
-      if (roll <= 0) return { gold: baseGold, itemId: entry.itemId, qty: 1 };
+    // 1. Monster-specific override table (elites/bosses always have one)
+    const specific = lootByMonster.get(monsterId) ?? [];
+    for (const entry of specific) {
+      if (Math.random() < entry.drop_chance) {
+        drops.push({ itemId: entry.id, name: entry.name, icon: entry.icon,
+                     itemType: entry.item_type, rarity: entry.rarity,
+                     qty: 1, ...(entry.data ?? {}) });
+      }
     }
-    return { gold: baseGold };
+
+    // 2. Tier pool drop
+    const baseDropChance = npc.isBoss ? 0.85 : npc.isElite ? 0.60 : 0.12;
+    if (Math.random() < baseDropChance) {
+      const pool = lootByTier.get(tier) ?? [];
+      if (pool.length > 0) {
+        const totalWeight = pool.reduce((sum, e) => sum + Number(e.drop_chance), 0);
+        let roll = Math.random() * totalWeight;
+        for (const entry of pool) {
+          roll -= Number(entry.drop_chance);
+          if (roll <= 0) {
+            drops.push({ itemId: entry.id, name: entry.name, icon: entry.icon,
+                         itemType: entry.item_type, rarity: entry.rarity,
+                         qty: 1, ...(entry.data ?? {}) });
+            break;
+          }
+        }
+      }
+    }
+
+    return { gold: baseGold, items: drops };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -1285,6 +1310,7 @@ function _removePlayer(token) {
 (async () => {
   // Load game data from Supabase (source of truth)
   await loadMonsterDefs();
+  await loadLootTables();
   await loadAbilityDefs();
 
   // Initialize ability resolvers with server dependencies
