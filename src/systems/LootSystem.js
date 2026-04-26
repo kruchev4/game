@@ -91,6 +91,7 @@ export class LootSystem {
     }
 
     // Add items to player bag
+console.log("[loot] lootCorpse items:", corpse.items.length, JSON.stringify(corpse.items));
     for (const drop of corpse.items) {
       this._addToBagDrop(drop);
     }
@@ -100,6 +101,7 @@ export class LootSystem {
     return taken;
   }
 _addToBagDrop(drop) {
+console.log("[loot] _addToBagDrop called", drop.itemId, drop.name);
   const itemId = drop.itemId;
   // Use existing def if available, otherwise build one from the drop data
   const def = this.itemDefs[itemId] ?? {
