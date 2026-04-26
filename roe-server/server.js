@@ -1055,6 +1055,7 @@ class WorldInstance {
 
     const monsterId = npc.monsterId ?? npc.id.split('_')[0];
     const tier      = npc.tier ?? 1;
+    console.log(`[loot] Rolling for ${monsterId} tier=${tier} elite=${npc.isElite} boss=${npc.isBoss} specific=${lootByMonster.get(monsterId)?.length ?? 0} pool=${lootByTier.get(tier)?.length ?? 0}`);
     const drops     = [];
 
     // 1. Monster-specific override table (elites/bosses always have one)
