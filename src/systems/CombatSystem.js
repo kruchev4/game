@@ -150,22 +150,16 @@ export class CombatSystem {
   }
 
   _checkNPCEngagement() {
-    for (const npc of this.npcs) {
-      if (npc.dead || npc.state !== "alert") continue;
-      if (this.combatants.has(npc.id)) continue;
-
-      const primaryAbilityId = npc.abilities?.[0];
-      if (!primaryAbilityId) continue;
-
-      const ability = this.abilities[primaryAbilityId];
-      if (!ability) continue;
-
-      if (inRange(this.world, npc, this.player, ability)) {
-        this._engage(npc);
-        this._engage(this.player);
-      }
+  for (const npc of this.npcs) {
+    if (npc.dead || npc.state !== "alert") continue;
+    if (this.combatants.has(npc.id)) continue;
+    // Engage as soon as alert — don't wait for attack range
+    this._engage(npc);
+    if (!this.combatants.has(this.player.id)) {
+      this._engage(this.player);
     }
   }
+}
 
   // ─────────────────────────────────────────────
   // TIMERS & COOLDOWNS

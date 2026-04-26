@@ -9,12 +9,18 @@
  *
  * Being attacked also sets state = "alert" directly via CombatSystem,
  * bypassing perception — so range doesn't matter when attacked.
+ *
+ * LoS check added: NPCs must have unobstructed line of sight to the player
+ * before becoming aware. Walls and other non-walkable tiles block detection.
  */
 
+import { hasLoS } from "../world/LoS.js";
+
 export class NPCPerceptionSystem {
-  constructor({ npcs, player }) {
+  constructor({ npcs, player, world }) {
     this.npcs    = npcs;
     this.player  = player;
+    this.world   = world;
 
     this._cooldown = 0;
     this._interval = 10; // check every 10 frames (~6x/sec at 60fps)
@@ -36,6 +42,8 @@ export class NPCPerceptionSystem {
       const dist = Math.abs(npc.x - this.player.x) + Math.abs(npc.y - this.player.y);
 
       if (dist <= npc.perceptionRadius) {
+        // Wall check — NPC must have unobstructed LoS to detect the player
+        if (this.world && !hasLoS(this.world, npc, this.player)) continue;
         npc.state = "alert";
       }
       // NO else — we never reset alert → roaming here

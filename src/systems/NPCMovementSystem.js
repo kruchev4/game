@@ -9,7 +9,7 @@
  *
  * Design rule: this system reads npc.state but never writes it.
  */
-
+import { hasLoS } from "../world/LoS.js";
 import { isWalkable } from "../world/isWalkable.js";
 import { aStar }      from "../pathfinding/aStar.js";
 
@@ -70,10 +70,12 @@ export class NPCMovementSystem {
     const stopRange = isRanged ? (npc.preferredRange ?? 4) : 1;
 
     if (distToPlayer <= stopRange) {
-      // In position — hold and let AI queue attack
-      npc._cooldown = 15;
-      this._paths.delete(npc.id);
-      return;
+      if (!isRanged || hasLoS(this.world, npc, this.player)) {
+        npc._cooldown = 15;
+        this._paths.delete(npc.id);
+        return;
+      }
+      // Ranged NPC is in range but wall is blocking — keep pathing
     }
 
     // Recalculate path periodically or when we have none
