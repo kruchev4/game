@@ -14,7 +14,7 @@ const PASSABLE = new Set([
   5,   // cobblestone road
   6,   // bridge
   7,   // shallow water / ford
-  8,   // sand / beach
+  
 
   // Overworld expansion tiles
   15, 16, 17, 18, 19,
