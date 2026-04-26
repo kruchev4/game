@@ -904,7 +904,8 @@ async function loadMonsters(){
       return;
     }
     loadEl.textContent="Loading from Supabase...";
-    const rows = await sbFetch("monsters","?select=id,data&order=data->>'tier'");
+    const rows = await sbFetch("monsters","?select=id,data&order=id");
+           console.log("[monsters] rows:", rows?.length, rows?.[0]);
     UI.monsters = rows.map(r=>({
       id:        r.id,
       name:      r.data.name,
@@ -917,7 +918,8 @@ async function loadMonsters(){
     loadEl.style.display = "none";
     buildMonsterList();
   } catch(e) {
-    loadEl.textContent = "⚠ Failed to load monsters: "+e.message;
+    console.error("[monsters] load error:", e);
+          loadEl.textContent = "⚠ Failed to load monsters: "+e.message;
   }
 }
 
@@ -1233,7 +1235,7 @@ document.getElementById("btn-sb-save").onclick=async()=>{
   setMsg("Saving to Supabase...");
   try {
     const world=buildExportWorld();
-    await sbUpsert("worlds",{id:S.worldId,json:world});
+    await sbUpsert("worlds", { id: S.worldId, name: S.worldName, json: world });
     setMsg("✓ Saved to Supabase: "+S.worldId);
   } catch(e){
     setMsg("⚠ Save failed: "+e.message);
