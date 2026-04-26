@@ -92,13 +92,35 @@ export class LootSystem {
 
     // Add items to player bag
     for (const drop of corpse.items) {
-      this._addToBag(drop.itemId, drop.qty);
+      this._addToBagDrop(drop);
     }
     corpse.items  = [];
     corpse.looted = true;
 
     return taken;
   }
+_addToBagDrop(drop) {
+  const itemId = drop.itemId;
+  // Use existing def if available, otherwise build one from the drop data
+  const def = this.itemDefs[itemId] ?? {
+    id:        itemId,
+    name:      drop.name     ?? itemId,
+    icon:      drop.icon     ?? "📦",
+    itemType:  drop.itemType ?? "material",
+    rarity:    drop.rarity   ?? "common",
+    stackable: drop.itemType === "material" || drop.itemType === "consumable",
+    ...drop
+  };
+
+  if (def.stackable) {
+    const existing = this.player.bag.find(s => s?.itemId === itemId);
+    if (existing) { existing.qty += (drop.qty ?? 1); return; }
+  }
+
+  const emptyIndex = this.player.bag.findIndex(s => s === null);
+  if (emptyIndex === -1) { this.onEvent({ type: "bag_full", itemId }); return; }
+  this.player.bag[emptyIndex] = { itemId, qty: drop.qty ?? 1, def };
+}
 
   /**
    * Use an item from inventory (bag or quick slot).
