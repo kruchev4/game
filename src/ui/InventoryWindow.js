@@ -44,6 +44,13 @@ export class InventoryWindow {
     this._contextMenu = null;
   }
 
+  // ── Helper: resolve item def from itemDefs OR from the bag slot's embedded def ──
+  _getDef(itemId) {
+    return this.itemDefs[itemId]
+      ?? this.player.bag.find(s => s?.itemId === itemId)?.def
+      ?? null;
+  }
+
   get visible() { return this._visible; }
 
   toggle() { this._visible ? this.hide() : this.show(); }
@@ -111,7 +118,7 @@ export class InventoryWindow {
     // ── Equipment slots ──
     const eqSlots = EQUIPMENT_SLOTS.map(slot => {
       const itemId = p.equipment?.[slot.id];
-      const def    = itemId ? this.itemDefs[itemId] : null;
+      const def    = itemId ? this._getDef(itemId) : null;
       const posStr = Object.entries(slot.pos).map(([k,v]) => `${k}:${v}`).join(";");
       return `
         <div class="inv-eq-slot ${def ? "filled" : ""}"
@@ -126,7 +133,7 @@ export class InventoryWindow {
     // ── Rune slots ──
     const runeSlots = RUNE_SLOTS.map(slot => {
       const itemId = p.equipment?.[slot.id];
-      const def    = itemId ? this.itemDefs[itemId] : null;
+      const def    = itemId ? this._getDef(itemId) : null;
       const abilityId = def?.runeAbility ?? def?.effect?.runeAbility;
       const rank   = abilityId ? (p.learnedSkills?.[abilityId]?.rank ?? 1) : null;
       return `
@@ -142,7 +149,7 @@ export class InventoryWindow {
     // ── Bag grid ──
     const bagHtml = p.bag.map((slot, i) => {
       if (!slot) return `<div class="inv-bag-slot" data-bag="${i}"></div>`;
-      const def = this.itemDefs[slot.itemId];
+      const def = this._getDef(slot.itemId);
       const isQS = p.quickSlots?.includes(slot.itemId);
       return `
         <div class="inv-bag-slot filled ${def?.type === "rune" ? "rune-item" : ""}"
@@ -155,7 +162,7 @@ export class InventoryWindow {
 
     // ── Quick slots ──
     const qsHtml = (p.quickSlots ?? []).map((itemId, i) => {
-      const def     = itemId ? this.itemDefs[itemId] : null;
+      const def     = itemId ? this._getDef(itemId) : null;
       const bagSlot = itemId ? p.bag?.find(s => s?.itemId === itemId) : null;
       const qty     = bagSlot?.qty ?? 0;
       return `
@@ -296,16 +303,15 @@ export class InventoryWindow {
       const itemId = el.dataset.item;
 
       el.addEventListener("click", () => {
-        const def = this.itemDefs[itemId];
+        const def = this._getDef(itemId);
         if (!def) return;
-        if (def.type === "equipment") {
+        if (def.type === "equipment" || def.itemType === "weapon" || def.itemType === "armour" || def.itemType === "accessory") {
           this.lootSystem.equipItem(itemId);
           this._render();
-        } else if (def.type === "consumable") {
+        } else if (def.type === "consumable" || def.itemType === "consumable") {
           this.lootSystem.useItem(itemId);
           this._render();
         }
-        // Runes require right-click → Socket from context menu
       });
 
       el.addEventListener("contextmenu", e => {
@@ -340,7 +346,7 @@ export class InventoryWindow {
 
   _showContextMenu(e, itemId) {
     this._hideContextMenu();
-    const def = this.itemDefs[itemId];
+    const def = this._getDef(itemId);
     if (!def) return;
 
     const menu = document.createElement("div");
@@ -349,8 +355,9 @@ export class InventoryWindow {
     menu.style.top  = e.clientY + "px";
 
     const options = [];
+    const effectiveType = def.type ?? def.itemType;
 
-    if (def.type === "consumable") {
+    if (effectiveType === "consumable") {
       options.push({
         label: "Use",
         action: () => { this.lootSystem.useItem(itemId); this._render(); }
@@ -365,14 +372,14 @@ export class InventoryWindow {
       }
     }
 
-    if (def.type === "equipment") {
+    if (effectiveType === "equipment" || effectiveType === "weapon" || effectiveType === "armour" || effectiveType === "accessory") {
       options.push({
         label: "Equip",
         action: () => { this.lootSystem.equipItem(itemId); this._render(); }
       });
     }
 
-    if (def.type === "rune") {
+    if (effectiveType === "rune") {
       const abilityId = def.runeAbility ?? def.effect?.runeAbility;
       const learned   = abilityId ? this.player.learnedSkills?.[abilityId] : false;
       const slotsFull = this.player.equipment?.rune1 && this.player.equipment?.rune2;
@@ -405,7 +412,10 @@ export class InventoryWindow {
       });
     }
 
-    if (!options.length) return;
+    if (!options.length) {
+      // Material or unknown — just show name, no actions
+      options.push({ label: def.name ?? itemId, disabled: true });
+    }
 
     options.forEach(opt => {
       if (opt.sep) {
@@ -438,13 +448,14 @@ export class InventoryWindow {
 
   _showTooltip(e, itemId) {
     if (!itemId || !this._tooltip) return;
-    const def = this.itemDefs[itemId];
+    const def = this._getDef(itemId);
     if (!def) return;
 
     const rarityColor = {
       common:    "#f0ddb8",
       uncommon:  "#88aaff",
       rare:      "#aa66ff",
+      elite:     "#ff8800",
       legendary: "#ffaa22"
     }[def.rarity] ?? "#f0ddb8";
 
@@ -455,6 +466,11 @@ export class InventoryWindow {
           const label = k === "hp" ? "Max HP" : k === "mana" ? "Max Mana" : k.toUpperCase();
           return `<div style="color:${color};font-size:.7rem;">${sign}${v} ${label}</div>`;
         }).join("")
+      : "";
+
+    // Weapon damage
+    const dmgHtml = (def.damage_min && def.damage_max)
+      ? `<div style="color:#e8a060;font-size:.7rem;">⚔️ ${def.damage_min}–${def.damage_max} damage</div>`
       : "";
 
     // Rune-specific info
@@ -483,7 +499,8 @@ export class InventoryWindow {
         ${def.icon ?? "📦"} ${def.name}
       </div>
       ${def.rarity ? `<div style="font-size:.6rem;color:${rarityColor};text-transform:capitalize;margin-bottom:4px;">${def.rarity}</div>` : ""}
-      <div style="font-size:.72rem;color:#a8865a;font-style:italic;margin-bottom:4px;">${def.description ?? ""}</div>
+      <div style="font-size:.72rem;color:#a8865a;font-style:italic;margin-bottom:4px;">${def.description ?? def.desc ?? ""}</div>
+      ${dmgHtml}
       ${statsHtml}
       ${runeHtml}
       ${def.value ? `<div style="font-size:.65rem;color:#e8b84a;margin-top:4px;">🪙 ${def.value} gp</div>` : ""}
