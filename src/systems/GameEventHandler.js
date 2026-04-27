@@ -177,7 +177,89 @@ export class GameEventHandler {
         break;
     }
   }
-handleDungeonEvent(event) {
+_showLevelUpNotification(level) {
+  document.getElementById("levelup-badge")?.remove();
+
+  const badge = document.createElement("div");
+  badge.id = "levelup-badge";
+  badge.innerHTML = `⬆ Level ${level} — Click to choose abilities & stats`;
+  badge.style.cssText = `
+    position: fixed; top: 70px; left: 50%;
+    transform: translateX(-50%); z-index: 130;
+    background: linear-gradient(90deg, #1a1006, #2a1a08);
+    border: 1px solid #e8c84a; color: #e8c84a;
+    font-family: 'Cinzel', serif; font-size: 0.75rem;
+    letter-spacing: 2px; padding: 10px 22px; cursor: pointer;
+    box-shadow: 0 0 20px rgba(232,200,74,0.4);
+    animation: levelup-pulse 1.5s ease-in-out infinite;
+  `;
+
+  if (!document.getElementById("levelup-badge-style")) {
+    const style = document.createElement("style");
+    style.id = "levelup-badge-style";
+    style.textContent = `
+      @keyframes levelup-pulse {
+        0%, 100% { box-shadow: 0 0 20px rgba(232,200,74,0.4); }
+        50%       { box-shadow: 0 0 36px rgba(232,200,74,0.8); border-color: #fff8c0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  badge.addEventListener("click", () => {
+    this._openLevelUpWindow(level);
+    badge.remove();
+  });
+
+  document.body.appendChild(badge);
+}
+
+_openLevelUpWindow(level) {
+  const engine     = this.engine;
+  const uiManager  = engine.uiManager;
+  const xpSystem   = engine.xpSystem;
+  const classId    = engine._playerClassId;
+  const classDef   = engine._classes?.[classId];
+  if (!classDef) return;
+
+  const abilityDefs = engine._abilities ?? {};
+
+  // abilities[0] is always the basic attack — exclude it from the pool
+  const basicId  = classDef.abilities?.[0];
+  const poolIds  = (classDef.abilities ?? []).filter(id => id !== basicId);
+
+  const classSkills = poolIds
+    .map(id => abilityDefs[id])
+    .filter(Boolean)
+    .map(ab => ({
+      id:          ab.id,
+      name:        ab.name,
+      icon:        ab.icon ?? "⚔️",
+      description: ab.description ?? "",
+      rankDescriptions: ab.ranks
+        ? Object.entries(ab.ranks)
+            .sort(([a],[b]) => Number(a) - Number(b))
+            .map(([,v]) => v.description ?? "")
+        : [],
+      baseDamage:  ab.damage ? { base: ab.damage.base, variance: ab.damage.variance } : null,
+      rankScaling: ab.scaling ?? null,
+    }));
+
+  const win = uiManager.levelUpWindow;
+  if (!win) { console.warn("[GameEventHandler] No levelUpWindow"); return; }
+
+  // Inject fresh classSkills and wire confirm
+  win.classSkills = classSkills;
+  win.onConfirm = (skillId, replaceId, statDist) => {
+    if (skillId) xpSystem.applySkillPick(skillId, replaceId);
+    if (statDist) xpSystem.applyStatPoints(statDist);
+    engine._pendingLevelUp = null;
+    uiManager.syncAbilityBar();
+    engine.combatLog?.push({ text: `Level ${level} choices applied.`, type: "kill" });
+  };
+
+  win.show(level);
+}handleDungeonEvent(event) {
   const { combatLog, animSystem } = this.engine;
   switch (event.type) {
     case "chest_open": {
@@ -243,32 +325,40 @@ handleDungeonEvent(event) {
   // XP EVENTS
   // ─────────────────────────────────────────────
   handleXPEvent(event) {
-    const log = this.engine.combatLog;
-    switch (event.type) {
-      case "xp_gained":
-        log?.push({ text: `+${event.amount} XP`, type: "system" });
-        break;
-      case "level_up": {
-        this.engine.animSystem?.playLevelUp("player");
-        log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
-        if (event.level % 3 === 0) {
-          setTimeout(() => this.engine.uiManager.showAbilityPick(event.level), 800);
-        }
-        break;
+  const log = this.engine.combatLog;
+  switch (event.type) {
+ 
+    case "xp_gained":
+      log?.push({ text: `+${event.amount} XP`, type: "system" });
+      break;
+ 
+    case "level_up": {
+      this.engine.animSystem?.playLevelUp("player");
+      log?.push({ text: `⬆ Level ${event.level}! HP restored.`, type: "kill" });
+ 
+      if (event.isSpecial) {
+        // Store pending level so the player can open the window when ready
+        this.engine._pendingLevelUp = event.level;
+        this._showLevelUpNotification(event.level);
       }
-      case "skill_learned":
-        log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
-        this.engine.uiManager._syncAbilityBar();
-        break;
-      case "skill_upgraded":
-        log?.push({ text: `${event.skillId} upgraded to Rank ${event.rank}!`, type: "system" });
-        this.engine.uiManager._syncAbilityBar();
-        break;
-      case "stats_updated":
-        // Renderer reads directly
-        break;
+      break;
     }
+ 
+    case "skill_learned":
+      log?.push({ text: `Learned: ${event.skillId}`, type: "system" });
+      this.engine.uiManager.syncAbilityBar(); // fixed: was _syncAbilityBar
+      break;
+ 
+    case "skill_upgraded":
+      log?.push({ text: `${event.skillId} upgraded to Rank ${event.rank}!`, type: "system" });
+      this.engine.uiManager.syncAbilityBar();
+      break;
+ 
+    case "stats_updated":
+      // Renderer reads player.stats directly — no action needed
+      break;
   }
+}
 
   // ─────────────────────────────────────────────
   // EFFECT EVENTS
